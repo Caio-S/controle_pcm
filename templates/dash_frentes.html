@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disponibilidade por Frente - PCM</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background: #f0f2f5; }
+        .frente-header { background: #1a1a2e; color: #fff; font-weight: 800; font-size: 0.85rem;
+                         letter-spacing: 1px; text-align: center; padding: 8px 4px; border-radius: 6px; }
+        .tipo-label { background: #2d2d2d; color: #fff; font-weight: 700; font-size: 0.78rem;
+                      letter-spacing: 1px; text-align: center; padding: 10px 4px; border-radius: 6px;
+                      writing-mode: horizontal-tb; display: flex; align-items: center;
+                      justify-content: center; min-height: 100px; }
+        .gauge-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+                      padding: 6px 4px 2px; text-align: center; }
+        .gauge-canvas-wrap { height: 90px; position: relative; }
+        .gauge-lbl { font-size: 0.7rem; color: #777; margin-top: 2px; line-height: 1.3; min-height: 28px; }
+        .section-header { background: #111; color: #fff; font-weight: 800; font-size: 0.9rem;
+                          padding: 8px 16px; border-radius: 6px 6px 0 0; letter-spacing: 1px; }
+        .kpi-box { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+                   text-align: center; padding: 12px 8px; }
+        .kpi-num  { font-size: 2rem; font-weight: 800; line-height: 1; }
+        .kpi-sub  { font-size: 0.7rem; color: #888; text-transform: uppercase; font-weight: 600; margin-top: 2px; }
+        .detail-table th { font-size: 0.75rem; color: #00509E; border-bottom: 2px solid #0d6efd; white-space: nowrap; }
+        .detail-table td { font-size: 0.78rem; vertical-align: middle; }
+        .sem-cfg { opacity: .45; }
+        .cfg-row:hover { background: #f0f4ff; }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-dark shadow">
+    <div class="container-fluid px-4">
+        <span class="navbar-brand mb-0 h1">
+            <i class="bi bi-speedometer2 me-2"></i>PCM | Disponibilidade por Frente
+        </span>
+        <div class="d-flex gap-2 align-items-center">
+            <a href="/dash_os" class="btn btn-outline-light btn-sm"><i class="bi bi-clipboard2-data me-1"></i>Dashboard OS</a>
+            <a href="/admin" class="btn btn-outline-light btn-sm"><i class="bi bi-arrow-left me-1"></i>Painel</a>
+            <button class="btn btn-success btn-sm fw-bold" onclick="sincronizarOS(this)">
+                <i class="bi bi-arrow-repeat me-1"></i>Sincronizar OS
+            </button>
+            <button class="btn btn-warning btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalConfig">
+                <i class="bi bi-gear-fill me-1"></i>Configurar Frentes
+            </button>
+            <a href="/logout" class="btn btn-danger btn-sm fw-bold"><i class="bi bi-box-arrow-right me-1"></i>Sair</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid mt-3 px-4">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }} alert-dismissible fade show">
+          {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+
+
+    <!-- Grid Frentes + Caminhões -->
+    <div id="gridFrentes"></div>
+
+    <!-- Detalhamento -->
+    <div class="card border-0 shadow-sm mt-3">
+        <div class="section-header"><i class="bi bi-list-ul me-2"></i>Detalhamento — OS Abertas / Em Execução</div>
+        <div class="card-body p-0" id="detalheContainer"></div>
+    </div>
+
+</div>
+
+<!-- Modal Config -->
+<div class="modal fade" id="modalConfig" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fs-6"><i class="bi bi-gear-fill me-2"></i>Configurar Frotas por Frente</h5>
+                <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <!-- Filtros -->
+                <div class="p-2 bg-light border-bottom d-flex gap-2 align-items-center flex-wrap">
+                    <input type="text" id="cfgBusca" class="form-control form-control-sm" placeholder="Buscar frota ou descrição..." style="width:200px" oninput="filtrarCfg()">
+                    <select id="cfgFiltroEsp" class="form-select form-select-sm" style="width:180px" onchange="filtrarCfg()">
+                        <option value="">Todas especialidades</option>
+                    </select>
+                    <select id="cfgFiltroFrente" class="form-select form-select-sm" style="width:150px" onchange="filtrarCfg()">
+                        <option value="">Todas as frentes</option>
+                        <option value="__sem__">Sem frente</option>
+                        <option value="BASE">BASE</option>
+                        <option value="FRENTE 1">FRENTE 1</option>
+                        <option value="FRENTE 2">FRENTE 2</option>
+                        <option value="FRENTE 3">FRENTE 3</option>
+                        <option value="FRENTE 4">FRENTE 4</option>
+                        <option value="FRENTE 5">FRENTE 5</option>
+                    </select>
+                </div>
+                <!-- Ação em lote -->
+                <div class="p-2 border-bottom bg-white d-flex gap-2 align-items-center flex-wrap">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" id="chkTodos" onchange="selecionarTodos(this.checked)">
+                        <label class="form-check-label small fw-bold" for="chkTodos">Selecionar visíveis</label>
+                    </div>
+                    <span class="text-muted small" id="cfgSelCount">0 selecionadas</span>
+                    <div class="ms-auto d-flex gap-2 align-items-center">
+                        <span class="small text-muted">Aplicar às selecionadas:</span>
+                        <select id="loteFrente" class="form-select form-select-sm" style="width:140px">
+                            <option value="">— remover frente —</option>
+                            <option value="BASE">BASE</option>
+                            <option value="FRENTE 1">FRENTE 1</option>
+                            <option value="FRENTE 2">FRENTE 2</option>
+                            <option value="FRENTE 3">FRENTE 3</option>
+                            <option value="FRENTE 4">FRENTE 4</option>
+                            <option value="FRENTE 5">FRENTE 5</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm fw-bold" onclick="aplicarLote()">
+                            <i class="bi bi-check2-all me-1"></i>Aplicar
+                        </button>
+                    </div>
+                </div>
+                <!-- Tabela -->
+                <div class="table-responsive" style="max-height:50vh">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-dark sticky-top" style="top:0">
+                            <tr>
+                                <th style="width:36px"></th>
+                                <th>Cód.</th>
+                                <th>Descrição</th>
+                                <th>Especialidade</th>
+                                <th>Tipo</th>
+                                <th style="width:155px">Frente individual</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cfgTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span class="text-muted small me-auto" id="cfgCount"></span>
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-primary btn-sm fw-bold" onclick="salvarConfig()">
+                    <i class="bi bi-save me-1"></i>Salvar Configuração
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+Chart.register(ChartDataLabels);
+
+const frotas  = {{ frotas_data | tojson | safe }};
+const osAbertos = {{ os_data | tojson | safe }};
+
+// ── tipo detection ─────────────────────────────────────────────────
+function getTipo(esp, agr) {
+    const e = (esp || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const a = (agr || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    if (e.includes('COLHED'))                            return 'COLHEDORA';
+    if (e.includes('TRANSB'))                            return 'TRANSBORDO';
+    if (e.includes('CANAVIE') || e.includes('CANA VIEI')) return 'CANAVIEIRO';
+    if (e.includes('PRANCHA'))                           return 'PRANCHA';
+    if (e.includes('LOCALIZ'))                           return 'LOCALIZADA';
+    if (e.includes('REBOQUE'))                           return 'REBOQUE';
+    if (e.includes('PIPA'))                              return 'PIPA';
+    if (e.includes('APOIO'))                             return 'APOIO';
+    if (a.includes('CAMINHAO') || a.includes('CAMINHÃO')) return 'CAMINHAO';
+    if (e.includes('CAMINHAO') || e.includes('CAMINHÃO')) return 'CAMINHAO';
+    return 'OUTROS';
+}
+
+const FRENTES = ['FRENTE 1','FRENTE 2','FRENTE 3','FRENTE 4','FRENTE 5'];
+const TIPOS_FRENTE   = ['COLHEDORA','TRANSBORDO','CANAVIEIRO','PRANCHA','LOCALIZADA'];
+const TIPOS_CAMINHAO = ['PIPA','APOIO'];
+const TIPO_REBOQUE   = 'REBOQUE';
+
+// Mapa cod_frota → tipo
+const tipoMap = {};
+for (const f of frotas) {
+    const cod = String(f.cod_frota || '').trim().toUpperCase();
+    if (cod) tipoMap[cod] = getTipo(f.especialidade, f.agrupamento);
+}
+
+// Frotas com OS aberta (by cod_frota)
+const busySet = new Set(osAbertos.map(o => String(o.veiculo || '').trim().toUpperCase()));
+
+// ── gauge creator ──────────────────────────────────────────────────
+function criarGauge(canvasId, livre, total) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    if (Chart.getChart(canvasId)) Chart.getChart(canvasId).destroy();
+
+    const semCfg = total === 0;
+    const pct    = semCfg ? 0 : Math.round(livre / total * 100);
+    const cor    = semCfg ? '#adb5bd' : pct >= 85 ? '#198754' : pct >= 65 ? '#f4a820' : '#dc3545';
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data:            semCfg ? [1, 0] : [livre, total - livre],
+                backgroundColor: semCfg ? ['#dee2e6', '#dee2e6'] : [cor, '#e9ecef'],
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            rotation: -90, circumference: 180,
+            cutout: '68%',
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend:{ display:false }, tooltip:{ enabled:false }, datalabels:{ display:false } }
+        },
+        plugins: [{
+            id: 'gText',
+            afterDraw(chart) {
+                const {ctx: c, chartArea: {left, right, bottom}} = chart;
+                const cx = (left + right) / 2;
+                c.save();
+                c.textAlign = 'center';
+                if (semCfg) {
+                    c.font = '10px Calibri'; c.fillStyle = '#aaa';
+                    c.fillText('sem cfg', cx, bottom - 4);
+                } else {
+                    c.font = 'bold 15px Calibri'; c.fillStyle = cor;
+                    c.fillText(pct + '%', cx, bottom - 6);
+                    c.font = '9px Calibri'; c.fillStyle = '#888';
+                    c.fillText(livre + '/' + total + ' livre' + (livre !== 1 ? 's' : ''), cx, bottom + 9);
+                }
+                c.restore();
+            }
+        }]
+    });
+}
+
+// ── calc stats ─────────────────────────────────────────────────────
+function calcStats() {
+    // frente → tipo → {total, busy}
+    const fs = {};
+    for (const frente of FRENTES) {
+        fs[frente] = {};
+        for (const t of TIPOS_FRENTE) fs[frente][t] = {total:0, busy:0};
+    }
+    // caminhão / reboque fleet-wide
+    const cam = {};
+    for (const t of [...TIPOS_CAMINHAO, TIPO_REBOQUE, 'OUTROS']) cam[t] = {total:0, busy:0};
+
+    for (const f of frotas) {
+        const cod   = String(f.cod_frota || '').trim().toUpperCase();
+        const tipo  = getTipo(f.especialidade, f.agrupamento);
+        const busy  = busySet.has(cod);
+
+        if (TIPOS_FRENTE.includes(tipo)) {
+            const frente = (f.frente || '').trim();
+            if (frente && fs[frente]) {
+                fs[frente][tipo].total++;
+                if (busy) fs[frente][tipo].busy++;
+            }
+        } else {
+            const key = cam[tipo] !== undefined ? tipo : 'OUTROS';
+            cam[key].total++;
+            if (busy) cam[key].busy++;
+        }
+    }
+    return {frentes: fs, caminhoes: cam};
+}
+
+// ── render grid ────────────────────────────────────────────────────
+function renderGrid() {
+    const {frentes: fs, caminhoes: cam} = calcStats();
+
+    // ── Grid HTML ──
+    let html = '<div class="card border-0 shadow-sm mb-3"><div class="card-body p-2">';
+
+    // Header row
+    html += '<div class="row g-2 mb-2">';
+    html += '<div class="col-2"><div class="frente-header" style="background:#333;min-height:38px;display:flex;align-items:center;justify-content:center">TIPO</div></div>';
+    for (const fr of FRENTES) {
+        html += `<div class="col-2"><div class="frente-header">${fr}</div></div>`;
+    }
+    html += '</div>';
+
+    // Tipo rows (COLHEDORA, TRANSBORDO)
+    for (const tipo of TIPOS_FRENTE) {
+        html += '<div class="row g-2 mb-2 align-items-stretch">';
+        const tipoCor = {
+            'COLHEDORA' :'#0d3b6e',
+            'TRANSBORDO':'#1a4a1a',
+            'CANAVIEIRO':'#5a2d0c',
+            'PRANCHA'   :'#3d1a5c',
+            'LOCALIZADA':'#1a4a4a',
+        }[tipo] || '#2d2d2d';
+        html += `<div class="col-2"><div class="tipo-label" style="background:${tipoCor}">${tipo}</div></div>`;
+        for (let i = 0; i < FRENTES.length; i++) {
+            const frente = FRENTES[i];
+            const st     = fs[frente][tipo];
+            const gaugeId = `g_${tipo}_${i}`;
+            html += `<div class="col-2">
+                <div class="gauge-card h-100">
+                    <div class="gauge-canvas-wrap"><canvas id="${gaugeId}"></canvas></div>
+                </div>
+            </div>`;
+            // schedule gauge render after DOM insert
+            setTimeout(() => criarGauge(gaugeId, st.total - st.busy, st.total), 0);
+        }
+        html += '</div>';
+    }
+    html += '</div></div>';
+
+    // ── Caminhões / Reboque ──
+    const TIPOS_CAM_DISP = TIPOS_CAMINHAO.filter(t => cam[t].total > 0);
+    const hasReboque     = cam[TIPO_REBOQUE].total > 0;
+
+    html += '<div class="card border-0 shadow-sm mb-3"><div class="card-body p-2">';
+    // Headers
+    html += '<div class="row g-2 mb-2">';
+    html += '<div class="col-2"><div class="frente-header" style="background:#333;min-height:38px;display:flex;align-items:center;justify-content:center">TIPO</div></div>';
+
+    const camCols = [...TIPOS_CAM_DISP];
+    if (hasReboque || camCols.length < 5) camCols.push(TIPO_REBOQUE);
+    while (camCols.length < 5) camCols.push(null);
+
+    for (const t of camCols) {
+        if (!t) { html += '<div class="col-2"></div>'; continue; }
+        const isReb = t === TIPO_REBOQUE;
+        html += `<div class="col-2"><div class="frente-header" style="background:${isReb?'#4a0080':'#1a4a1a'}">${t}</div></div>`;
+    }
+    html += '</div>';
+
+    // Gauge row for caminhões
+    html += '<div class="row g-2 mb-1 align-items-stretch">';
+    html += '<div class="col-2"><div class="tipo-label">CAMINHÕES / REBOQUE</div></div>';
+    for (let i = 0; i < camCols.length; i++) {
+        const t = camCols[i];
+        if (!t) { html += '<div class="col-2"></div>'; continue; }
+        const st = cam[t] || {total:0, busy:0};
+        const gid = `g_cam_${i}`;
+        html += `<div class="col-2"><div class="gauge-card h-100">
+            <div class="gauge-canvas-wrap"><canvas id="${gid}"></canvas></div>
+        </div></div>`;
+        setTimeout(() => criarGauge(gid, st.total - st.busy, st.total), 0);
+    }
+    html += '</div></div></div>';
+
+    document.getElementById('gridFrentes').innerHTML = html;
+}
+
+// ── Detail tables ──────────────────────────────────────────────────
+const MIN_HORAS_DETALHE = 18;
+
+function horasAberta(dataAbertura) {
+    if (!dataAbertura) return 0;
+    const abertura = new Date(dataAbertura + 'T00:00:00');
+    return (Date.now() - abertura) / 3600000;
+}
+
+function renderDetalhes() {
+    const frotaInfo = {};
+    for (const f of frotas) {
+        const cod = String(f.cod_frota || '').trim().toUpperCase();
+        if (cod) frotaInfo[cod] = f;
+    }
+
+    // Só exibe OS com mais de 18 horas em aberto
+    const osDetalhe = osAbertos.filter(o => horasAberta(o.data_abertura) > MIN_HORAS_DETALHE);
+
+    const grupos = {};
+    for (const os of osDetalhe) {
+        const cod  = String(os.veiculo || '').trim().toUpperCase();
+        const info = frotaInfo[cod] || {};
+        const tipo = getTipo(info.especialidade, info.agrupamento);
+        const grp  = TIPOS_FRENTE.includes(tipo) ? tipo
+                   : TIPOS_CAMINHAO.includes(tipo) ? 'CAMINHÕES'
+                   : tipo === TIPO_REBOQUE ? 'REBOQUE' : 'OUTROS';
+        if (!grupos[grp]) grupos[grp] = [];
+        grupos[grp].push({os, info, tipo});
+    }
+
+    const MANUT = {C:'Corretiva',P:'Preventiva',R:'Reforma',B:'M.Básica',D:'Preditiva'};
+    let html = '';
+
+    const totalFiltrado = osDetalhe.length;
+    const totalGeral    = osAbertos.length;
+    html += `<div class="px-3 py-2 bg-white border-bottom text-muted small">
+        Exibindo <strong>${totalFiltrado}</strong> OS com mais de ${MIN_HORAS_DETALHE}h em aberto
+        (${totalGeral - totalFiltrado} com ≤ ${MIN_HORAS_DETALHE}h ocultas)
+    </div>`;
+
+    const ordem = ['COLHEDORA','TRANSBORDO','CAMINHÕES','REBOQUE','OUTROS'];
+    for (const grp of ordem) {
+        const itens = grupos[grp];
+        if (!itens || itens.length === 0) continue;
+
+        const incluiEspec = (grp === 'CAMINHÕES' || grp === 'OUTROS');
+        html += `<div class="border-bottom">
+            <div class="px-3 py-2 bg-light d-flex align-items-center gap-2">
+                <strong>${grp}</strong>
+                <span class="badge bg-danger">${itens.length}</span>
+            </div>
+            <div class="table-responsive">
+            <table class="table table-sm detail-table mb-0">
+            <thead><tr>
+                ${incluiEspec ? '<th>Especialidade</th>' : ''}
+                <th>Frota</th><th>Descrição</th><th>Tipo O.S</th>
+                <th class="text-center">Tempo (dias)</th><th>Motivo</th><th>Previsão</th>
+            </tr></thead><tbody>`;
+
+        for (const {os, info} of itens.sort((a,b) => (b.os.dias_aberta||0) - (a.os.dias_aberta||0))) {
+            const dias  = Number(os.dias_aberta) || 0;
+            const cor   = dias >= 10 ? '#f8d7da' : dias >= 5 ? '#fff3cd' : '';
+            const manut = MANUT[os.manutencao] || os.manutencao || '—';
+            const desc  = info.descricao || os.descricao_veiculo || '—';
+            const prev  = os.data_liberacao
+                ? new Date(os.data_liberacao + 'T00:00').toLocaleDateString('pt-BR')
+                : '—';
+            const prob  = (os.descricao_problema || '—').substring(0, 80);
+            const frente = info.frente ? `<span class="badge bg-secondary ms-1" style="font-size:0.65rem">${info.frente}</span>` : '';
+
+            html += `<tr style="${cor ? 'background:' + cor : ''}">
+                ${incluiEspec ? `<td class="text-muted small">${info.especialidade || '—'}</td>` : ''}
+                <td><strong class="text-primary">${os.veiculo || '—'}</strong>${frente}</td>
+                <td class="text-muted small text-truncate" style="max-width:160px" title="${desc}">${desc}</td>
+                <td><span class="badge ${os.manutencao==='C'?'bg-danger':os.manutencao==='P'?'bg-success':os.manutencao==='R'?'bg-warning text-dark':'bg-secondary'}">${manut}</span></td>
+                <td class="text-center fw-bold ${dias>=10?'text-danger':dias>=5?'text-warning':''}">${dias}</td>
+                <td class="small text-truncate" style="max-width:200px" title="${os.descricao_problema||''}">${prob}</td>
+                <td class="small text-muted">${prev}</td>
+            </tr>`;
+        }
+        html += '</tbody></table></div></div>';
+    }
+
+    if (!html) html = '<div class="text-center text-muted py-4">Nenhuma OS aberta ou em execução.</div>';
+    document.getElementById('detalheContainer').innerHTML = html;
+}
+
+// ── Config modal ───────────────────────────────────────────────────
+// Estado persistente — nunca perdido por re-render
+const frentesAssign = {};
+for (const f of frotas) {
+    if (f.frente) frentesAssign[f.cod_frota] = f.frente;
+}
+
+let cfgInicializado = false;
+
+function inicializarCfgTable() {
+    // Popula filtros de especialidade
+    const selEsp = document.getElementById('cfgFiltroEsp');
+    if (selEsp.options.length === 1) {
+        const esps = [...new Set(frotas.map(f => f.especialidade || '').filter(Boolean))].sort();
+        esps.forEach(e => selEsp.add(new Option(e, e)));
+    }
+
+    // Renderiza TODAS as linhas de uma vez — nunca recria o DOM depois disso
+    const OPTS_FRENTE = ['','BASE','FRENTE 1','FRENTE 2','FRENTE 3','FRENTE 4','FRENTE 5'];
+    let html = '';
+    for (const f of frotas) {
+        const tipo     = getTipo(f.especialidade, f.agrupamento);
+        const badgeCor = TIPOS_FRENTE.includes(tipo) ? 'bg-primary' : 'bg-secondary';
+        const frAtual  = frentesAssign[f.cod_frota] || '';
+        const opts     = OPTS_FRENTE.map(v =>
+            `<option value="${v}" ${frAtual===v?'selected':''}>${v||'— sem frente —'}</option>`
+        ).join('');
+        const rowBg = frAtual ? '#f0f7ff' : '';
+
+        // data-esp e data-cod para filtro show/hide
+        const esp = (f.especialidade || '').replace(/"/g,'');
+        const fr  = frAtual;
+        html += `<tr class="cfg-row" data-cod="${f.cod_frota}"
+                    data-busca="${(f.cod_frota||'').toUpperCase()} ${(f.descricao||'').toUpperCase()}"
+                    data-esp="${esp}"
+                    data-frente="${fr}"
+                    style="background:${rowBg}">
+            <td class="text-center">
+                <input type="checkbox" class="form-check-input cfg-chk" value="${f.cod_frota}" onchange="atualizarContSel()">
+            </td>
+            <td><strong class="text-primary">${f.cod_frota || '—'}</strong></td>
+            <td class="small">${f.descricao || '—'}</td>
+            <td class="small text-muted">${f.especialidade || '—'}</td>
+            <td><span class="badge ${badgeCor}" style="font-size:0.65rem">${tipo}</span></td>
+            <td>
+                <select class="form-select form-select-sm cfg-frente-sel"
+                        data-cod="${f.cod_frota}"
+                        onchange="onSelecionarFrente(this)">${opts}</select>
+            </td>
+        </tr>`;
+    }
+    document.getElementById('cfgTableBody').innerHTML =
+        html || '<tr><td colspan="6" class="text-center text-muted py-3">Nenhuma frota encontrada.</td></tr>';
+
+    cfgInicializado = true;
+    atualizarContSel();
+    atualizarContTotal();
+}
+
+function filtrarCfg() {
+    if (!cfgInicializado) return;
+    const busca  = (document.getElementById('cfgBusca')?.value || '').toUpperCase();
+    const esp    = document.getElementById('cfgFiltroEsp')?.value || '';
+    const frFilt = document.getElementById('cfgFiltroFrente')?.value || '';
+
+    let visiveis = 0;
+    document.querySelectorAll('#cfgTableBody tr[data-cod]').forEach(row => {
+        const rBusca  = row.dataset.busca  || '';
+        const rEsp    = row.dataset.esp    || '';
+        const rFrente = row.dataset.frente || '';
+        const ok =
+            (!busca  || rBusca.includes(busca))
+            && (!esp    || rEsp === esp)
+            && (!frFilt || (frFilt === '__sem__' ? rFrente === '' : rFrente === frFilt));
+        row.style.display = ok ? '' : 'none';
+        if (ok) visiveis++;
+    });
+    document.getElementById('cfgCount').textContent = `${visiveis} de ${frotas.length} frotas visíveis`;
+    document.getElementById('chkTodos').checked = false;
+    atualizarContSel();
+}
+
+function onSelecionarFrente(sel) {
+    const cod = sel.dataset.cod;
+    const val = sel.value;
+    // Persiste no objeto de estado
+    if (val) frentesAssign[cod] = val;
+    else     delete frentesAssign[cod];
+    // Atualiza visual da linha sem re-render
+    const row = sel.closest('tr');
+    if (row) {
+        row.style.background = val ? '#f0f7ff' : '';
+        row.dataset.frente   = val;  // mantém filtro consistente
+    }
+}
+
+function selecionarTodos(checked) {
+    document.querySelectorAll('#cfgTableBody tr[data-cod]').forEach(row => {
+        if (row.style.display === 'none') return;  // só visíveis
+        const chk = row.querySelector('.cfg-chk');
+        if (chk) chk.checked = checked;
+    });
+    atualizarContSel();
+}
+
+function atualizarContSel() {
+    const n = document.querySelectorAll('.cfg-chk:checked').length;
+    document.getElementById('cfgSelCount').textContent = `${n} selecionada${n!==1?'s':''}`;
+}
+
+function atualizarContTotal() {
+    document.getElementById('cfgCount').textContent = `${frotas.length} de ${frotas.length} frotas visíveis`;
+}
+
+function aplicarLote() {
+    const frente  = document.getElementById('loteFrente').value;
+    const checked = [...document.querySelectorAll('.cfg-chk:checked')].map(cb => cb.value);
+    if (!checked.length) { alert('Selecione ao menos uma frota.'); return; }
+
+    checked.forEach(cod => {
+        // Atualiza estado persistente
+        if (frente) frentesAssign[cod] = frente;
+        else        delete frentesAssign[cod];
+
+        // Atualiza DOM diretamente (sem re-render)
+        const row = document.querySelector(`#cfgTableBody tr[data-cod="${cod}"]`);
+        if (row) {
+            row.style.background  = frente ? '#f0f7ff' : '';
+            row.dataset.frente    = frente;
+            const sel = row.querySelector('.cfg-frente-sel');
+            if (sel) sel.value = frente;
+            const chk = row.querySelector('.cfg-chk');
+            if (chk) chk.checked = false;
+        }
+    });
+    document.getElementById('chkTodos').checked = false;
+    atualizarContSel();
+}
+
+document.getElementById('modalConfig').addEventListener('show.bs.modal', () => {
+    if (!cfgInicializado) inicializarCfgTable();
+});
+
+function salvarConfig() {
+    const dados = Object.entries(frentesAssign)
+        .filter(([cod, fr]) => cod && fr)
+        .map(([cod_frota, frente]) => ({cod_frota, frente}));
+
+    fetch('/api/salvar_frentes_config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(dados)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.ok) {
+            // Sincroniza frotas[] com o estado salvo
+            frotas.forEach(f => { f.frente = frentesAssign[f.cod_frota] || ''; });
+            bootstrap.Modal.getInstance(document.getElementById('modalConfig')).hide();
+            renderGrid();
+            renderDetalhes();
+        } else {
+            alert('Erro ao salvar: ' + (res.msg || ''));
+        }
+    })
+    .catch(() => alert('Erro de conexão.'));
+}
+
+// ── Atualizar página ───────────────────────────────────────────────
+function sincronizarOS(btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Atualizando...';
+    location.reload();
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+renderGrid();
+renderDetalhes();
+</script>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Aderência - Troca de Óleo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #525659; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        #relatorioCompleto { width: 794px; height: 1123px; background-color: #fff; padding: 20px 25px; box-sizing: border-box; position: relative; box-shadow: 0 0 15px rgba(0,0,0,0.5); display: flex; flex-direction: column; }
+        .header-top { background-color: #0d6efd; color: white; padding: 8px 15px; border-bottom: 3px solid black; }
+        .box-title { background-color: #404454; color: white; text-align: center; padding: 4px; font-weight: bold; font-size: 11px; margin-bottom: 0; text-transform: uppercase; }
+        .dash-box { border: 2px solid #000; height: 100%; display: flex; flex-direction: column; background: #fff; overflow: hidden; }
+        .box-content { padding: 10px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
+        .chart-center-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; font-weight: bold; color: #000; z-index: 1;}
+        .info-box { border: 1px solid #ccc; padding: 8px; border-radius: 5px; text-align: center; display: flex; flex-direction: column; justify-content: center; box-shadow: inset 0 0 5px rgba(0,0,0,0.15);}
+        .btn-print { position: fixed; top: 20px; right: 20px; z-index: 1000; }
+        .canvas-container { position: relative; width: 100%; display: flex; justify-content: center; align-items: center; }
+        @media print {
+            body { background-color: #fff; padding: 0; }
+            #relatorioCompleto { box-shadow: none; width: 100%; height: 100%; page-break-inside: avoid; border: none; margin: 0;}
+            .btn-print { display: none !important; }
+            @page { size: portrait; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <button class="btn btn-primary btn-lg btn-print fw-bold shadow" onclick="gerarPDF()">
+        <i class="bi bi-file-pdf-fill me-1"></i> Baixar Relatório Oficial (A4)
+    </button>
+
+    <div id="relatorioCompleto">
+        <div class="header-top d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0 fw-bold" style="font-size: 16px;"><i class="bi bi-droplet-fill me-2"></i>ACOMPANHAMENTO - ADERÊNCIA TROCAS DE ÓLEO</h5>
+            <div class="text-end" style="line-height: 1.2;">
+                <span class="fw-bold d-block" style="font-size: 14px;">CRV INDUSTRIAL</span>
+                <span style="font-size: 11px;">Período: {{ periodo }}</span><br>
+                <span style="font-size: 10px;">ATUALIZADO AS: {{ data_geracao }}</span>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3" style="height: 250px;">
+            <div class="col-6">
+                <div class="dash-box">
+                    <div class="box-title">RESULTADOS DA PROGRAMAÇÃO</div>
+                    <div class="box-content">
+                        <div style="font-size: 10px; line-height: 1.4; text-align: center; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-bottom: 8px;">
+                            <span class="text-dark fw-bold">Programado:</span> O planejado. | 
+                            <span style="color: #00b050;" class="fw-bold">Realizado:</span> O feito. | 
+                            <span style="color: #ff0000;" class="fw-bold">Não Realizado:</span> A falha.
+                        </div>
+                        <div class="canvas-container" style="height: 155px;">
+                            <canvas id="chartProg" style="position: relative; z-index: 2;"></canvas>
+                            <div class="chart-center-text" id="lblTotalProgValido">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="dash-box">
+                    <div class="box-title">NÃO REALIZADOS NA SEMANA</div>
+                    <div class="box-content">
+                        <div style="font-size: 10px; line-height: 1.4; text-align: center; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-bottom: 8px;">
+                            <span style="color: #0070c0" class="fw-bold">Reprogramado</span> | 
+                            <span style="color: #ffc000" class="fw-bold">Bloqueado</span>
+                        </div>
+                        <div class="canvas-container" style="height: 155px;">
+                            <canvas id="chartNaoRealizados" style="position: relative; z-index: 2;"></canvas>
+                            <div class="chart-center-text" id="lblTotalNaoRealizados">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3" style="height: 220px;">
+            <div class="col-12">
+                <div class="dash-box">
+                    <div class="box-title">STATUS DAS TROCAS POR ESPECIALIDADE - APENAS REALIZADAS</div>
+                    <div class="box-content">
+                        <div class="canvas-container" style="height: 170px;">
+                            <canvas id="chartEspecialidade"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3" style="height: 180px;">
+            <div class="col-6">
+                <div class="dash-box">
+                    <div class="box-title">REALIZADOS POR LOCAL - CAMPO</div>
+                    <div class="box-content d-flex flex-row align-items-center p-2">
+                        <div class="canvas-container" style="height: 130px; flex-grow: 1;">
+                            <canvas id="chartCampo"></canvas>
+                        </div>
+                        <div class="ms-2" style="width: 100px; height: 100%;">
+                            <div class="info-box text-white h-100" style="background-color: #0d6efd; border-color: #0d6efd;">
+                                <span class="fw-bold" style="font-size: 9px;">FROTAS<br>REALIZADAS</span>
+                                <span class="fw-bold fs-2 my-1" id="lblTotalCampo">0</span>
+                                <span class="fw-bold" style="font-size: 9px;">NO CAMPO</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="dash-box">
+                    <div class="box-title">TROCA DE ÓLEO - POR LOCAL</div>
+                    <div class="box-content d-flex flex-row align-items-center p-2">
+                        <div class="canvas-container" style="height: 130px; flex-grow: 1;">
+                            <canvas id="chartLocais"></canvas>
+                        </div>
+                        <div class="ms-2" style="width: 100px; height: 100%;">
+                            <div class="info-box text-dark h-100" style="background-color: #0dcaf0; border-color: #0dcaf0;">
+                                <span class="fw-bold" style="font-size: 9px;">TOTAL DE</span>
+                                <span class="fw-bold fs-2 my-1" id="lblTotalGeral">0</span>
+                                <span class="fw-bold" style="font-size: 8px;">FROTAS REALIZADAS</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3" style="flex-grow: 1; min-height: 250px;">
+            <div class="col-12">
+                <div class="dash-box">
+                    <div class="box-title">MONITORAMENTO DE TROCAS NÃO REALIZADAS POR ESPECIALIDADE</div>
+                    <div class="box-content d-flex flex-row align-items-center p-2">
+                        <div class="canvas-container" style="height: 200px; flex-grow: 1; padding-right: 10px;">
+                            <canvas id="chartNaoRealizadasMotivos"></canvas>
+                        </div>
+                        <div style="width: 130px; height: 100%;">
+                            <div class="info-box text-white h-100 py-3 d-flex justify-content-center" style="background-color: #ff0000; border-color: #ff0000;">
+                                <span class="fw-bold" style="font-size: 10px;">TOTAL DE<br>FROTAS NÃO<br>REALIZADAS</span>
+                                <span class="fw-bold my-2" style="font-size: 45px; line-height: 1;" id="lblTotalNaoRealBox">0</span>
+                                <span class="fw-bold" style="font-size: 10px;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Atenção</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const rawData = {{ dados | tojson | safe }};
+        const resumo = {{ resumo | tojson | safe }};
+        
+        let tRealizado = parseInt(resumo.realizadas || 0);
+        let tBloqueado = parseInt(resumo.bloqueadas || 0);
+        let tPendente = parseInt(resumo.pendentes || 0);
+        let tNaoRealizado = tPendente + tBloqueado;
+        let tCampo = 0; let tBase = 0; let tGarantia = 0;
+        const classificarLocal = (localBruto) => {
+            const local = (localBruto || 'BASE').toString().trim().toUpperCase();
+            if (local.includes('GARANTIA')) return 'GARANTIA';
+            if (local.includes('CAMPO')) return 'CAMPO';
+            return 'BASE';
+        };
+        
+        let byEspRealizado = {}; let byEspNaoRealizado = {}; let campoByEsp = {};
+        let byEspPendente = {}; let byEspBloqueado = {};
+
+        const registrosMap = {};
+        rawData.forEach(r => {
+            if (r.status === 'QUEBRADA') return;
+            const localNormalizado = classificarLocal(r.local_execucao || 'BASE');
+            const chave = r.id_card
+                ? `CARD_${r.id_card}`
+                : `${(r.id_frota || '').toString().trim().toUpperCase()}|${r.data_planejada || ''}|${r.status || ''}|${(r.tipo_servico || '').toString().trim().toUpperCase()}|${localNormalizado}`;
+            if (!registrosMap[chave]) registrosMap[chave] = { ...r, local_execucao: localNormalizado };
+        });
+        const registros = Object.values(registrosMap);
+
+        registros.forEach(r => {
+            let esp = r.especialidade || 'GERAL';
+            let loc = r.local_execucao || 'BASE';
+
+            if(typeof byEspRealizado[esp] === 'undefined') { 
+                byEspRealizado[esp] = 0; byEspNaoRealizado[esp] = 0; campoByEsp[esp] = 0;
+                byEspPendente[esp] = 0; byEspBloqueado[esp] = 0;
+            }
+
+            if(r.status === 'REALIZADA') {
+                byEspRealizado[esp]++;
+                if(loc === 'CAMPO') {
+                    tCampo++;
+                    campoByEsp[esp]++;
+                } else if(loc === 'GARANTIA') {
+                    tGarantia++;
+                } else {
+                    tBase++;
+                }
+            } else {
+                byEspNaoRealizado[esp]++; 
+                if (r.status === 'BLOQUEADA') {
+                    byEspBloqueado[esp]++;
+                } else {
+                    byEspPendente[esp]++;
+                } 
+            }
+        });
+
+        let tProgramado = Math.max(0, parseInt((resumo.total || 0) - (resumo.quebradas || 0)));
+
+        document.getElementById('lblTotalProgValido').innerText = tProgramado; 
+        document.getElementById('lblTotalNaoRealizados').innerText = tNaoRealizado;
+        document.getElementById('lblTotalCampo').innerText = tCampo;
+        document.getElementById('lblTotalGeral').innerText = tRealizado;
+        document.getElementById('lblTotalNaoRealBox').innerText = tNaoRealizado;
+
+        Chart.register(ChartDataLabels);
+        Chart.defaults.set('plugins.datalabels', { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 ? value : '' });
+
+        // 1. Gráfico de Programação
+        let progLabels = []; let progData = []; let progColors = [];
+        if(tRealizado > 0) { progLabels.push('Realizado'); progData.push(tRealizado); progColors.push('#00b050'); }
+        if(tNaoRealizado > 0) { progLabels.push('Não Realizado'); progData.push(tNaoRealizado); progColors.push('#ff0000'); }
+        if(progData.length === 0) { progLabels = ['Sem Dados']; progData = [1]; progColors = ['#ccc']; }
+
+        new Chart(document.getElementById('chartProg'), {
+            type: 'doughnut',
+            data: { labels: progLabels, datasets: [{ data: progData, backgroundColor: progColors, borderWidth: progData.length > 1 ? 2 : 0, borderColor: '#fff' }] },
+            options: { 
+                maintainAspectRatio: false, cutout: '60%', layout: { padding: 25 }, 
+                plugins: { 
+                    legend: {display: false}, 
+                    datalabels: { 
+                        backgroundColor: function(context) { return context.dataset.backgroundColor[context.dataIndex]; },
+                        borderRadius: 4, padding: 6, color: '#fff', font: { weight: 'bold', size: 11 }, anchor: 'center', align: 'center',    
+                        formatter: (val, ctx) => { 
+                            if(progLabels[0] === 'Sem Dados') return '';
+                            let sum = ctx.chart.data.datasets[0].data.reduce((a,b) => a+b, 0);
+                            let perc = sum > 0 ? Math.round((val/sum)*100) : 0; 
+                            return val > 0 ? `${val}; ${perc}%` : ''; 
+                        } 
+                    } 
+                } 
+            }
+        });
+
+        // 2. Gráfico Nao Realizados
+        let nrPizzaLabels = []; let nrPizzaData = []; let nrPizzaColors = [];
+        if(tPendente > 0) { nrPizzaLabels.push('Reprogramado'); nrPizzaData.push(tPendente); nrPizzaColors.push('#0070c0'); }
+        if(tBloqueado > 0) { nrPizzaLabels.push('Bloqueado'); nrPizzaData.push(tBloqueado); nrPizzaColors.push('#ffc000'); }
+        if(nrPizzaData.length === 0) { nrPizzaLabels = ['OK']; nrPizzaData = [1]; nrPizzaColors = ['#ccc']; }
+
+        new Chart(document.getElementById('chartNaoRealizados'), {
+            type: 'doughnut',
+            data: { labels: nrPizzaLabels, datasets: [{ data: nrPizzaData, backgroundColor: nrPizzaColors, borderWidth: nrPizzaData.length > 1 ? 2 : 0, borderColor: '#fff' }] },
+            options: { 
+                maintainAspectRatio: false, cutout: '60%', layout: { padding: 25 }, 
+                plugins: { 
+                    legend: {display: false},
+                    datalabels: { 
+                        backgroundColor: function(context) { return context.dataset.backgroundColor[context.dataIndex]; },
+                        borderRadius: 4, padding: 6, color: function(ctx) { return nrPizzaLabels[ctx.dataIndex] === 'Bloqueado' ? '#000' : '#fff'; }, font: { weight: 'bold', size: 11 }, anchor: 'center', align: 'center',
+                        formatter: (val, ctx) => { 
+                            if(nrPizzaLabels[0] === 'OK') return '';
+                            let sum = ctx.chart.data.datasets[0].data.reduce((a,b) => a+b, 0);
+                            let perc = sum > 0 ? Math.round((val/sum)*100) : 0; 
+                            return val > 0 ? `${val}; ${perc}%` : ''; 
+                        } 
+                    }
+                } 
+            }
+        });
+
+        let espLabelsReal = Object.keys(byEspRealizado).filter(e => byEspRealizado[e] > 0);
+        let espDataReal = espLabelsReal.map(e => byEspRealizado[e]);
+        new Chart(document.getElementById('chartEspecialidade'), {
+            type: 'bar',
+            data: { labels: espLabelsReal, datasets: [{ data: espDataReal, backgroundColor: '#198754' }] },
+            options: { maintainAspectRatio: false, layout: { padding: { top: 20 } }, plugins: { legend: {display: false}, datalabels: {anchor: 'end', align: 'top', color: '#000'} }, scales: { x: { ticks: { maxRotation: 45, minRotation: 45, font: {size: 9, weight: 'bold'}} }, y: { display: false } } }
+        });
+
+        let campoLabels = Object.keys(campoByEsp).filter(e => campoByEsp[e] > 0);
+        let campoData = campoLabels.map(e => campoByEsp[e]);
+        if (campoLabels.length === 0) { campoLabels = ['Nenhum no Campo']; campoData = [0]; }
+        new Chart(document.getElementById('chartCampo'), {
+            type: 'bar',
+            data: { labels: campoLabels, datasets: [{ data: campoData, backgroundColor: '#0d6efd' }] },
+            options: { indexAxis: 'y', maintainAspectRatio: false, layout: { padding: { left: 15, right: 30 } }, plugins: { legend: {display: false}, datalabels: {anchor: 'end', align: 'right', color: '#000'} }, scales: { x: { display: false }, y: { ticks: {font: {size: 10, weight: 'bold'}} } } }
+        });
+
+        new Chart(document.getElementById('chartLocais'), {
+            type: 'bar',
+            data: { labels: ['Base', 'Campo', 'Garantia'], datasets: [{ data: [tBase, tCampo, tGarantia], backgroundColor: '#0dcaf0' }] },
+            options: { indexAxis: 'y', maintainAspectRatio: false, layout: { padding: { left: 15, right: 30 } }, plugins: { legend: {display: false}, datalabels: {anchor: 'end', align: 'right', color: '#000'} }, scales: { x: { display: false }, y: { ticks: {font: {size: 10, weight: 'bold'}} } } }
+        });
+
+        let nrLabels = Object.keys(byEspNaoRealizado).filter(e => byEspNaoRealizado[e] > 0);
+        let nrPendente = nrLabels.map(e => byEspPendente[e]);
+        let nrBloqueado = nrLabels.map(e => byEspBloqueado[e]);
+        
+        let datasetsNR = [];
+        if (nrLabels.length === 0) { 
+            nrLabels = ['Todas as Trocas Foram Feitas!']; 
+            datasetsNR.push({ label: 'OK', data: [0], backgroundColor: '#198754' });
+        } else {
+            if(nrPendente.some(v => v > 0)) datasetsNR.push({ label: 'Reprogramado', data: nrPendente, backgroundColor: '#0070c0' });
+            if(nrBloqueado.some(v => v > 0)) datasetsNR.push({ label: 'Bloqueado', data: nrBloqueado, backgroundColor: '#ffc000' });
+        }
+
+        new Chart(document.getElementById('chartNaoRealizadasMotivos'), {
+            type: 'bar',
+            data: { labels: nrLabels, datasets: datasetsNR },
+            options: { maintainAspectRatio: false, layout: { padding: { top: 20 } }, plugins: { legend: { position: 'top', labels: {boxWidth: 12, font:{size:10, weight:'bold'}} }, datalabels: { anchor: 'center', align: 'center', color: function(ctx) { return ctx.dataset.label === 'Bloqueado' ? '#000' : '#fff'; }, formatter: (value) => value > 0 ? value : '' } }, scales: { x: { stacked: true, ticks: {maxRotation: 45, minRotation: 45, font: {size: 9, weight: 'bold'}} }, y: { stacked: true, display: false, beginAtZero: true } } }
+        });
+
+        function gerarPDF() {
+            let btn = document.querySelector('.btn-print');
+            let txtOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>A Gerar PDF...'; btn.disabled = true;
+            let opt = { margin: 0, filename: 'Aderencia_Oleo_A4_{{ periodo|replace(" ", "")|replace("/", "-") }}.pdf', image: { type: 'jpeg', quality: 1.0 }, html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 }, jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' } };
+            setTimeout(() => { html2pdf().set(opt).from(document.getElementById('relatorioCompleto')).save().then(() => { btn.innerHTML = txtOriginal; btn.disabled = false; }); }, 300);
+        }
+    </script>
+</body>
+</html>

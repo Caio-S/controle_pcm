@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de OS - Gestão PCM</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #f4f6f9; }
+        .kpi-card { transition: transform 0.2s, box-shadow 0.2s; }
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 .75rem 1.5rem rgba(0,0,0,.12) !important; }
+        .kpi-corretiva  { border-left: 5px solid #dc3545; }
+        .kpi-preventiva { border-left: 5px solid #198754; }
+        .kpi-reforma    { border-left: 5px solid #ffc107; }
+        .kpi-basica     { border-left: 5px solid #0dcaf0; }
+        .kpi-preditiva  { border-left: 5px solid #6f42c1; }
+        .kpi-total      { border-left: 5px solid #0d6efd; }
+        .esp-row { cursor: pointer; transition: background 0.15s; }
+        .esp-row:hover { background: #e8f0fe !important; }
+        .esp-row td { vertical-align: middle; font-size: 0.82rem; }
+        .table-os th { border-bottom: 2px solid #0d6efd; color: #00509E; font-size: 0.8rem; white-space: nowrap; }
+        .progress-thin { height: 14px; border-radius: 8px; }
+        .frota-row td { font-size: 0.8rem; vertical-align: middle; }
+        .frota-row.row-alert    { background-color: #fff3cd !important; }
+        .frota-row.row-critical { background-color: #f8d7da !important; }
+        .btn-filtro-ativo { background-color: #0d6efd !important; color: white !important; border-color: #0d6efd !important; }
+        .modal-xl { max-width: 92%; }
+        .horas-badge { font-size: 0.75rem; }
+        .esp-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow">
+        <div class="container-fluid px-4">
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-clipboard2-data-fill me-2"></i>PCM | Dashboard de Ordens de Serviço</span>
+            <div class="d-flex align-items-center gap-2">
+                <a href="/dash_frentes" class="btn btn-outline-warning btn-sm fw-bold"><i class="bi bi-speedometer2 me-1"></i>Frentes</a>
+                <a href="/admin" class="btn btn-outline-light btn-sm"><i class="bi bi-arrow-left me-1"></i>Painel</a>
+                <a href="/logout" class="btn btn-danger btn-sm fw-bold"><i class="bi bi-box-arrow-right me-1"></i>Sair</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4 px-4">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm">
+                <i class="bi bi-info-circle-fill me-2"></i>{{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <!-- Upload -->
+        <div class="card shadow-sm border-0 bg-white mb-4">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-8">
+                        <h5 class="fw-bold text-primary mb-1"><i class="bi bi-upload me-2"></i>Importar Relatório de OS</h5>
+                        <div class="text-muted small">Arquivo Excel (.xlsx) exportado do sistema ERP. Detecção automática do cabeçalho.</div>
+                    </div>
+                    <div class="col-md-4 text-md-end small text-muted">Atualizado em: {{ data_geracao }}</div>
+                </div>
+                <form action="/api/upload_os" method="POST" enctype="multipart/form-data" class="row g-2 mt-1">
+                    <div class="col-md-8">
+                        <input type="file" name="file" class="form-control border-primary" accept=".xlsx" required>
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button type="submit" class="btn btn-primary fw-bold">
+                            <i class="bi bi-cloud-arrow-up-fill me-1"></i>Processar
+                        </button>
+                    </div>
+                </form>
+                <hr class="my-3">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-8">
+                        <h6 class="fw-bold text-secondary mb-1"><i class="bi bi-truck me-2"></i>Base de Frotas</h6>
+                        <div class="text-muted small">Planilha com colunas <code>id_frota</code>, <code>descricao_frota</code>, <code>descricao_especialidade</code>, <code>descricao_especialidadeAgrup</code>, <code>proprio</code>. Apenas frotas com <strong>proprio = SIM</strong> entram na disponibilidade.</div>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        {% if frotas_data %}
+                            <span class="badge bg-success fs-6">{{ frotas_data|length }} frotas carregadas</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Sem base carregada</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <form action="/api/upload_frotas" method="POST" enctype="multipart/form-data" class="row g-2 mt-1">
+                    <div class="col-md-10">
+                        <input type="file" name="file" class="form-control border-secondary" accept=".xlsx,.csv" required>
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button type="submit" class="btn btn-secondary fw-bold">
+                            <i class="bi bi-truck me-1"></i>Importar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if tem_dados %}
+
+        <!-- Filtros -->
+        <div class="card shadow-sm border-0 bg-white mb-4">
+            <div class="card-body py-3">
+                <div class="row g-2 align-items-center flex-wrap">
+                    <div class="col-auto">
+                        <label class="form-label fw-bold small text-secondary mb-0"><i class="bi bi-calendar-range me-1"></i>Período</label>
+                    </div>
+                    <div class="col-auto">
+                        <input type="date" id="filtroDataIni" class="form-control form-control-sm" style="width:130px" onchange="renderDashboard()">
+                    </div>
+                    <div class="col-auto"><span class="small text-muted">até</span></div>
+                    <div class="col-auto">
+                        <input type="date" id="filtroDataFim" class="form-control form-control-sm" style="width:130px" onchange="renderDashboard()">
+                    </div>
+                    <div class="col-auto ms-2">
+                        <label class="form-label fw-bold small text-secondary mb-0"><i class="bi bi-tools me-1"></i>Manutenção</label>
+                    </div>
+                    <div class="col-auto d-flex gap-1 flex-wrap">
+                        <button class="btn btn-sm btn-outline-secondary btn-filtro-ativo filtro-manut" data-val="" onclick="toggleManut(this)">TODAS</button>
+                        <button class="btn btn-sm btn-outline-danger filtro-manut" data-val="C" onclick="toggleManut(this)">Corretiva</button>
+                        <button class="btn btn-sm btn-outline-success filtro-manut" data-val="P" onclick="toggleManut(this)">Preventiva</button>
+                        <button class="btn btn-sm btn-outline-warning filtro-manut" data-val="R" onclick="toggleManut(this)" style="color:#856404">Reforma</button>
+                        <button class="btn btn-sm btn-outline-info filtro-manut" data-val="B" onclick="toggleManut(this)">M.Básica</button>
+                    </div>
+                    <div class="col-auto ms-2">
+                        <select id="filtroStatus" class="form-select form-select-sm" onchange="renderDashboard()" style="width:160px">
+                            <option value="">Todos os status</option>
+                            <option value="A">Aberta</option>
+                            <option value="E">Em Execução</option>
+                            <option value="P">Programada</option>
+                            <option value="L">Liberada</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="resetFiltros()"><i class="bi bi-x-circle me-1"></i>Limpar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-4 col-xl-2">
+                <div class="card border-0 shadow-sm kpi-card kpi-total h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold mb-1">TOTAL DE OS</div>
+                        <div class="fs-2 fw-bold text-primary" id="kpiTotal">0</div>
+                        <div class="text-muted small">Média <span id="kpiMediaGeral" class="fw-bold">0</span> dias</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-2">
+                <div class="card border-0 shadow-sm kpi-card kpi-corretiva h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>CORRETIVA</div>
+                        <div class="fs-2 fw-bold text-danger" id="kpiCorretiva">0</div>
+                        <div class="text-muted small">Média <span id="kpiMediaC" class="fw-bold text-danger">0</span> dias</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-2">
+                <div class="card border-0 shadow-sm kpi-card kpi-preventiva h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold mb-1"><i class="bi bi-shield-check text-success me-1"></i>PREVENTIVA</div>
+                        <div class="fs-2 fw-bold text-success" id="kpiPreventiva">0</div>
+                        <div class="text-muted small">Média <span id="kpiMediaP" class="fw-bold text-success">0</span> dias</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-2">
+                <div class="card border-0 shadow-sm kpi-card kpi-reforma h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold mb-1"><i class="bi bi-tools" style="color:#856404"></i> REFORMA</div>
+                        <div class="fs-2 fw-bold" style="color:#856404" id="kpiReforma">0</div>
+                        <div class="text-muted small">Média <span id="kpiMediaR" class="fw-bold" style="color:#856404">0</span> dias</div>
+                        <div class="text-muted" style="font-size:0.7rem">Gasto médio R$ <span id="kpiGastoR" class="fw-bold">0</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-2">
+                <div class="card border-0 shadow-sm kpi-card kpi-basica h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold mb-1"><i class="bi bi-gear text-info me-1"></i>MANUT. BÁSICA</div>
+                        <div class="fs-2 fw-bold text-info" id="kpiBasica">0</div>
+                        <div class="text-muted small">Média <span id="kpiMediaB" class="fw-bold text-info">0</span> dias</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-2">
+                <div class="card border-0 shadow-sm kpi-card kpi-preditiva h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold mb-1"><i class="bi bi-binoculars" style="color:#6f42c1"></i> PREDITIVA</div>
+                        <div class="fs-2 fw-bold" style="color:#6f42c1" id="kpiPreditiva">0</div>
+                        <div class="text-muted small">Média <span id="kpiMediaD" class="fw-bold" style="color:#6f42c1">0</span> dias</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Linha: Donut status + bar manutenção -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-secondary mb-2 text-center"><i class="bi bi-pie-chart-fill me-2"></i>Distribuição por Status</h6>
+                        <div style="position:relative; min-height:260px;">
+                            <canvas id="chartStatus"></canvas>
+                            <div id="chartStatusCenter" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);pointer-events:none;text-align:center;line-height:1.1">
+                                <div id="chartStatusNum" style="font-size:2rem;font-weight:bold;color:#333">0</div>
+                                <div style="font-size:0.65rem;color:#666">OS</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-secondary mb-2 text-center"><i class="bi bi-bar-chart-fill me-2"></i>OS por Tipo de Manutenção</h6>
+                        <div style="min-height:260px; position:relative;">
+                            <canvas id="chartManut"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Especialidade: Representação % + Tabela clicável -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-dark text-white fw-bold py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bar-chart-steps me-2"></i>Representação por Especialidade</span>
+                <span class="badge bg-secondary fw-normal"><i class="bi bi-hand-index me-1"></i>Clique em uma linha para ver as frotas</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="bg-light">
+                            <tr class="table-os">
+                                <th style="width:155px">Especialidade</th>
+                                <th>Representação (% do total)</th>
+                                <th class="text-center" style="width:70px">Qtd OS</th>
+                                <th class="text-center" style="width:105px">OS Ab./Exec.</th>
+                                <th class="text-center" style="width:115px">Horas Paradas</th>
+                                <th class="text-center" style="width:85px">Média Dias</th>
+                                <th class="text-center" style="width:75px">Equip.</th>
+                                <th class="text-center" style="width:120px">Disponibilidade</th>
+                                <th class="text-center" style="width:65px">Corret.</th>
+                                <th class="text-center" style="width:65px">Prevent.</th>
+                                <th class="text-end"   style="width:105px">Custo Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaEspBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        {% else %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-clipboard2-x fs-1 text-muted d-block mb-3"></i>
+                <h5 class="text-muted fw-bold">Nenhum dado importado ainda</h5>
+                <p class="text-muted">Utilize o formulário acima para importar o relatório de OS em formato .xlsx</p>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+
+    <!-- Modal Drill-down de Frotas por Especialidade -->
+    <div class="modal fade" id="modalFrotas" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white py-2">
+                    <h5 class="modal-title fs-6"><i class="bi bi-truck me-2"></i>Frotas — <span id="modalEspNome"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <!-- Resumo topo -->
+                    <div class="d-flex gap-3 flex-wrap p-3 bg-light border-bottom" id="modalSummary"></div>
+                    <!-- Tabs -->
+                    <ul class="nav nav-tabs px-3 pt-2 bg-white border-bottom">
+                        <li class="nav-item">
+                            <a class="nav-link active fw-bold py-1 px-3" href="#" id="tabAberta"
+                               onclick="renderModalTab('aberta'); return false;">
+                                <i class="bi bi-exclamation-circle-fill text-danger me-1"></i>OS Abertas / Em Execução
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link py-1 px-3" href="#" id="tabTodas"
+                               onclick="renderModalTab('todas'); return false;">
+                                <i class="bi bi-list-ul me-1"></i>Todas as OS da Especialidade
+                            </a>
+                        </li>
+                    </ul>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="bg-white sticky-top" id="modalThead"></thead>
+                            <tbody id="modalTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <small class="text-muted me-auto">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <span class="text-danger fw-bold">Vermelho</span> = +240h paradas &nbsp;|&nbsp;
+                        <span class="text-warning fw-bold">Amarelo</span> = +72h paradas &nbsp;|&nbsp;
+                        Horas Paradas = dias aberto × 24h
+                    </small>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    // @ts-nocheck — suprime falsos positivos do linter para sintaxe Jinja2 dentro de <script>
+    Chart.register(ChartDataLabels);
+
+    const osData = {{ registros | tojson | safe }};
+
+    // Mapa de frotas: cod_frota (CodFrota da planilha) → {descricao, especialidade, agrupamento}
+    // cod_frota corresponde ao campo veiculo das OS. Fallback para id_frota se cod_frota vazio.
+    const frotasMap = {};
+    {% if frotas_data %}
+    for (const f of {{ frotas_data | tojson | safe }}) {
+        const addKey = k => {
+            if (!k) return;
+            frotasMap[k] = f;
+            const s = k.replace(/\.0$/, '');
+            if (s !== k) frotasMap[s] = f;
+            const z = k.replace(/^0+/, '') || k;
+            if (z !== k) frotasMap[z] = f;
+        };
+        const cod = String(f.cod_frota || '').trim().toUpperCase();
+        const idf = String(f.id_frota  || '').trim().toUpperCase();
+        addKey(cod || idf);
+        if (cod && idf && cod !== idf) addKey(idf);
+    }
+    {% endif %}
+
+    // Retorna true se a frota é própria (proprio === 'SIM' na planilha)
+    function isFrotaPropria(f) {
+        if (!f) return false;
+        const p = (f.proprio || 'SIM').toUpperCase().trim();
+        return p === 'SIM';
+    }
+
+    // Contagem de frotas próprias por agrupamento e micro
+    function contarFrotasProprias(agrupamento) {
+        return Object.values(frotasMap).filter(f =>
+            (f.agrupamento || '').trim().toUpperCase() === (agrupamento || '').trim().toUpperCase()
+            && isFrotaPropria(f)
+        ).length;
+    }
+    function contarFrotasPropMicro(micro) {
+        return Object.values(frotasMap).filter(f =>
+            (f.especialidade || '').trim().toUpperCase() === (micro || '').trim().toUpperCase()
+            && isFrotaPropria(f)
+        ).length;
+    }
+
+    // Para uma lista de OS de uma especialidade, descobre o agrupamento dominante nas frotas cadastradas
+    function agrupamentoDominante(osLista) {
+        const cnts = {};
+        for (const r of osLista) {
+            const key = String(r.veiculo || '').trim().toUpperCase();
+            const f   = frotasMap[key] || frotasMap[key.replace(/^0+/, '')];
+            if (f?.agrupamento) {
+                const a = f.agrupamento.trim().toUpperCase();
+                cnts[a] = (cnts[a] || 0) + 1;
+            }
+        }
+        return Object.entries(cnts).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+    }
+
+    const MANUT_CFG = {
+        'C': { label: 'Corretiva',     cor: '#dc3545' },
+        'P': { label: 'Preventiva',    cor: '#198754' },
+        'R': { label: 'Reforma',       cor: '#ffc107' },
+        'B': { label: 'Manut. Básica', cor: '#0dcaf0' },
+        'D': { label: 'Preditiva',     cor: '#6f42c1' }
+    };
+
+    const STATUS_CFG = {
+        'A': { label: 'Aberta',       cor: '#dc3545' },
+        'E': { label: 'Em Execução',  cor: '#ffc107' },
+        'P': { label: 'Programada',   cor: '#0d6efd' },
+        'L': { label: 'Liberada',     cor: '#198754' }
+    };
+
+    const ESP_CORES = [
+        '#0d6efd','#dc3545','#198754','#d4ac0d','#6f42c1',
+        '#0099b5','#fd7e14','#20c997','#e83e8c','#6c757d','#17a2b8','#8B4513'
+    ];
+
+    let filtroManut   = '';
+    let chartStatus   = null;
+    let chartManut    = null;
+    let modalEspAtual = '';
+    let modalTabAtual = 'aberta';
+    let modalCor      = '#0d6efd';
+    let bsModal       = null;
+
+    /* ── helpers ──────────────────────────────── */
+    function fmt(n, dec=1) {
+        return Number(n).toLocaleString('pt-BR', { minimumFractionDigits:dec, maximumFractionDigits:dec });
+    }
+    function fmtMoeda(n) {
+        return Number(n).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+    }
+    function descFrota(idVeiculo) {
+        const key  = String(idVeiculo || '').trim().toUpperCase();
+        if (frotasMap[key])  return frotasMap[key].descricao || '';
+        const keyN = key.replace(/^0+/, '');
+        if (frotasMap[keyN]) return frotasMap[keyN].descricao || '';
+        return '';
+    }
+
+    /* ── filtro principal ──────────────────────── */
+    function getDados() {
+        const ini = document.getElementById('filtroDataIni')?.value || '';
+        const fim = document.getElementById('filtroDataFim')?.value || '';
+        const st  = document.getElementById('filtroStatus')?.value  || '';
+        return osData.filter(r => {
+            if (ini && r.data_abertura < ini) return false;
+            if (fim && r.data_abertura > fim) return false;
+            if (filtroManut && r.manutencao !== filtroManut) return false;
+            if (st && r.status !== st) return false;
+            return true;
+        });
+    }
+
+    /* ── calcStats ────────────────────────────── */
+    function calcStats(dados) {
+        const total = dados.length;
+        const tipos = {}, statusCount = {}, esps = {};
+
+        for (const r of dados) {
+            const m    = (r.manutencao || '?').trim();
+            const s    = (r.status     || '?').trim();
+            const e    = r.especialidade || 'OUTROS';
+            const dias  = Number(r.dias_aberta) || 0;
+            const valor = Number(r.valor_os)    || 0;
+            const aberta = (s === 'A' || s === 'E');
+
+            if (!tipos[m]) tipos[m] = { count:0, totalDias:0, totalValor:0 };
+            tipos[m].count++; tipos[m].totalDias += dias; tipos[m].totalValor += valor;
+
+            statusCount[s] = (statusCount[s] || 0) + 1;
+
+            if (!esps[e]) esps[e] = { count:0, totalDias:0, totalValor:0, corrCount:0, prevCount:0, refCount:0, abertaCount:0, horasParadas:0 };
+            esps[e].count++;
+            esps[e].totalDias  += dias;
+            esps[e].totalValor += valor;
+            if (m === 'C') esps[e].corrCount++;
+            if (m === 'P') esps[e].prevCount++;
+            if (m === 'R') esps[e].refCount++;
+            if (aberta) { esps[e].abertaCount++; esps[e].horasParadas += dias * 24; }
+        }
+
+        for (const k in tipos) {
+            tipos[k].mediaDias  = tipos[k].count > 0 ? tipos[k].totalDias  / tipos[k].count : 0;
+            tipos[k].mediaValor = tipos[k].count > 0 ? tipos[k].totalValor / tipos[k].count : 0;
+        }
+        for (const k in esps) {
+            esps[k].mediaDias = esps[k].count > 0 ? esps[k].totalDias / esps[k].count : 0;
+            esps[k].pct       = total > 0 ? (esps[k].count / total) * 100 : 0;
+        }
+
+        const espSorted = Object.entries(esps).sort((a,b) => b[1].count - a[1].count);
+        const totalDias = dados.reduce((s,r) => s + (Number(r.dias_aberta)||0), 0);
+        return { total, tipos, statusCount, esps: Object.fromEntries(espSorted), mediaDias: total>0 ? totalDias/total : 0 };
+    }
+
+    /* ── renderDashboard ──────────────────────── */
+    function renderDashboard() {
+        const dados = getDados();
+        const stats = calcStats(dados);
+        const el    = id => document.getElementById(id);
+
+        // KPIs
+        el('kpiTotal').textContent      = stats.total;
+        el('kpiMediaGeral').textContent = fmt(stats.mediaDias);
+        const T = m => stats.tipos[m] || { count:0, mediaDias:0, mediaValor:0 };
+        el('kpiCorretiva').textContent  = T('C').count;  el('kpiMediaC').textContent  = fmt(T('C').mediaDias);
+        el('kpiPreventiva').textContent = T('P').count;  el('kpiMediaP').textContent  = fmt(T('P').mediaDias);
+        el('kpiReforma').textContent    = T('R').count;  el('kpiMediaR').textContent  = fmt(T('R').mediaDias);
+        el('kpiGastoR').textContent     = fmtMoeda(T('R').mediaValor);
+        el('kpiBasica').textContent     = T('B').count;  el('kpiMediaB').textContent  = fmt(T('B').mediaDias);
+        el('kpiPreditiva').textContent  = T('D').count;  el('kpiMediaD').textContent  = fmt(T('D').mediaDias);
+
+        // Chart Status (donut)
+        el('chartStatusNum').textContent = stats.total;
+        const stLabels=[], stData=[], stCors=[];
+        for (const [s,cnt] of Object.entries(stats.statusCount)) {
+            const cfg = STATUS_CFG[s] || { label:s, cor:'#6c757d' };
+            stLabels.push(cfg.label + ` (${cnt})`);
+            stData.push(cnt); stCors.push(cfg.cor);
+        }
+        if (chartStatus) chartStatus.destroy();
+        const ctxS = el('chartStatus')?.getContext('2d');
+        if (ctxS) chartStatus = new Chart(ctxS, {
+            type: 'doughnut',
+            data: { labels:stLabels, datasets:[{ data:stData, backgroundColor:stCors, borderWidth:2 }] },
+            options: {
+                cutout:'65%', responsive:true, maintainAspectRatio:false,
+                plugins: {
+                    legend: { position:'bottom', labels:{ font:{ size:11 } } },
+                    datalabels: {
+                        color:'#fff', font:{ weight:'bold', size:11 },
+                        formatter:(v,ctx) => { const t=ctx.dataset.data.reduce((a,b)=>a+b,0); return t>0?Math.round(v/t*100)+'%':''; }
+                    }
+                }
+            }
+        });
+
+        // Chart Manutenção (barras horizontais)
+        const mLabels=[], mData=[], mCors=[];
+        for (const [m,cfg] of Object.entries(MANUT_CFG)) {
+            if ((stats.tipos[m]?.count||0) > 0) {
+                mLabels.push(cfg.label); mData.push(stats.tipos[m].count); mCors.push(cfg.cor);
+            }
+        }
+        if (chartManut) chartManut.destroy();
+        const ctxM = el('chartManut')?.getContext('2d');
+        if (ctxM) chartManut = new Chart(ctxM, {
+            type: 'bar',
+            data: { labels:mLabels, datasets:[{ label:'Qtd OS', data:mData, backgroundColor:mCors, borderRadius:5 }] },
+            options: {
+                indexAxis:'y', responsive:true, maintainAspectRatio:false,
+                plugins: {
+                    legend: { display:false },
+                    datalabels: {
+                        color:'#333', font:{ weight:'bold', size:13 }, anchor:'end', align:'right',
+                        formatter:(v,ctx) => { const t=ctx.dataset.data.reduce((a,b)=>a+b,0); return `${v}  (${t>0?Math.round(v/t*100):0}%)`; }
+                    }
+                },
+                scales: { x:{ beginAtZero:true, ticks:{ stepSize:1 } } }
+            }
+        });
+
+        // Tabela Especialidade com barras % clicáveis + disponibilidade
+        const espEntries = Object.entries(stats.esps);
+        const maxCount   = espEntries.length > 0 ? espEntries[0][1].count : 1;
+        let rows = '';
+        let totEquip = 0, totDispN = 0, totDispD = 0;
+
+        espEntries.forEach(([esp, v], i) => {
+            const cor    = ESP_CORES[i % ESP_CORES.length];
+            const pct    = v.pct.toFixed(1);
+            const barW   = maxCount > 0 ? Math.round((v.count / maxCount) * 100) : 0;
+            const espEsc = esp.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+            const corEsc = cor.replace(/'/g,"\\'");
+
+            // Disponibilidade: descobrir agrupamento dominante nas OS desta especialidade
+            const osEsp    = dados.filter(r => (r.especialidade || 'OUTROS') === esp);
+            const agrup    = agrupamentoDominante(osEsp);
+            const nEquip   = agrup ? contarFrotasProprias(agrup) : 0;
+
+            // Frotas próprias com OS aberta/em exec (proprio=SIM e não em terceirosSet)
+            const frotasAb = new Set(
+                getDados()
+                    .filter(r => (r.especialidade || 'OUTROS') === esp && (r.status === 'A' || r.status === 'E'))
+                    .map(r => String(r.veiculo || '').trim().toUpperCase())
+                    .filter(id => {
+                        if (!id) return false;
+                        const f = frotasMap[id] || frotasMap[id.replace(/^0+/, '')];
+                        return isFrotaPropria(f);
+                    })
+            );
+            const nAberta  = frotasAb.size;
+            const dispPct  = nEquip > 0 ? ((nEquip - nAberta) / nEquip * 100) : null;
+            const dispCor  = dispPct === null ? 'text-muted' : dispPct >= 90 ? 'text-success' : dispPct >= 70 ? 'text-warning' : 'text-danger';
+            const dispBg   = dispPct === null ? '' : dispPct >= 90 ? '#d1e7dd' : dispPct >= 70 ? '#fff3cd' : '#f8d7da';
+            const dispTxt  = dispPct !== null ? `${dispPct.toFixed(1)}% (${nEquip - nAberta}/${nEquip})` : '—';
+
+            if (nEquip > 0) { totEquip += nEquip; totDispN += (nEquip - nAberta); totDispD += nEquip; }
+
+            rows += `<tr class="esp-row" onclick="abrirModalEsp('${espEsc}','${corEsc}')">
+                <td>
+                    <span class="esp-indicator" style="background:${cor}"></span>
+                    <strong>${esp}</strong>
+                    <i class="bi bi-box-arrow-up-right text-muted ms-1" style="font-size:0.7rem"></i>
+                </td>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="flex-grow-1">
+                            <div class="progress progress-thin">
+                                <div class="progress-bar" style="width:${barW}%;background:${cor}"></div>
+                            </div>
+                        </div>
+                        <span class="small fw-bold text-muted" style="min-width:38px">${pct}%</span>
+                    </div>
+                </td>
+                <td class="text-center fw-bold">${v.count}</td>
+                <td class="text-center">
+                    ${v.abertaCount > 0 ? `<span class="badge bg-danger">${v.abertaCount}</span>` : `<span class="text-muted small">—</span>`}
+                </td>
+                <td class="text-center">
+                    ${v.horasParadas > 0
+                        ? `<span class="badge horas-badge ${v.horasParadas>=240?'bg-danger':v.horasParadas>=72?'bg-warning text-dark':'bg-secondary'}"><i class="bi bi-clock me-1"></i>${Math.round(v.horasParadas)}h</span>`
+                        : `<span class="text-muted small">—</span>`}
+                </td>
+                <td class="text-center text-muted small">${fmt(v.mediaDias)} dias</td>
+                <td class="text-center fw-bold ${nEquip > 0 ? 'text-primary' : 'text-muted'}">${nEquip > 0 ? nEquip : '—'}</td>
+                <td class="text-center fw-bold ${dispCor}" style="${dispBg ? 'background:' + dispBg : ''}">${dispTxt}</td>
+                <td class="text-center"><span class="badge bg-danger bg-opacity-75">${v.corrCount||'—'}</span></td>
+                <td class="text-center"><span class="badge bg-success bg-opacity-75">${v.prevCount||'—'}</span></td>
+                <td class="text-end text-success fw-bold small">R$ ${fmtMoeda(v.totalValor)}</td>
+            </tr>`;
+        });
+
+        // linha de total
+        const totAbert = espEntries.reduce((s,[,v]) => s+v.abertaCount,  0);
+        const totHoras = espEntries.reduce((s,[,v]) => s+v.horasParadas, 0);
+        const totValor = espEntries.reduce((s,[,v]) => s+v.totalValor,   0);
+        const totDisp  = totDispD > 0 ? (totDispN / totDispD * 100).toFixed(1) + `% (${totDispN}/${totDispD})` : '—';
+        const totDispCor = totDispD > 0 ? (totDispN/totDispD>=0.9?'text-success':totDispN/totDispD>=0.7?'text-warning':'text-danger') : 'text-muted';
+        rows += `<tr style="font-weight:bold;background:#f8f9fa;border-top:2px solid #dee2e6">
+            <td><span class="text-muted small">TOTAL</span></td>
+            <td><div class="progress progress-thin"><div class="progress-bar bg-primary" style="width:100%"></div></div></td>
+            <td class="text-center">${stats.total}</td>
+            <td class="text-center"><span class="badge bg-danger">${totAbert}</span></td>
+            <td class="text-center"><span class="badge bg-warning text-dark">${Math.round(totHoras)}h</span></td>
+            <td class="text-center text-muted small">${fmt(stats.mediaDias)} dias</td>
+            <td class="text-center text-primary">${totEquip > 0 ? totEquip : '—'}</td>
+            <td class="text-center fw-bold ${totDispCor}">${totDisp}</td>
+            <td class="text-center"></td>
+            <td class="text-center"></td>
+            <td class="text-end text-success">R$ ${fmtMoeda(totValor)}</td>
+        </tr>`;
+        const tbody = el('tabelaEspBody');
+        if (tbody) tbody.innerHTML = rows;
+    }
+
+    /* ── Modal ─────────────────────────────────── */
+    function abrirModalEsp(esp, cor) {
+        modalEspAtual = esp;
+        modalCor      = cor || '#0d6efd';
+        modalTabAtual = 'aberta';
+        document.getElementById('modalEspNome').textContent = esp;
+        document.getElementById('tabAberta').classList.add('active');
+        document.getElementById('tabTodas').classList.remove('active');
+        renderModalSummary();
+        renderModalTab('aberta');
+        if (!bsModal) bsModal = new bootstrap.Modal(document.getElementById('modalFrotas'));
+        bsModal.show();
+    }
+
+    function renderModalSummary() {
+        const esp    = modalEspAtual;
+        const todos  = getDados().filter(r => (r.especialidade || 'OUTROS') === esp);
+        const aberta = todos.filter(r => r.status === 'A' || r.status === 'E');
+        const totalH = aberta.reduce((s,r) => s + (Number(r.dias_aberta)||0)*24, 0);
+        const frotas    = new Set(todos.map(r => r.veiculo).filter(Boolean));
+        const frotasAb  = new Set(
+            aberta.map(r => String(r.veiculo||'').trim().toUpperCase())
+                   .filter(id => {
+                       if (!id) return false;
+                       const f = frotasMap[id] || frotasMap[id.replace(/^0+/, '')];
+                       return isFrotaPropria(f);
+                   })
+        );
+        const totalValor = todos.reduce((s,r) => s+(Number(r.valor_os)||0), 0);
+
+        // Disponibilidade geral da especialidade
+        const agrup    = agrupamentoDominante(todos);
+        const nEquip   = agrup ? contarFrotasProprias(agrup) : 0;
+        const dispPct  = nEquip > 0 ? ((nEquip - frotasAb.size) / nEquip * 100) : null;
+        const dispTxt  = dispPct !== null ? `${dispPct.toFixed(1)}%` : '—';
+        const dispSub  = dispPct !== null ? `(${nEquip - frotasAb.size} livres / ${nEquip})` : '';
+        const dispCor  = dispPct === null ? '#6c757d' : dispPct >= 90 ? '#198754' : dispPct >= 70 ? '#856404' : '#dc3545';
+
+        document.getElementById('modalSummary').innerHTML = `
+            <div class="text-center px-3 py-2 bg-white rounded border" style="border-left:4px solid ${modalCor}!important">
+                <div class="fs-4 fw-bold text-primary">${todos.length}</div>
+                <div class="small text-muted">Total OS</div>
+            </div>
+            <div class="text-center px-3 py-2 bg-white rounded border" style="border-left:4px solid #dc3545!important">
+                <div class="fs-4 fw-bold text-danger">${aberta.length}</div>
+                <div class="small text-muted">Abertas / Em Execução</div>
+            </div>
+            <div class="text-center px-3 py-2 bg-white rounded border" style="border-left:4px solid #ffc107!important">
+                <div class="fs-4 fw-bold" style="color:#856404">${Math.round(totalH)}h</div>
+                <div class="small text-muted">Total Horas Paradas</div>
+            </div>
+            <div class="text-center px-3 py-2 bg-white rounded border">
+                <div class="fs-4 fw-bold text-primary">${nEquip > 0 ? nEquip : '—'}</div>
+                <div class="small text-muted">Total Equipamentos</div>
+            </div>
+            <div class="text-center px-3 py-2 bg-white rounded border" style="border-left:4px solid ${dispCor}!important">
+                <div class="fs-4 fw-bold" style="color:${dispCor}">${dispTxt}</div>
+                <div class="small text-muted">Disponibilidade</div>
+                <div style="font-size:0.65rem;color:#888">${dispSub}</div>
+            </div>
+            <div class="text-center px-3 py-2 bg-white rounded border" style="border-left:4px solid #198754!important">
+                <div class="fs-5 fw-bold text-success">R$ ${fmtMoeda(totalValor)}</div>
+                <div class="small text-muted">Custo Total</div>
+            </div>`;
+    }
+
+    function microFrota(fid) {
+        const key = String(fid || '').trim().toUpperCase();
+        const f   = frotasMap[key] || frotasMap[key.replace(/^0+/, '')] || null;
+        return (f?.especialidade || '').trim().toUpperCase() || 'SEM MICRO';
+    }
+
+    function toggleGrp(gid) {
+        document.querySelectorAll(`tr.grp-${gid}`).forEach(r => {
+            r.style.display = r.style.display === 'none' ? '' : 'none';
+        });
+        // alterna ícone do chevron
+        const hdr = document.querySelector(`tr[data-gid="${gid}"] .grp-chevron`);
+        if (hdr) hdr.classList.toggle('bi-chevron-down');
+        if (hdr) hdr.classList.toggle('bi-chevron-right');
+    }
+
+    function renderModalTab(tab) {
+        modalTabAtual = tab;
+        document.getElementById('tabAberta').classList.toggle('active', tab === 'aberta');
+        document.getElementById('tabTodas').classList.toggle('active', tab === 'todas');
+
+        const esp   = modalEspAtual;
+        const dados = getDados().filter(r => (r.especialidade || 'OUTROS') === esp);
+        const lista = tab === 'aberta' ? dados.filter(r => r.status === 'A' || r.status === 'E') : dados;
+
+        // 1. Agrupar por frota
+        const byFrota = {};
+        for (const r of lista) {
+            const fid = String(r.veiculo || '—').trim();
+            if (!byFrota[fid]) byFrota[fid] = { fid, micro: microFrota(fid), osCount:0, totalDias:0, horasParadas:0, corrCount:0, prevCount:0, refCount:0, totalValor:0, os:[] };
+            byFrota[fid].osCount++;
+            byFrota[fid].totalDias    += Number(r.dias_aberta) || 0;
+            byFrota[fid].horasParadas += (Number(r.dias_aberta) || 0) * 24;
+            byFrota[fid].totalValor   += Number(r.valor_os) || 0;
+            if (r.manutencao === 'C') byFrota[fid].corrCount++;
+            if (r.manutencao === 'P') byFrota[fid].prevCount++;
+            if (r.manutencao === 'R') byFrota[fid].refCount++;
+            byFrota[fid].os.push(r);
+        }
+
+        // OS abertas/exec. da especialidade inteira (independente da aba) para disponibilidade
+        const dadosAb = getDados().filter(r =>
+            (r.especialidade || 'OUTROS') === esp && (r.status === 'A' || r.status === 'E')
+        );
+
+        // 2. Agrupar frotas por micro
+        const byMicro = {};
+        for (const f of Object.values(byFrota)) {
+            const m = f.micro;
+            if (!byMicro[m]) byMicro[m] = { micro:m, frotas:[], osCount:0, horasParadas:0, totalValor:0 };
+            byMicro[m].frotas.push(f);
+            byMicro[m].osCount      += f.osCount;
+            byMicro[m].horasParadas += f.horasParadas;
+            byMicro[m].totalValor   += f.totalValor;
+        }
+
+        const sortedMicros = Object.values(byMicro).sort((a,b) => b.horasParadas - a.horasParadas);
+        for (const mg of sortedMicros) mg.frotas.sort((a,b) => b.horasParadas - a.horasParadas);
+
+        const totalLista = lista.length;
+        const allFrotas  = sortedMicros.flatMap(mg => mg.frotas);
+        const maxHoras   = allFrotas.reduce((m,f) => Math.max(m, f.horasParadas), 1);
+
+        const thead = document.getElementById('modalThead');
+        const tbody = document.getElementById('modalTbody');
+
+        // Cabeçalho único — 11 colunas fixas usadas por TODAS as linhas
+        thead.innerHTML = `<tr style="font-size:0.77rem;color:#00509E;border-bottom:2px solid #0d6efd;background:#f8f9fa">
+            <th style="width:90px">Frota</th>
+            <th>Descrição</th>
+            <th class="text-center" style="width:55px"># OS</th>
+            <th class="text-center" style="width:110px">% das OS</th>
+            <th class="text-center" style="width:130px">Horas Paradas</th>
+            <th class="text-center" style="width:85px">Média Dias</th>
+            <th class="text-center" style="width:55px">Corr.</th>
+            <th class="text-center" style="width:55px">Prev.</th>
+            <th class="text-center" style="width:55px">Ref.</th>
+            <th class="text-end"    style="width:100px">Custo</th>
+            <th style="min-width:150px">Último Problema</th>
+        </tr>`;
+
+        if (sortedMicros.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted py-4">
+                ${tab === 'aberta' ? 'Nenhuma OS aberta ou em execução nesta especialidade' : 'Nenhuma OS encontrada'}
+            </td></tr>`;
+            return;
+        }
+
+        let rows = '';
+        let gIdx = 0;
+
+        for (const mg of sortedMicros) {
+            const gid         = gIdx++;
+            const mgHoras     = Math.round(mg.horasParadas);
+            const mgBarW      = Math.round((mg.horasParadas / maxHoras) * 100);
+            const mgPct       = totalLista > 0 ? ((mg.osCount / totalLista) * 100).toFixed(1) : '0.0';
+            const mgBadge     = mg.horasParadas >= 240 ? 'bg-danger' : mg.horasParadas >= 72 ? 'bg-warning text-dark' : 'bg-secondary';
+
+            // Disponibilidade por micro
+            const nEquipMicro = contarFrotasPropMicro(mg.micro);
+            const frotasAbMicro = new Set(
+                dadosAb
+                    .filter(r => microFrota(String(r.veiculo||'').trim().toUpperCase()) === mg.micro)
+                    .map(r => String(r.veiculo||'').trim().toUpperCase())
+                    .filter(id => {
+                        if (!id) return false;
+                        const f = frotasMap[id] || frotasMap[id.replace(/^0+/, '')];
+                        return isFrotaPropria(f);
+                    })
+            );
+            const dispMicroPct = nEquipMicro > 0 ? ((nEquipMicro - frotasAbMicro.size) / nEquipMicro * 100) : null;
+            const dispMicroTxt = dispMicroPct !== null ? `${dispMicroPct.toFixed(1)}%` : '—';
+            const dispMicroSub = dispMicroPct !== null ? `${nEquipMicro - frotasAbMicro.size}/${nEquipMicro}` : '';
+            const dispMicroCor = dispMicroPct === null ? '#6c757d' : dispMicroPct >= 90 ? '#198754' : dispMicroPct >= 70 ? '#856404' : '#dc3545';
+            const dispMicroBg  = dispMicroPct === null ? '' : dispMicroPct >= 90 ? 'bg-success' : dispMicroPct >= 70 ? 'bg-warning text-dark' : 'bg-danger';
+
+            // ── Linha de cabeçalho do micro (mesmas 11 colunas) ──
+            rows += `<tr data-gid="${gid}" style="background:#e8edf3;border-top:2px solid #9baec8;cursor:pointer" onclick="toggleGrp(${gid})">
+                <td style="padding-left:10px" colspan="2">
+                    <i class="bi bi-chevron-down grp-chevron me-1 text-primary" style="font-size:0.75rem"></i>
+                    <strong style="font-size:0.83rem">${mg.micro}</strong>
+                    <span class="badge bg-primary ms-2" style="font-size:0.67rem">${mg.frotas.length} frota${mg.frotas.length>1?'s':''}</span>
+                </td>
+                <td class="text-center fw-bold" style="font-size:0.83rem">${mg.osCount}</td>
+                <td>
+                    <div class="d-flex align-items-center gap-1">
+                        <div class="flex-grow-1 progress" style="height:7px">
+                            <div class="progress-bar bg-primary" style="width:${mgBarW}%"></div>
+                        </div>
+                        <span class="small text-muted">${mgPct}%</span>
+                    </div>
+                </td>
+                <td class="text-center">
+                    ${mgHoras > 0
+                        ? `<span class="badge ${mgBadge}" style="font-size:0.74rem"><i class="bi bi-clock me-1"></i>${mgHoras}h</span>`
+                        : '<span class="text-muted small">—</span>'}
+                </td>
+                <td class="text-center" colspan="2">
+                    ${nEquipMicro > 0
+                        ? `<span class="badge ${dispMicroBg}" style="font-size:0.74rem">${dispMicroTxt}</span>
+                           <span class="text-muted ms-1" style="font-size:0.67rem">${dispMicroSub}</span>`
+                        : '<span class="text-muted small" style="font-size:0.7rem">sem cadastro</span>'}
+                </td>
+                <td colspan="2" class="text-muted" style="font-size:0.7rem;vertical-align:middle;color:#888!important">
+                    ${nEquipMicro > 0 ? `${nEquipMicro} equip.` : ''}
+                </td>
+                <td class="text-end fw-bold text-success" style="font-size:0.8rem">R$ ${fmtMoeda(mg.totalValor)}</td>
+                <td></td>
+            </tr>`;
+
+            // ── Linhas de frotas — planas, mesmas 11 colunas ──
+            for (const f of mg.frotas) {
+                const mediaDias = f.osCount > 0 ? f.totalDias / f.osCount : 0;
+                const pctOS     = totalLista > 0 ? (f.osCount / totalLista * 100).toFixed(1) : '0.0';
+                const barW      = Math.round((f.horasParadas / maxHoras) * 100);
+                const desc      = descFrota(f.fid) || (f.os[0]?.descricao_veiculo || '');
+                const problema  = f.os[0]?.descricao_problema || '—';
+                const rowBg     = f.horasParadas >= 240 ? '#f8d7da' : f.horasParadas >= 72 ? '#fff3cd' : '';
+                const hBadge    = f.horasParadas >= 240 ? 'bg-danger' : f.horasParadas >= 72 ? 'bg-warning text-dark' : f.horasParadas > 0 ? 'bg-secondary' : '';
+
+                rows += `<tr class="grp-${gid}" style="${rowBg?'background:'+rowBg+';':''}font-size:0.78rem">
+                    <td style="padding-left:24px"><strong class="text-primary">${f.fid}</strong></td>
+                    <td class="text-truncate" style="max-width:0" title="${desc}">${desc || '<span class="text-muted">—</span>'}</td>
+                    <td class="text-center fw-bold">${f.osCount}</td>
+                    <td>
+                        <div class="d-flex align-items-center gap-1">
+                            <div class="flex-grow-1 progress" style="height:6px">
+                                <div class="progress-bar" style="width:${barW}%;background:${modalCor}"></div>
+                            </div>
+                            <span class="text-muted" style="font-size:0.7rem">${pctOS}%</span>
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        ${f.horasParadas > 0
+                            ? `<span class="badge horas-badge ${hBadge}"><i class="bi bi-clock-history me-1"></i>${Math.round(f.horasParadas)}h</span>`
+                            : '<span class="text-muted">—</span>'}
+                    </td>
+                    <td class="text-center text-muted">${fmt(mediaDias)} dias</td>
+                    <td class="text-center"><span class="badge bg-danger bg-opacity-${f.corrCount?'75':'25'}">${f.corrCount||0}</span></td>
+                    <td class="text-center"><span class="badge bg-success bg-opacity-${f.prevCount?'75':'25'}">${f.prevCount||0}</span></td>
+                    <td class="text-center"><span class="badge bg-warning text-dark bg-opacity-${f.refCount?'75':'25'}">${f.refCount||0}</span></td>
+                    <td class="text-end text-success fw-bold">R$ ${fmtMoeda(f.totalValor)}</td>
+                    <td class="text-muted text-truncate" style="max-width:0;font-size:0.72rem" title="${problema}">${problema}</td>
+                </tr>`;
+            }
+        }
+
+        // Linha de total geral
+        const totH = allFrotas.reduce((s,f) => s+f.horasParadas, 0);
+        const totV = allFrotas.reduce((s,f) => s+f.totalValor,   0);
+        rows += `<tr style="font-weight:bold;background:#dee2e6;border-top:2px solid #adb5bd;font-size:0.78rem">
+            <td colspan="2" style="padding-left:10px">
+                TOTAL — ${sortedMicros.length} micro${sortedMicros.length>1?'s':''} / ${allFrotas.length} frotas
+            </td>
+            <td class="text-center">${totalLista}</td>
+            <td class="text-center text-muted small">100%</td>
+            <td class="text-center"><span class="badge bg-warning text-dark">${Math.round(totH)}h</span></td>
+            <td colspan="4"></td>
+            <td class="text-end text-success">R$ ${fmtMoeda(totV)}</td>
+            <td></td>
+        </tr>`;
+
+        tbody.innerHTML = rows;
+    }
+
+
+    /* ── controles filtro ──────────────────────── */
+    function toggleManut(btn) {
+        const val = btn.dataset.val;
+        filtroManut = (filtroManut === val && val !== '') ? '' : val;
+        document.querySelectorAll('.filtro-manut').forEach(b => b.classList.remove('btn-filtro-ativo'));
+        if (filtroManut === '') {
+            document.querySelector('.filtro-manut[data-val=""]').classList.add('btn-filtro-ativo');
+        } else {
+            btn.classList.add('btn-filtro-ativo');
+        }
+        renderDashboard();
+    }
+
+    function resetFiltros() {
+        document.getElementById('filtroDataIni').value = '';
+        document.getElementById('filtroDataFim').value = '';
+        document.getElementById('filtroStatus').value  = '';
+        filtroManut = '';
+        document.querySelectorAll('.filtro-manut').forEach(b => b.classList.remove('btn-filtro-ativo'));
+        document.querySelector('.filtro-manut[data-val=""]').classList.add('btn-filtro-ativo');
+        renderDashboard();
+    }
+
+    {% if tem_dados %}
+    renderDashboard();
+    {% endif %}
+    </script>
+</body>
+</html>

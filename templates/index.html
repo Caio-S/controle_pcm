@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCM - Vitrine de Operações</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; transition: background-color 0.3s, color 0.3s; }
+        .table-excel th { border-top: 1px solid #000; border-bottom: 2px solid #000; color: #00509E; cursor: pointer; user-select: none; }
+        .table-excel th:hover { background-color: rgba(0,0,0,0.05); }
+        .table-excel td { border-bottom: 1px solid #bfbfbf; }
+
+        .calendario-wrapper { display: flex; flex-direction: column; width: 100%; }
+        .calendario-wrapper .col-dia { padding: 15px 10px; border-bottom: 2px dashed #dee2e6; width: 100%; min-height: 100px; transition: background-color 0.2s;}
+        .calendario-wrapper .col-dia:last-child { border-bottom: none; }
+
+        @media (min-width: 992px) {
+            .calendario-wrapper { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 10px;}
+            .calendario-wrapper .col-dia { flex: 1 1 0%; width: 14.28%; min-width: 180px; border-right: 1px dashed #dee2e6; border-bottom: none; padding: 10px; }
+            .calendario-wrapper .col-dia:last-child { border-right: none; }
+        }
+        .calendario-wrapper::-webkit-scrollbar { height: 8px; }
+        .calendario-wrapper::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+
+        .matriz-container { width: 100%; overflow-x: auto; padding-bottom: 10px; }
+        .matriz-container::-webkit-scrollbar { height: 8px; }
+        .matriz-container::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+        .matriz-scroll { min-width: 1000px; display: flex; flex-direction: column; }
+        .calendario-linha { display: flex; flex-direction: row; width: 100%; border-bottom: 1px dashed #dee2e6; }
+        .calendario-linha:last-child { border-bottom: none; }
+        .matriz-container .col-dia { flex: 1 1 0%; width: 14.28%; padding: 10px; border-right: 1px dashed #dee2e6; transition: background-color 0.2s;}
+        .matriz-container .col-dia:last-child { border-right: none; }
+
+        .especialidade-divisor { background-color: #e9ecef; border-left: 6px solid #0d6efd; font-size: 1.15rem; color: #00509E !important; text-shadow: 1px 1px 2px rgba(255,255,255,0.8); }
+
+        .accordion-button:not(.collapsed) { background-color: #00509E; color: white; }
+        .accordion-button { font-weight: bold; font-size: 1.1rem; }
+        .card-tarefa { transition: transform 0.2s, background-color 0.3s; font-size: 0.85rem; cursor: pointer; border-left: 4px solid rgba(0,0,0,0.2); }
+        .card-tarefa:hover { transform: scale(1.03); opacity: 0.95; box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+
+        .card-dash-hover { cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; }
+        .card-dash-hover:hover { transform: scale(1.05); box-shadow: 0 1rem 3rem rgba(0,0,0,.175)!important; border-color: #00509E !important; }
+
+        [data-bs-theme="dark"] body { background-color: #212529; }
+        [data-bs-theme="dark"] .card:not(.card-tarefa) { background-color: #2b3035 !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; }
+        [data-bs-theme="dark"] .table-excel th { color: #6ea8fe; border-bottom: 2px solid #6ea8fe; border-top: 1px solid #495057; }
+        [data-bs-theme="dark"] .table-excel td { border-bottom: 1px solid #495057; }
+        [data-bs-theme="dark"] .table-striped>tbody>tr:nth-of-type(odd)>* { background-color: #2b3035; color: #fff; }
+        [data-bs-theme="dark"] .table-striped>tbody>tr:nth-of-type(even)>* { background-color: #343a40; color: #fff; }
+        [data-bs-theme="dark"] .col-dia { border-right-color: #495057; }
+        [data-bs-theme="dark"] .nav-tabs .nav-link { color: #adb5bd; }
+        [data-bs-theme="dark"] .nav-tabs .nav-link.active { background-color: #2b3035; color: #fff; border-color: #495057 #495057 #2b3035; }
+        [data-bs-theme="dark"] .accordion-item { background-color: #2b3035; border-color: #495057; }
+        [data-bs-theme="dark"] .accordion-button { background-color: #343a40; color: #fff; }
+        [data-bs-theme="dark"] .accordion-button:not(.collapsed) { background-color: #00509E; color: white; }
+        [data-bs-theme="dark"] .bg-light { background-color: #343a40 !important; color: #f8f9fa !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .calendario-linha { border-bottom-color: #495057; }
+        [data-bs-theme="dark"] .especialidade-divisor { background-color: #343a40; border-left-color: #6ea8fe; color: #6ea8fe !important; text-shadow: none; border-bottom-color: #495057 !important; }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-dark bg-dark shadow-sm">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-gear-fill me-2"></i>Gestão PCM | Transparência</span>
+            <div>
+                <button id="btnDarkMode" class="btn btn-outline-secondary btn-sm me-2 border-0 text-warning" onclick="toggleDarkMode()"><i class="bi bi-moon-fill"></i></button>
+                <a href="/login" class="btn btn-outline-light btn-sm"><i class="bi bi-lock-fill me-1"></i>Acesso Restrito</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+
+        <div class="input-group mb-4 shadow-sm no-print" style="max-width: 500px; margin: 0 auto;">
+            <span class="input-group-text bg-white text-primary border-secondary"><i class="bi bi-search"></i></span>
+            <input type="text" id="buscaPublica" class="form-control border-start-0 border-secondary bg-white fw-bold" placeholder="Filtrar por Frota ou Descrição..." onkeyup="pesquisarGeral()">
+        </div>
+
+        <ul class="nav nav-tabs fw-bold mb-3 no-print" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="bloqueios-tab" data-bs-toggle="tab" data-bs-target="#bloqueios" type="button"><i class="bi bi-tools me-2"></i>Frotas Bloqueadas</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link text-primary" id="calendario-tab" data-bs-toggle="tab" data-bs-target="#calendario" type="button"><i class="bi bi-calendar-week-fill me-2"></i>Programação Semanal</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+
+            <div class="tab-pane fade show active" id="bloqueios">
+                <div class="accordion" id="accordionEspecialidadesPublico">
+                    {% for esp, frotas_lista in frotas.items() %}
+                    <div class="accordion-item mb-3 shadow-sm border rounded">
+                        <h2 class="accordion-header" id="headingPub-{{ loop.index }}">
+                            <button class="accordion-button rounded" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePub-{{ loop.index }}">
+                                <i class="bi bi-tags-fill me-2"></i> {{ esp }}
+                                <span class="badge bg-light text-dark ms-2 shadow-sm">{{ frotas_lista|length }}</span>
+                            </button>
+                        </h2>
+                        <div id="collapsePub-{{ loop.index }}" class="accordion-collapse collapse show" aria-labelledby="headingPub-{{ loop.index }}">
+                            <div class="accordion-body p-0 table-responsive">
+                                <table class="table table-striped table-excel align-middle mb-0" id="tabelaPublica-{{ loop.index }}" data-ordem="asc">
+                                    <thead>
+                                        <tr class="bg-light">
+                                            <th class="text-center" style="width: 15%" onclick="ordenarTabela('tabelaPublica-{{ loop.index }}', 0, 'numero')">FROTA <i class="bi bi-arrow-down-up ms-1 small"></i></th>
+                                            <th style="width: 40%">DESCRIÇÃO</th>
+                                            <th style="width: 25%">MOTIVO(S)</th>
+                                            <th class="text-center" style="width: 10%" onclick="ordenarTabela('tabelaPublica-{{ loop.index }}', 3, 'data')">DATA <i class="bi bi-arrow-down-up ms-1 small"></i></th>
+                                            <th style="width: 10%">STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for frota in frotas_lista %}
+                                        <tr class="linha-dados-publica">
+                                            <td class="text-center fw-bold fs-6">{{ frota.id_frota }}</td>
+                                            <td>{{ frota.descricao }}</td>
+                                            <td class="text-danger fw-bold">{{ frota.motivo }}</td>
+                                            <td class="text-center">{{ frota.data_bloqueio }}</td>
+                                            <td>{{ frota.status_oficina }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-center text-muted py-4">Nenhuma frota bloqueada de momento. Oficina livre!</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="calendario">
+                <div class="card shadow border-0 bg-white">
+                    <div class="card-body p-0">
+
+                        <div class="p-3 border-bottom bg-light d-flex justify-content-between align-items-center flex-wrap gap-3">
+                            <div class="d-flex align-items-center flex-grow-1 flex-wrap gap-2">
+                                <div class="btn-group shadow-sm">
+                                    <a href="?offset={{ offset - 1 }}#calendario" class="btn btn-outline-secondary btn-sm" title="Semana Anterior"><i class="bi bi-chevron-left"></i> Anterior</a>
+                                    <h6 class="mb-0 text-primary fw-bold mx-3 text-center d-flex align-items-center">Semana: {{ data_inicio_db[-2:] }}/{{ data_inicio_db[5:7] }} a {{ data_fim_db[-2:] }}/{{ data_fim_db[5:7] }}</h6>
+                                    <a href="?offset={{ offset + 1 }}#calendario" class="btn btn-outline-secondary btn-sm" title="Próxima Semana">Próxima <i class="bi bi-chevron-right"></i></a>
+                                </div>
+
+                                <select id="filtroEspecialidade" class="form-select form-select-sm border-primary fw-bold text-primary shadow-sm ms-md-2" style="display: none; width: auto; background-color: #e9ecef;" onchange="aplicarVisibilidadeGeral()">
+                                    <option value="TODAS">Todas Especialidades</option>
+                                    {% if especialidades_na_semana %}
+                                        {% for esp in especialidades_na_semana %}
+                                        <option value="{{ esp }}">{{ esp }}</option>
+                                        {% endfor %}
+                                    {% endif %}
+                                </select>
+                            </div>
+
+                            <div class="btn-group shadow-sm">
+                                <button type="button" class="btn btn-primary btn-sm btn-filtro fw-bold active" onclick="aplicarFiltroBotoes('TODOS', this)">TODOS</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltroBotoes('TROCA DE OLEO', this)">🛢️ ÓLEO</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltroBotoes('PREVENTIVA', this)">⚙️ PREV</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltroBotoes('ANALISE DE OLEO', this)">🧪 ANÁLISE</button>
+                            </div>
+                        </div>
+
+                        <div id="view-normal" class="calendario-wrapper">
+                            {% for dia in dias_semana %}
+                            <div class="col-dia" data-data-db="{{ dia.data_db }}">
+                                <div class="text-center mb-3 border-bottom pb-2 pointer-events-none">
+                                    <span class="d-block text-muted small fw-bold text-uppercase">{{ dia.nome_dia }}</span>
+                                    <span class="fs-5 fw-bold {% if dia.data_db == hoje %}text-primary{% endif %}">{{ dia.data_br }}</span>
+                                </div>
+                                {% for item in programacao %}
+                                    {% if item.data_planejada == dia.data_db %}
+                                        {% set cor_bg = 'bg-secondary text-white border-secondary' %}
+                                        {% set badge_bg = 'bg-white text-secondary' %}
+                                        {% if item.status == 'REALIZADA' %} {% set cor_bg = 'bg-success text-white border-success' %} {% set badge_bg = 'bg-white text-success' %}
+                                        {% elif item.status == 'BLOQUEADA' %} {% set cor_bg = 'bg-danger text-white border-danger' %} {% set badge_bg = 'bg-white text-danger' %}
+                                        {% elif item.status == 'QUEBRADA' %} {% set cor_bg = 'bg-warning text-dark border-warning' %} {% set badge_bg = 'bg-white text-warning' %} {% endif %}
+
+                                        <div class="card card-tarefa mb-2 shadow-sm {{ cor_bg }}" data-tipo="{{ item.tipo_servico }}"
+                                             onclick="abrirModalEdicao('{{ item.dados_modal }}', '{{ item.ids }}', '{{ item.id_frota }}', '{{ item.status }}', '{{ item.local_execucao }}')">
+                                            <div class="card-body p-2">
+                                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                                    <span class="fw-bold fs-6">{{ item.id_frota }}</span>
+                                                    <span class="badge {{ badge_bg }} shadow-sm status-badge" style="font-size: 0.65rem;">{{ item.status }}</span>
+                                                </div>
+                                                <div class="small fw-bold lh-sm mb-1" style="font-size: 0.80rem;">{{ item.tipo_servico }}</div>
+
+                                                {% if item.observacao_exibicao %}
+                                                    <div class="small fw-bold text-dark mb-1" style="font-size: 0.75rem; background-color: rgba(255,255,255,0.6); padding: 2px 4px; border-radius: 3px;">
+                                                        <i class="bi bi-gear-wide-connected me-1"></i>{{ item.observacao_exibicao }}
+                                                    </div>
+                                                {% endif %}
+
+                                                {% if item.status == 'REALIZADA' %}
+                                                    {% if 'ANALISE DE OLEO' in item.tipo_servico and item.resultado_analise_exibicao %}
+                                                        {% set cor_analise = 'text-dark' %}
+                                                        {% if 'NORMAL' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-success' %} {% endif %}
+                                                        {% if 'ANOMALIA' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-warning text-dark' %} {% endif %}
+                                                        {% if 'CRÍTICO' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-danger' %} {% endif %}
+                                                        <div class="mt-2 border-top border-white border-opacity-25 pt-1">
+                                                            <span class="badge bg-light shadow-sm w-100 text-start {{ cor_analise }}" style="font-size: 0.65rem;">
+                                                                <i class="bi bi-eyedropper me-1"></i>Res: {{ item.resultado_analise_exibicao }}
+                                                            </span>
+                                                        </div>
+                                                    {% endif %}
+
+                                                    <div class="mt-1 border-top border-white border-opacity-25 pt-1">
+                                                        <span class="badge bg-light text-dark shadow-sm w-100 text-start" style="font-size: 0.65rem;">
+                                                            <i class="bi bi-geo-alt-fill text-success me-1"></i>Local: {{ item.local_execucao }}
+                                                        </span>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div id="view-matriz" class="matriz-container" style="display: none;">
+                            <div class="matriz-scroll">
+                                <div class="calendario-linha bg-light border-bottom">
+                                    {% for dia in dias_semana %}
+                                    <div class="col-dia py-2 text-center pointer-events-none" style="min-height: auto; border-right: 1px solid #dee2e6;">
+                                        <span class="d-block text-muted small fw-bold text-uppercase">{{ dia.nome_dia }}</span>
+                                        <span class="fs-5 fw-bold {% if dia.data_db == hoje %}text-primary{% endif %}">{{ dia.data_br }}</span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+
+                                {% if especialidades_na_semana %}
+                                    {% for esp in especialidades_na_semana %}
+                                    <div class="especialidade-divisor border-bottom p-2 px-3 fw-bold text-uppercase shadow-sm" data-esp="{{ esp }}">
+                                        <i class="bi bi-layers-fill me-2 opacity-75"></i>{{ esp }}
+                                    </div>
+
+                                    <div class="calendario-linha especialidade-linha" data-esp="{{ esp }}">
+                                        {% for dia in dias_semana %}
+                                        <div class="col-dia" data-data-db="{{ dia.data_db }}">
+                                            {% for item in programacao %}
+                                                {% if item.data_planejada == dia.data_db and item.especialidade == esp %}
+                                                    {% set cor_bg = 'bg-secondary text-white border-secondary' %}
+                                                    {% set badge_bg = 'bg-white text-secondary' %}
+                                                    {% if item.status == 'REALIZADA' %} {% set cor_bg = 'bg-success text-white border-success' %} {% set badge_bg = 'bg-white text-success' %}
+                                                    {% elif item.status == 'BLOQUEADA' %} {% set cor_bg = 'bg-danger text-white border-danger' %} {% set badge_bg = 'bg-white text-danger' %}
+                                                    {% elif item.status == 'QUEBRADA' %} {% set cor_bg = 'bg-warning text-dark border-warning' %} {% set badge_bg = 'bg-white text-warning' %} {% endif %}
+
+                                                    <div class="card card-tarefa mb-2 shadow-sm {{ cor_bg }}" data-tipo="{{ item.tipo_servico }}"
+                                                         onclick="abrirModalEdicao('{{ item.dados_modal }}', '{{ item.ids }}', '{{ item.id_frota }}', '{{ item.status }}', '{{ item.local_execucao }}')">
+                                                        <div class="card-body p-2 pointer-events-none">
+                                                            <div class="d-flex justify-content-between align-items-start mb-1">
+                                                                <span class="fw-bold fs-6">{{ item.id_frota }}</span>
+                                                                <span class="badge {{ badge_bg }} shadow-sm status-badge" style="font-size: 0.65rem;">{{ item.status }}</span>
+                                                            </div>
+                                                            <div class="small fw-bold lh-sm mb-1" style="font-size: 0.80rem;">{{ item.tipo_servico }}</div>
+
+                                                            {% if item.observacao_exibicao %}
+                                                                <div class="small fw-bold text-dark mb-1" style="font-size: 0.75rem; background-color: rgba(255,255,255,0.6); padding: 2px 4px; border-radius: 3px;">
+                                                                    <i class="bi bi-gear-wide-connected me-1"></i>{{ item.observacao_exibicao }}
+                                                                </div>
+                                                            {% endif %}
+
+                                                            {% if item.status == 'REALIZADA' %}
+                                                                {% if 'ANALISE DE OLEO' in item.tipo_servico and item.resultado_analise_exibicao %}
+                                                                    {% set cor_analise = 'text-dark' %}
+                                                                    {% if 'NORMAL' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-success' %} {% endif %}
+                                                                    {% if 'ANOMALIA' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-warning text-dark' %} {% endif %}
+                                                                    {% if 'CRÍTICO' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-danger' %} {% endif %}
+                                                                    <div class="mt-2 border-top border-white border-opacity-25 pt-1">
+                                                                        <span class="badge bg-light shadow-sm w-100 text-start {{ cor_analise }}" style="font-size: 0.65rem;">
+                                                                            <i class="bi bi-eyedropper me-1"></i>Res: {{ item.resultado_analise_exibicao }}
+                                                                        </span>
+                                                                    </div>
+                                                                {% endif %}
+
+                                                                <div class="mt-1 border-top border-white border-opacity-25 pt-1">
+                                                                    <span class="badge bg-light text-dark shadow-sm w-100 text-start" style="font-size: 0.65rem;">
+                                                                        <i class="bi bi-geo-alt-fill text-success me-1"></i>Local: {{ item.local_execucao }}
+                                                                    </span>
+                                                                </div>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="text-center p-5 text-muted fw-bold">
+                                        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>Nenhum serviço agendado para esta semana.
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="card-footer bg-light border-top p-3 text-body">
+                            <h6 class="fw-bold text-secondary mb-3"><i class="bi bi-bar-chart-fill me-2"></i>Aderência da Semana (Clique para abrir Dashboard)</h6>
+                            <div class="row g-3">
+                                {% for tipo, dados in stats.items() %}
+                                <div class="col-md-4">
+                                    <div class="border border-secondary-subtle rounded p-3 bg-white shadow-sm h-100 card-dash-hover" onclick="abrirMiniDash('{{ tipo }}')">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span class="small fw-bold text-uppercase text-dark">{{ tipo }}</span>
+                                            {% set cor_barra = 'bg-danger' %}
+                                            {% set cor_texto = 'text-danger' %}
+                                            {% if dados.percentual >= 80 %} {% set cor_barra = 'bg-success' %} {% set cor_texto = 'text-success' %}
+                                            {% elif dados.percentual >= 50 %} {% set cor_barra = 'bg-warning' %} {% set cor_texto = 'text-warning' %} {% endif %}
+                                            <span class="fs-6 fw-bold {{ cor_texto }}">{{ dados.percentual }}%</span>
+                                        </div>
+                                        <div class="progress shadow-sm mb-3" style="height: 10px;">
+                                            <div class="progress-bar {{ cor_barra }} progress-bar-striped progress-bar-animated" role="progressbar" style="width: {{ dados.percentual }}%;"></div>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span class="badge bg-secondary shadow-sm" style="font-size: 0.70rem;">{{ dados.total }} Prog.</span>
+                                            <span class="badge bg-success shadow-sm" style="font-size: 0.70rem;">{{ dados.realizadas }} Feitas</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <div class="col-12 text-center text-muted small py-2">Nenhum serviço agendado para esta semana.</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalMiniDash" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="modal-title fw-bold m-0"><i class="bi bi-graph-up-arrow me-2"></i>DASHBOARD PARCIAL: <span id="dashTitulo" class="text-warning"></span></h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-outline-light btn-sm fw-bold border-2" onclick="baixarDashPDF()" title="Exportar Gráfico Simples">
+                            <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF Rápido
+                        </button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body bg-light" id="dashContentToPrint">
+
+                    <div id="dashFiltroArea" class="d-flex flex-column flex-md-row justify-content-between align-items-center bg-white p-3 border rounded shadow-sm mb-4">
+                        <div class="mb-2 mb-md-0">
+                            <h6 class="mb-0 fw-bold text-secondary"><i class="bi bi-calendar-range me-2"></i>Filtre as Datas se Desejar</h6>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="date" id="dashDataInicio" class="form-control form-control-sm border-secondary fw-bold text-secondary" style="width: 130px;" value="{{ data_inicio_db }}">
+                            <span class="small fw-bold text-muted">até</span>
+                            <input type="date" id="dashDataFim" class="form-control form-control-sm border-secondary fw-bold text-secondary" style="width: 130px;" value="{{ data_fim_db }}">
+                            <button type="button" id="btnAtualizarDash" class="btn btn-primary btn-sm fw-bold shadow-sm" onclick="filtrarDashModal()"><i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica</button>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-4 text-center d-flex justify-content-center">
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-primary border-4"><h6 class="small text-muted mb-0 fw-bold">TOTAL PROGRAMADO</h6><h3 class="mb-0 fw-bold text-primary" id="dashTotal">0</h3></div></div>
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-success border-4"><h6 class="small text-muted mb-0 fw-bold">REALIZADAS (V)</h6><h3 class="mb-0 fw-bold text-success" id="dashRealizadas">0</h3></div></div>
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-secondary border-4"><h6 class="small text-muted mb-0 fw-bold">PENDENTES (-)</h6><h3 class="mb-0 fw-bold text-secondary" id="dashPendentes">0</h3></div></div>
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-danger border-4"><h6 class="small text-muted mb-0 fw-bold">BLOQUEADAS (X)</h6><h3 class="mb-0 fw-bold text-danger" id="dashBloqueadas">0</h3></div></div>
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-warning border-4"><h6 class="small text-muted mb-0 fw-bold">QUEBRADAS (⚠)</h6><h3 class="mb-0 fw-bold text-warning" id="dashQuebradas">0</h3></div></div>
+                    </div>
+
+                    <div class="bg-white p-3 border rounded shadow-sm mb-4">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="small fw-bold text-secondary">Aderência Geral do Período</span>
+                            <span class="small fw-bold" id="dashPercText">0%</span>
+                        </div>
+                        <div class="progress shadow-sm" style="height: 20px;">
+                            <div id="dashProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success fw-bold" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="bg-white p-3 border rounded shadow-sm h-100">
+                                <h6 class="small fw-bold text-center mb-3 text-secondary">Aderência</h6>
+                                <div style="height: 250px; position: relative; display: flex; align-items: center; justify-content: center;">
+                                    <canvas id="chartStatus" style="position: relative; z-index: 2;"></canvas>
+                                    <div id="chartCenterTotal" style="position: absolute; font-size: 2.5rem; font-weight: bold; color: #333; z-index: 1; margin-top: -15px;">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="bg-white p-3 border rounded shadow-sm h-100">
+                                <h6 class="small fw-bold text-center mb-3 text-secondary">Desempenho por Especialidade</h6>
+                                <div style="height: 250px; position: relative;"><canvas id="chartEspecialidades"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="dashPrintFooter" style="display: none; margin-top: 30px; text-align: center; font-size: 10px; color: #777;">
+                        Documento gerado automaticamente pelo Sistema de Gestão PCM - Oficina.
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalGestaoTarefa" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-sliders me-2"></i>Detalhes do Serviço</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="modalIdProg">
+                    <div class="mb-3 text-center border-bottom pb-2">
+                        <h4 class="fw-bold text-primary mb-0" id="modalLabelFrota"></h4>
+                    </div>
+
+                    <div id="containerServicosModal"></div>
+
+                    <div class="mb-2 mt-3 p-2 border border-success rounded bg-success bg-opacity-10" id="divDataExecucao" style="display: none;">
+                        <label class="form-label fw-bold small text-success mb-1">Local da Execução</label>
+                        <select id="modalLocalExecucao" class="form-select border-success fw-bold text-secondary" disabled>
+                            <option value="BASE">Base (Oficina)</option>
+                            <option value="CAMPO">Campo</option>
+                            <option value="GARANTIA">Garantia</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-end">
+                    <button type="button" class="btn btn-secondary btn-sm fw-bold" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let filtroAtivoBotoes = 'TODOS';
+        const htmlElement = document.documentElement;
+        const btnDarkMode = document.getElementById('btnDarkMode');
+        if (localStorage.getItem('theme') === 'dark') { htmlElement.setAttribute('data-bs-theme', 'dark'); btnDarkMode.innerHTML = '<i class="bi bi-sun-fill text-warning"></i>'; }
+
+        function toggleDarkMode() {
+            if (htmlElement.getAttribute('data-bs-theme') === 'dark') { htmlElement.setAttribute('data-bs-theme', 'light'); localStorage.setItem('theme', 'light'); btnDarkMode.innerHTML = '<i class="bi bi-moon-fill text-warning"></i>'; }
+            else { htmlElement.setAttribute('data-bs-theme', 'dark'); localStorage.setItem('theme', 'dark'); btnDarkMode.innerHTML = '<i class="bi bi-sun-fill text-warning"></i>'; }
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            if (window.location.hash === "#calendario") {
+                var triggerEl = document.querySelector('#calendario-tab');
+                var tab = new bootstrap.Tab(triggerEl);
+                tab.show();
+            }
+
+            let urlParams = new URLSearchParams(window.location.search);
+            let espSalvo = urlParams.get('esp');
+            if (espSalvo) {
+                let selectEsp = document.getElementById('filtroEspecialidade');
+                if(selectEsp) selectEsp.value = espSalvo;
+            }
+
+            let filtroSalvo = urlParams.get('filtro');
+            if (filtroSalvo) {
+                let botaoParaClicar = Array.from(document.querySelectorAll('.btn-filtro')).find(b => b.getAttribute('onclick').includes(filtroSalvo));
+                if (botaoParaClicar) botaoParaClicar.click();
+            }
+        });
+
+        setInterval(function() {
+            let inputEl = document.getElementById("buscaPublica");
+            let input = inputEl ? inputEl.value : "";
+            let modalAberto = document.querySelector('.modal.show');
+            if(input.trim() === "" && filtroAtivoBotoes === 'TODOS' && !modalAberto) window.location.reload();
+        }, 60000);
+
+        function aplicarFiltroBotoes(tipo, btnClicado) {
+            filtroAtivoBotoes = tipo;
+
+            document.querySelectorAll('.btn-filtro').forEach(b => {
+                b.classList.remove('active', 'btn-primary');
+                b.classList.add('btn-outline-primary');
+            });
+            btnClicado.classList.remove('btn-outline-primary');
+            btnClicado.classList.add('btn-primary', 'active');
+
+            let url = new URL(window.location);
+            url.searchParams.set('filtro', tipo);
+            window.history.replaceState({}, '', url);
+
+            let viewNormal = document.getElementById('view-normal');
+            let viewMatriz = document.getElementById('view-matriz');
+            let selectEsp = document.getElementById('filtroEspecialidade');
+
+            if (tipo === 'PREVENTIVA') {
+                if(viewNormal) viewNormal.style.setProperty('display', 'none', 'important');
+                if(viewMatriz) viewMatriz.style.setProperty('display', 'block', 'important');
+                if(selectEsp) selectEsp.style.display = 'inline-block';
+            } else {
+                if(viewNormal) viewNormal.style.setProperty('display', 'flex', 'important');
+                if(viewMatriz) viewMatriz.style.setProperty('display', 'none', 'important');
+                if(selectEsp) {
+                    selectEsp.style.display = 'none';
+                    selectEsp.value = 'TODAS';
+                }
+            }
+
+            aplicarVisibilidadeGeral();
+        }
+
+        function pesquisarGeral() { aplicarVisibilidadeGeral(); }
+
+        function aplicarVisibilidadeGeral() {
+            try {
+                let inputEl = document.getElementById("buscaPublica");
+                let input = inputEl ? inputEl.value.toUpperCase() : "";
+
+                let selectEsp = document.getElementById('filtroEspecialidade');
+                let filtroEsp = (selectEsp && selectEsp.style.display !== 'none') ? selectEsp.value : 'TODAS';
+
+                let url = new URL(window.location);
+                if(filtroEsp !== 'TODAS') { url.searchParams.set('esp', filtroEsp); }
+                else { url.searchParams.delete('esp'); }
+                window.history.replaceState({}, '', url);
+
+                let trs = document.getElementsByClassName("linha-dados-publica");
+                if(trs.length > 0) {
+                    for (let i = 0; i < trs.length; i++) {
+                        let textoLinha = trs[i].innerText.toUpperCase();
+                        trs[i].style.setProperty('display', textoLinha.includes(input) ? "" : "none", "important");
+                    }
+                }
+
+                let cards = document.getElementsByClassName("card-tarefa");
+                for (let i = 0; i < cards.length; i++) {
+                    let textoCard = cards[i].innerText.toUpperCase();
+                    let tipoCard = cards[i].getAttribute('data-tipo') || '';
+                    let passaNoTexto = (input === "") || textoCard.includes(input);
+                    let passaNoBotao = (filtroAtivoBotoes === 'TODOS' || tipoCard.toUpperCase().includes(filtroAtivoBotoes.toUpperCase()));
+
+                    if (passaNoTexto && passaNoBotao) {
+                        cards[i].style.setProperty('display', 'block', 'important');
+                    } else {
+                        cards[i].style.setProperty('display', 'none', 'important');
+                    }
+                }
+
+                document.querySelectorAll('#view-matriz .especialidade-linha').forEach(linha => {
+                    let cardsLinha = Array.from(linha.querySelectorAll('.card-tarefa'));
+                    let esp = linha.getAttribute('data-esp');
+                    let divisor = document.querySelector(`#view-matriz .especialidade-divisor[data-esp="${esp}"]`);
+
+                    let passaEsp = (filtroEsp === 'TODAS' || filtroEsp === esp);
+
+                    if(cardsLinha.length > 0) {
+                        let temVisivel = cardsLinha.some(c => c.style.display === 'block' || c.style.display === '');
+                        if (!temVisivel || !passaEsp) {
+                            linha.style.setProperty('display', 'none', 'important');
+                            if(divisor) divisor.style.setProperty('display', 'none', 'important');
+                        } else {
+                            linha.style.setProperty('display', 'flex', 'important');
+                            if(divisor) divisor.style.setProperty('display', 'block', 'important');
+                        }
+                    } else {
+                        linha.style.setProperty('display', 'none', 'important');
+                        if(divisor) divisor.style.setProperty('display', 'none', 'important');
+                    }
+                });
+            } catch (e) {
+                console.error("Erro ao aplicar filtros:", e);
+            }
+        }
+
+        const modalUI = new bootstrap.Modal(document.getElementById('modalGestaoTarefa'));
+        function abrirModalEdicao(dadosModal, idsStr, frota, statusAtual, localExec) {
+            document.getElementById('modalIdProg').value = idsStr;
+            document.getElementById('modalLabelFrota').innerText = frota;
+            let container = document.getElementById('containerServicosModal');
+            let html = '';
+
+            let servicos = dadosModal.split('||');
+            servicos.forEach(s => {
+                let parts = s.split('::');
+                let id = parts[0];
+                let tipo = parts[1];
+                let resAnalise = parts[2] ? parts[2] : '';
+                let obs = parts[3] ? parts[3] : '';
+
+                html += `
+                <div class="mb-3 p-2 border rounded bg-light shadow-sm">
+                    <label class="form-label fw-bold small text-primary mb-1"><i class="bi bi-wrench me-1"></i>${tipo}</label>`;
+
+                if(obs) {
+                    html += `<div class="small fw-bold text-secondary mb-2" style="font-size: 0.85rem;"><i class="bi bi-gear-wide-connected me-1"></i>Compartimento: ${obs}</div>`;
+                }
+
+                html += `
+                    <select class="form-select form-select-sm border-secondary fw-bold mb-2" disabled>
+                        <option value="PENDENTE" ${statusAtual === 'PENDENTE' ? 'selected' : ''} class="text-secondary">⚪ PENDENTE</option>
+                        <option value="REALIZADA" ${statusAtual === 'REALIZADA' ? 'selected' : ''} class="text-success">🟢 REALIZADA</option>
+                        <option value="BLOQUEADA" ${statusAtual === 'BLOQUEADA' ? 'selected' : ''} class="text-danger">🔴 BLOQUEADA</option>
+                        <option value="QUEBRADA" ${statusAtual === 'QUEBRADA' ? 'selected' : ''} class="text-warning">🟡 QUEBRADA</option>
+                    </select>`;
+
+                if(tipo.includes('ANALISE DE OLEO') && resAnalise) {
+                    html += `
+                    <label class="form-label fw-bold small text-info mt-1 mb-1"><i class="bi bi-eyedropper me-1"></i>Resultado da Análise</label>
+                    <select class="form-select form-select-sm border-info fw-bold text-dark" disabled>
+                        <option value="NORMAL" ${resAnalise === 'NORMAL' ? 'selected' : ''} class="text-success">🟢 NORMAL (Bom)</option>
+                        <option value="ANOMALIA" ${resAnalise === 'ANOMALIA' ? 'selected' : ''} class="text-warning text-dark">🟡 ANOMALIA (Atenção)</option>
+                        <option value="CRÍTICO" ${resAnalise === 'CRÍTICO' ? 'selected' : ''} class="text-danger">🔴 CRÍTICO (Bloqueia Frota)</option>
+                    </select>`;
+                }
+                html += `</div>`;
+            });
+            container.innerHTML = html;
+
+            let divData = document.getElementById('divDataExecucao');
+            if(statusAtual === 'REALIZADA') {
+                divData.style.display = 'block';
+                let selectLoc = document.getElementById('modalLocalExecucao');
+                if(selectLoc) {
+                    selectLoc.value = localExec && localExec !== 'None' ? localExec : 'BASE';
+                }
+            } else {
+                divData.style.display = 'none';
+            }
+
+            modalUI.show();
+        }
+
+        Chart.register(ChartDataLabels);
+        Chart.defaults.set('plugins.datalabels', {
+            color: '#ffffff', font: { weight: 'bold', size: 12 },
+            formatter: function(value, context) {
+                if (value === 0) return '';
+                if (context.chart.config.type === 'doughnut') {
+                    let sum = context.dataset.data.reduce((a, b) => a + b, 0);
+                    return Math.round((value / sum) * 100) + "%";
+                }
+                if (context.chart.config.type === 'bar') {
+                    let sum = 0;
+                    context.chart.data.datasets.forEach(ds => { sum += ds.data[context.dataIndex]; });
+                    return Math.round((value / sum) * 100) + "%";
+                }
+                return value;
+            }
+        });
+
+        let dadosStatsGlobais = {{ stats | tojson | safe }};
+        let chartStatusObj = null; let chartEspObj = null;
+        let currentDashTipo = '';
+        const modalDashUI = new bootstrap.Modal(document.getElementById('modalMiniDash'));
+
+        function abrirMiniDash(tipo) {
+            currentDashTipo = tipo;
+            renderizarDashboard(dadosStatsGlobais[tipo]);
+            modalDashUI.show();
+        }
+
+        function renderizarDashboard(d) {
+            if(!d) { d = {total: 0, realizadas: 0, pendentes: 0, bloqueadas: 0, quebradas: 0, percentual: 0, especialidades: {}}; }
+
+            document.getElementById('dashTitulo').innerText = currentDashTipo;
+            document.getElementById('dashTotal').innerText = d.total;
+            document.getElementById('dashRealizadas').innerText = d.realizadas;
+            document.getElementById('dashPendentes').innerText = d.pendentes;
+            document.getElementById('dashBloqueadas').innerText = d.bloqueadas;
+            document.getElementById('dashQuebradas').innerText = d.quebradas;
+            document.getElementById('chartCenterTotal').innerText = d.total;
+
+            let pb = document.getElementById('dashProgressBar');
+            let txt = document.getElementById('dashPercText');
+            pb.style.width = d.percentual + '%';
+            pb.innerText = d.percentual + '%';
+
+            pb.className = 'progress-bar progress-bar-striped progress-bar-animated fw-bold';
+            txt.className = 'small fw-bold';
+
+            if(d.percentual >= 80) { pb.classList.add('bg-success'); txt.classList.add('text-success'); }
+            else if(d.percentual >= 50) { pb.classList.add('bg-warning', 'text-dark'); txt.classList.add('text-warning'); }
+            else { pb.classList.add('bg-danger'); txt.classList.add('text-danger'); }
+            txt.innerText = d.percentual + '%';
+
+            if(chartStatusObj) chartStatusObj.destroy();
+            const ctxStatus = document.getElementById('chartStatus').getContext('2d');
+            chartStatusObj = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Realizadas', 'Pendentes', 'Bloqueadas', 'Quebradas'],
+                    datasets: [{ data: [d.realizadas, d.pendentes, d.bloqueadas, d.quebradas], backgroundColor: ['#198754', '#6c757d', '#dc3545', '#ffc107'], borderWidth: 2 }]
+                },
+                options: { cutout: '65%', responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+
+            let labelsEsp = []; let dataRealizadas = []; let dataPendentes = []; let dataBloqueadas = []; let dataQuebradas = [];
+
+            for (let esp in d.especialidades) {
+                labelsEsp.push(esp);
+                dataRealizadas.push(d.especialidades[esp].realizadas);
+                dataPendentes.push(d.especialidades[esp].pendentes);
+                dataBloqueadas.push(d.especialidades[esp].bloqueadas);
+                dataQuebradas.push(d.especialidades[esp].quebradas);
+            }
+
+            if(chartEspObj) chartEspObj.destroy();
+            const ctxEsp = document.getElementById('chartEspecialidades').getContext('2d');
+            chartEspObj = new Chart(ctxEsp, {
+                type: 'bar',
+                data: {
+                    labels: labelsEsp,
+                    datasets: [
+                        { label: 'Realizadas', data: dataRealizadas, backgroundColor: '#198754' },
+                        { label: 'Pendentes', data: dataPendentes, backgroundColor: '#6c757d' },
+                        { label: 'Bloqueadas', data: dataBloqueadas, backgroundColor: '#dc3545' },
+                        { label: 'Quebradas', data: dataQuebradas, backgroundColor: '#ffc107' }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } },
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        function filtrarDashModal() {
+            let i = document.getElementById('dashDataInicio').value;
+            let f = document.getElementById('dashDataFim').value;
+            let btn = document.getElementById('btnAtualizarDash');
+            if(i && f && currentDashTipo) {
+                btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>...';
+                btn.disabled = true;
+                fetch(`/api/dashboard_stats?inicio=${i}&fim=${f}`).then(response => response.json()).then(data => {
+                    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica';
+                    btn.disabled = false;
+                    dadosStatsGlobais = data;
+                    renderizarDashboard(dadosStatsGlobais[currentDashTipo]);
+                }).catch(error => {
+                    btn.innerHTML = 'Erro!';
+                    setTimeout(() => { btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica'; btn.disabled = false; }, 2000);
+                });
+            }
+        }
+
+        function baixarDashPDF() {
+            let btn = document.querySelector('button[onclick="baixarDashPDF()"]');
+            let textoOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>A gerar PDF...'; btn.disabled = true;
+
+            let filtroDiv = document.getElementById('dashFiltroArea');
+            let originalDisplayFiltro = filtroDiv.style.display;
+            filtroDiv.style.display = 'none';
+
+            let footerPrint = document.getElementById('dashPrintFooter');
+            footerPrint.style.display = 'block';
+
+            let elemento = document.getElementById('dashContentToPrint');
+            elemento.style.backgroundColor = '#f8f9fa';
+
+            let dataIni = document.getElementById('dashDataInicio').value.split('-').reverse().join('-');
+            let dataFim = document.getElementById('dashDataFim').value.split('-').reverse().join('-');
+            let nomeRelatorio = 'Aderencia_' + currentDashTipo.replace(/ /g, '_') + '_' + dataIni + '_a_' + dataFim + '.pdf';
+
+            let opt = { margin: 0.3, filename: nomeRelatorio, image: { type: 'jpeg', quality: 1.0 }, html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 }, jsPDF: { unit: 'in', format: 'a4', orientation: 'landscape' } };
+            setTimeout(() => { html2pdf().set(opt).from(elemento).save().then(() => { filtroDiv.style.display = originalDisplayFiltro; footerPrint.style.display = 'none'; btn.innerHTML = textoOriginal; btn.disabled = false; }); }, 300);
+        }
+    </script>
+</body>
+</html>

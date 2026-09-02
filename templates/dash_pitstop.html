@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Aderência - Pit Stop</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    body{font-family:Arial,sans-serif;background:#525659;margin:0;padding:20px;display:flex;justify-content:center}
+    #page{width:794px;min-height:1123px;height:auto;background:#fff;padding:18px 22px;box-shadow:0 0 14px rgba(0,0,0,.45);display:flex;flex-direction:column}
+    .btn-print{position:fixed;top:16px;right:16px;z-index:1000}
+    .top{background:#fd7e14;color:#fff;border-bottom:3px solid #000;padding:8px 14px;margin-bottom:10px}
+    .top h5{margin:0;font-size:16px;font-weight:700}
+    .box{border:2px solid #000;background:#fff;height:100%;display:flex;flex-direction:column;overflow:hidden}
+    .box-title{background:#404454;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;text-align:center;padding:4px}
+    .box-content{padding:8px;flex:1}
+    .legend-mini{font-size:10px;text-align:center;border-bottom:1px dashed #ccc;padding-bottom:4px;margin-bottom:6px}
+    .canvas-wrap{position:relative;height:100%}
+    .center-number{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:24px;font-weight:700}
+    .pending-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;height:100%;align-content:start}
+    .pending-chip{font-size:10px;font-weight:700;border:1px solid #ccc;border-radius:3px;padding:2px 4px;text-align:center;color:#dc3545;background:#f8f9fa}
+    .pend-esp-wrap{margin-top:6px;border-top:1px dashed #ccc;padding-top:4px}
+    .pend-esp-line{font-size:8px;line-height:1.25;margin-bottom:2px;word-break:break-word}
+    .pend-esp-tag{display:inline-block;background:#dc3545;color:#fff;border-radius:3px;padding:1px 4px;font-weight:700;margin-right:4px}
+    .small-kpi{border:1px solid #ccc;border-radius:6px;padding:6px;text-align:center;box-shadow:inset 0 0 4px rgba(0,0,0,.12)}
+    @media print{
+      body{background:#fff;padding:0}
+      .btn-print{display:none!important}
+      #page{width:100%;height:100%;box-shadow:none}
+      @page{size:portrait;margin:0}
+    }
+  </style>
+</head>
+<body>
+  <button class="btn btn-warning fw-bold btn-print" onclick="baixarPdf()">Baixar PDF</button>
+
+  <div id="page">
+    <div class="top d-flex justify-content-between align-items-center">
+      <h5>ADERÊNCIA PROGRAMAÇÃO PIT STOP</h5>
+      <div class="text-end" style="font-size:11px;line-height:1.2">
+        <div><b>SEMANA:</b> {{ periodo }}</div>
+        <div><b>DATA:</b> {{ data_geracao }}</div>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-3" style="height:380px">
+      <div class="col-12">
+        <div class="box">
+          <div class="box-title">TOTAL DE EQUIPAMENTOS POR SETOR</div>
+          <div class="box-content">
+            <div class="legend-mini"><span style="color:#198754;font-weight:700">REALIZADO</span> | <span style="color:#dc3545;font-weight:700">PENDENTE</span></div>
+            <div class="canvas-wrap" style="height:170px"><canvas id="chartSetor"></canvas></div>
+            <div id="pendentesPorEsp" class="pend-esp-wrap"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-3" style="height:200px">
+      <div class="col-6">
+        <div class="box">
+          <div class="box-title">STATUS DO PIT STOP</div>
+          <div class="box-content d-flex align-items-center gap-2">
+            <div class="small-kpi" style="width:90px">
+              <div style="font-size:9px;font-weight:700">PORCENTAGEM<br>REALIZADO</div>
+              <div id="kpiPerc" style="font-size:18px;font-weight:700">0%</div>
+            </div>
+            <div class="canvas-wrap flex-grow-1" style="height:160px">
+              <canvas id="chartStatus"></canvas>
+              <div id="kpiTotal" class="center-number">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-6">
+        <div class="box">
+          <div class="box-title">PROGRESSÃO DA SEMANA</div>
+          <div class="box-content d-flex align-items-center justify-content-center gap-2">
+            <div style="width:72px;height:160px;border:1px solid #000;display:flex;flex-direction:column;justify-content:flex-end">
+              <div id="barPend" style="background:#dc3545;color:#fff;font-weight:700;text-align:center;font-size:11px"></div>
+              <div id="barReal" style="background:#198754;color:#fff;font-weight:700;text-align:center;font-size:11px"></div>
+            </div>
+            <div class="small-kpi" style="width:95px">
+              <div style="font-size:9px;font-weight:700">TOTAL</div>
+              <div id="progTotal" style="font-size:20px;font-weight:700">0</div>
+              <div style="font-size:9px;font-weight:700">REALIZADO</div>
+              <div id="progPerc" style="font-size:16px;font-weight:700">0%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-4" style="height:210px">
+      <div class="col-12">
+        <div class="box">
+          <div class="box-title">COMPARATIVO SEMANAL - 5 SEMANAS</div>
+          <div class="box-content">
+            <div class="canvas-wrap" style="height:160px">
+              <canvas id="chartHist"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-2" style="height:170px">
+      <div class="col-6">
+        <div class="box">
+          <div class="box-title">REALIZADO COM ATRASO</div>
+          <div class="box-content"><div class="canvas-wrap" style="height:140px"><canvas id="chartAtraso"></canvas></div></div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="box" style="border-color:#dc3545">
+          <div class="box-title" style="background:#dc3545">FROTAS PARADAS - MANUTENÇÃO</div>
+          <div class="box-content d-flex align-items-center gap-2">
+            <div class="canvas-wrap flex-grow-1" style="height:140px"><canvas id="chartParadas"></canvas></div>
+            <div class="small-kpi text-white" style="width:105px;background:#dc3545;border-color:#dc3545">
+              <div style="font-size:8px;font-weight:700">TOTAL FROTAS NÃO<br>REALIZADAS</div>
+              <div id="totalParadas" style="font-size:28px;font-weight:700;line-height:1">0</div>
+              <div style="font-size:8px;font-weight:700">EM MANUTENÇÃO</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const dados = {{ dados | tojson | safe }};
+const resumo = {{ resumo | tojson | safe }};
+const hist = {{ historico | tojson | safe }};
+
+let realPrazo=0, realAtraso=0, pend=0, bloqueadas=0, paradas=0;
+const set = {};
+const pendPorSetor = {};
+
+dados.forEach(r=>{
+  const setor = (r.setor || 'SEM SETOR').trim();
+  if(!set[setor]) set[setor] = {real:0, pend:0, atraso:0, paradas:0, bloqueadas:0};
+  if(!pendPorSetor[setor]) pendPorSetor[setor] = [];
+
+  if(r.status === 'REALIZADA'){
+    const atrasado = !!(r.data_execucao && r.data_planejada && r.data_execucao > r.data_planejada);
+    set[setor].real++;
+    if(atrasado){
+      realAtraso++;
+      set[setor].atraso++;
+    } else {
+      realPrazo++;
+    }
+  } else if(r.status === 'BLOQUEADA'){
+    pend++;
+    set[setor].pend++;
+    pendPorSetor[setor].push(r.id_frota);
+    bloqueadas++;
+    set[setor].bloqueadas++;
+  } else if(r.status === 'QUEBRADA'){
+    paradas++;
+    set[setor].paradas++;
+  } else {
+    pend++;
+    set[setor].pend++;
+    pendPorSetor[setor].push(r.id_frota);
+  }
+});
+
+const realTotal = resumo.realizadas || (realPrazo + realAtraso);
+const pendentes = resumo.pendentes || (pend - bloqueadas);
+bloqueadas = resumo.bloqueadas || bloqueadas;
+paradas = resumo.quebradas || paradas;
+const totalValido = resumo.total ? (resumo.total - (resumo.quebradas || 0)) : (realTotal + pendentes + bloqueadas);
+const perc = typeof resumo.percentual === 'number' ? resumo.percentual : (totalValido ? Math.round((realTotal/totalValido)*100) : 0);
+
+document.getElementById('kpiTotal').innerText = totalValido;
+document.getElementById('kpiPerc').innerText = perc + '%';
+document.getElementById('progTotal').innerText = totalValido;
+document.getElementById('progPerc').innerText = perc + '%';
+document.getElementById('totalParadas').innerText = paradas;
+
+const boxPendEsp = document.getElementById('pendentesPorEsp');
+const linhasPendEsp = Object.keys(pendPorSetor)
+  .sort()
+  .map(setor => {
+    const unicas = [...new Set(pendPorSetor[setor])];
+    if(!unicas.length) return '';
+    return `<div class="pend-esp-line"><span class="pend-esp-tag">${setor}</span>${unicas.join(', ')}</div>`;
+  })
+  .filter(Boolean);
+boxPendEsp.innerHTML = linhasPendEsp.length ? linhasPendEsp.join('') : '<div class="pend-esp-line" style="color:#666;font-weight:700">Sem pendências por setor.</div>';
+
+const barReal = document.getElementById('barReal');
+const barPend = document.getElementById('barPend');
+if(totalValido){
+  const hR = Math.round((realTotal/totalValido)*100);
+  const hP = Math.round(((pendentes + bloqueadas)/totalValido)*100);
+  barReal.style.height = hR + '%'; barReal.innerText = realTotal || '';
+  barPend.style.height = hP + '%'; barPend.innerText = (pendentes + bloqueadas) || '';
+}
+
+const totalTopLabelsPlugin = {
+  id:'totalTopLabels',
+  afterDatasetsDraw(chart){
+    if(chart.canvas.id !== 'chartSetor') return;
+    const ctx = chart.ctx;
+    const labelsCount = chart.data.labels.length;
+    const dsReal = chart.data.datasets[0].data;
+    const dsPend = chart.data.datasets[1].data;
+    const topMeta = chart.getDatasetMeta(1);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.font = 'bold 11px Arial';
+    for(let i=0;i<labelsCount;i++){
+      const total = (dsReal[i] || 0) + (dsPend[i] || 0);
+      if(total <= 0) continue;
+      const bar = topMeta.data[i];
+      if(!bar) continue;
+      const x = bar.x;
+      const y = Math.max(bar.y - 4, chart.chartArea.top + 12);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#212529';
+      ctx.strokeText(String(total), x, y);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(String(total), x, y);
+    }
+    ctx.restore();
+  }
+};
+
+Chart.register(ChartDataLabels, totalTopLabelsPlugin);
+Chart.defaults.set('plugins.datalabels', {
+  color: '#fff',
+  font: {weight: 'bold', size: 10},
+  formatter: v => v > 0 ? v : ''
+});
+
+const lSet = Object.keys(set);
+new Chart(document.getElementById('chartSetor'), {
+  type:'bar',
+  data:{labels:lSet,datasets:[
+    {label:'REALIZADO',data:lSet.map(s=>set[s].real),backgroundColor:'#198754'},
+    {label:'PENDENTE',data:lSet.map(s=>set[s].pend),backgroundColor:'#dc3545'}
+  ]},
+  options:{
+    responsive:true,
+    maintainAspectRatio:false,
+    scales:{x:{stacked:true},y:{stacked:true,display:false}},
+    plugins:{
+      legend:{display:false},
+      datalabels:{
+        display:(ctx)=>(ctx.dataset.data[ctx.dataIndex] || 0) > 0,
+        color:'#fff',
+        anchor:'center',
+        align:'center',
+        textStrokeColor:'#212529',
+        textStrokeWidth:3
+      }
+    }
+  }
+});
+
+const stLab=[], stVal=[], stCor=[];
+if(realPrazo){stLab.push('REALIZADO');stVal.push(realPrazo);stCor.push('#198754');}
+if(realAtraso){stLab.push('REALIZADO ATRASO');stVal.push(realAtraso);stCor.push('#ffc107');}
+if(bloqueadas){stLab.push('BLOQUEADA');stVal.push(bloqueadas);stCor.push('#dc3545');}
+new Chart(document.getElementById('chartStatus'),{
+  type:'doughnut',
+  data:{labels:stLab,datasets:[{data:stVal.length?stVal:[1],backgroundColor:stVal.length?stCor:['#ccc']}]},
+  options:{cutout:'60%',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}
+});
+
+new Chart(document.getElementById('chartHist'),{
+  type:'bar',
+  data:{
+    labels:hist.map(h=>h.semana),
+    datasets:[{data:hist.map(h=>h.perc),backgroundColor:'#fd7e14'}]
+  },
+  options:{
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{display:false},
+      datalabels:{
+        anchor:'end',
+        align:'top',
+        color:'#000',
+        formatter:(v,c)=>`${v}%\n(${hist[c.dataIndex].realizadas})`
+      }
+    },
+    scales:{y:{max:125,display:false}}
+  }
+});
+
+const lAtr = lSet.filter(s=>set[s].atraso>0);
+new Chart(document.getElementById('chartAtraso'),{
+  type:'bar',
+  data:{labels:lAtr.length?lAtr:['Sem atraso'],datasets:[{data:lAtr.length?lAtr.map(s=>set[s].atraso):[0],backgroundColor:'#ffc107'}]},
+  options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false}}}
+});
+
+const lPar = lSet.filter(s=>set[s].paradas>0);
+new Chart(document.getElementById('chartParadas'),{
+  type:'bar',
+  data:{labels:lPar.length?lPar:['Sem paradas'],datasets:[{data:lPar.length?lPar.map(s=>set[s].paradas):[0],backgroundColor:'#dc3545'}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{display:false}}}
+});
+
+function baixarPdf(){
+  const opt = {
+    margin:0,
+    filename:'ADERENCIA_PIT_STOP.pdf',
+    image:{type:'jpeg',quality:1},
+    html2canvas:{scale:2,useCORS:true,scrollX:0,scrollY:0},
+    jsPDF:{unit:'px',format:[794,1123],orientation:'portrait'}
+  };
+  html2pdf().set(opt).from(document.getElementById('page')).save();
+}
+</script>
+</body>
+</html>

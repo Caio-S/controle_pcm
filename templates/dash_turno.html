@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard por Turno - Gestão PCM</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #f4f6f9; }
+        .kpi-card { border-left: 5px solid #0d6efd; }
+        .chart-wrap { min-height: 320px; }
+        .pdf-header { display: none; }
+        .pdf-mode .pdf-header { display: block; }
+        .pdf-mode {
+            width: 794px !important;
+            min-height: 1123px !important;
+            background: #fff;
+            padding: 14px 18px;
+            box-sizing: border-box;
+            margin: 0 auto;
+            font-size: 0.84rem;
+        }
+        .pdf-mode .row { --bs-gutter-x: 0.9rem; --bs-gutter-y: 0.7rem; }
+        .pdf-mode .mb-4 { margin-bottom: 0.7rem !important; }
+        .pdf-mode .mb-5 { margin-bottom: 0.7rem !important; }
+        .pdf-mode .card-body { padding: 0.6rem !important; }
+        .pdf-mode .chart-wrap { min-height: 190px; }
+        .pdf-mode h6 { margin-bottom: 0.4rem; font-size: 0.88rem; }
+        .pdf-mode table { font-size: 0.72rem; }
+        .pdf-mode .no-print { display: none !important; }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow">
+        <div class="container-fluid px-4">
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-bar-chart-steps me-2"></i>PCM | Dashboard por Turno</span>
+            <div class="d-flex align-items-center gap-2">
+                <a href="/admin" class="btn btn-outline-light btn-sm"><i class="bi bi-arrow-left me-1"></i>Painel</a>
+                <a href="/logout" class="btn btn-danger btn-sm fw-bold"><i class="bi bi-box-arrow-right me-1"></i>Sair</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4 px-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm">
+                <i class="bi bi-info-circle-fill me-2"></i>{{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card shadow-sm border-0 bg-white mb-4">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-8">
+                        <h5 class="fw-bold text-primary mb-1"><i class="bi bi-upload me-2"></i>Importar Relatório CHB de Turnos</h5>
+                        <div class="text-muted small">Turno A: 07:00-15:20 | Turno B: 15:20-23:20 | Turno C: 23:20-07:20</div>
+                    </div>
+                    <div class="col-md-4 text-md-end small text-muted">
+                        Atualizado em: {{ data_geracao }}
+                    </div>
+                </div>
+                <form action="/api/upload_chb_turno" method="POST" enctype="multipart/form-data" class="row g-2 mt-1">
+                    <div class="col-md-9">
+                        <input type="file" name="file" class="form-control border-primary" accept=".xlsx,.csv" required>
+                    </div>
+                    <div class="col-md-3 d-grid">
+                        <button type="submit" class="btn btn-primary fw-bold" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split me-2\'></i>Importando...';">
+                            <i class="bi bi-cloud-arrow-up-fill me-1"></i>Processar Relatório
+                        </button>
+                    </div>
+                </form>
+                {% if tem_dados %}
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <div class="small text-secondary fw-bold">
+                        Intervalo considerado: {{ stats.periodo_inicio }} até {{ stats.periodo_fim }} ({{ stats.periodo_dias }} dia(s))
+                    </div>
+                    <button type="button" id="btnPdfTurno" class="btn btn-danger btn-sm fw-bold shadow-sm" onclick="baixarDashTurnoPDF()">
+                        <i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar PDF A4
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if tem_dados %}
+        <div class="card shadow-sm border-0 bg-white mb-4 no-print">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-4">
+                        <h6 class="fw-bold text-primary mb-1"><i class="bi bi-funnel-fill me-2"></i>Filtro de Serviços</h6>
+                        <div class="small text-muted">Selecione apenas os serviços que devem aparecer no dashboard.</div>
+                    </div>
+                    <div class="col-lg-6">
+                        <label class="form-label fw-bold small text-secondary mb-1" for="filtroServicosTurno">Serviços do relatório</label>
+                        <select id="filtroServicosTurno" class="form-select border-primary fw-bold text-primary" multiple size="5"></select>
+                    </div>
+                    <div class="col-lg-2 d-grid gap-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm fw-bold" onclick="selecionarTodosServicosTurno()">
+                            <i class="bi bi-check2-square me-1"></i>Todos
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm fw-bold" onclick="aplicarFiltroServicosTurno()">
+                            <i class="bi bi-arrow-repeat me-1"></i>Aplicar
+                        </button>
+                    </div>
+                </div>
+                <div id="resumoFiltroServicosTurno" class="small text-secondary fw-bold mt-2"></div>
+            </div>
+        </div>
+
+        <div id="relatorioTurnoA4">
+        <div class="pdf-header p-2 mb-2 border-bottom text-center">
+            <h5 class="fw-bold mb-1">Dashboard de Desempenho por Turno</h5>
+            <div class="small text-muted" id="pdfFiltroTurno"></div>
+            <div class="small text-muted">Período: {{ stats.periodo_inicio }} até {{ stats.periodo_fim }} ({{ stats.periodo_dias }} dia(s))</div>
+        </div>
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card kpi-card shadow-sm border-0 bg-white h-100">
+                    <div class="card-body">
+                        <div class="small text-muted fw-bold">TOTAL DE SERVIÇOS</div>
+                        <div class="h3 fw-bold text-primary mb-0">{{ stats.total_registros }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card shadow-sm border-0 bg-white h-100">
+                    <div class="card-body">
+                        <div class="small text-muted fw-bold">MECÂNICOS ÚNICOS</div>
+                        <div class="h3 fw-bold text-success mb-0">{{ stats.mecanicos_unicos }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card shadow-sm border-0 bg-white h-100">
+                    <div class="card-body">
+                        <div class="small text-muted fw-bold">TEMPO TOTAL</div>
+                        <div class="h3 fw-bold text-dark mb-0">{{ stats.tempo_total_horas }}h</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card shadow-sm border-0 bg-white h-100">
+                    <div class="card-body">
+                        <div class="small text-muted fw-bold">PERÍODO DO RELATÓRIO</div>
+                        <div class="h6 fw-bold text-dark mb-0">{{ stats.periodo }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 bg-white h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-secondary">Comparativo de Serviços por Turno</h6>
+                        <div class="chart-wrap"><canvas id="chartTurnos"></canvas></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 bg-white h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-secondary">Evolução de Serviços por Dia</h6>
+                        <div class="chart-wrap"><canvas id="chartDias"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 bg-white h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-secondary">Top Mecânicos por Volume</h6>
+                        <div class="chart-wrap"><canvas id="chartMecanicos"></canvas></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0 bg-white h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-secondary">Top Serviços</h6>
+                        <div class="chart-wrap"><canvas id="chartServicos"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-white mb-5">
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Turno</th>
+                            <th class="text-center">Total Serviços</th>
+                            <th class="text-center">Mecânicos Únicos</th>
+                            <th class="text-center">Serviços Distintos</th>
+                            <th class="text-center">Tempo Total (h)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyComparativoTurno">
+                        {% for item in stats.comparativo %}
+                        <tr>
+                            <td class="fw-bold">{{ item.nome }}</td>
+                            <td class="text-center fw-bold text-primary">{{ item.total }}</td>
+                            <td class="text-center">{{ item.mecanicos_unicos }}</td>
+                            <td class="text-center">{{ item.servicos_unicos }}</td>
+                            <td class="text-center">{{ item.tempo_horas }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        </div>
+        {% else %}
+        <div class="card shadow-sm border-0 bg-white">
+            <div class="card-body text-center text-muted py-5">
+                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                Nenhum relatório importado ainda. Faça o upload do CHB para gerar o dashboard.
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% if tem_dados %}
+    <script>
+        Chart.register(ChartDataLabels);
+        const labelsTurno = {{ stats.grafico_turnos_labels | tojson }};
+        const dataTurno = {{ stats.grafico_turnos | tojson }};
+        const labelsDias = {{ stats.grafico_dias_labels | tojson }};
+        const dataDias = {{ stats.grafico_dias | tojson }};
+        const topMecanicos = {{ stats.top_mecanicos | tojson }};
+        const topServicos = {{ stats.top_servicos | tojson }};
+
+        new Chart(document.getElementById('chartTurnos'), {
+            type: 'bar',
+            data: {
+                labels: labelsTurno,
+                datasets: [{ label: 'Serviços', data: dataTurno, backgroundColor: ['#0d6efd', '#198754', '#ffc107'] }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'end',
+                        color: '#212529',
+                        font: { weight: 'bold' },
+                        formatter: (value) => value
+                    }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('chartDias'), {
+            type: 'line',
+            data: {
+                labels: labelsDias,
+                datasets: [{
+                    label: 'Serviços por dia',
+                    data: dataDias,
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13,110,253,0.20)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#0d6efd'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        align: 'top',
+                        anchor: 'end',
+                        color: '#212529',
+                        font: { weight: 'bold', size: 10 },
+                        formatter: (value) => value
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('chartMecanicos'), {
+            type: 'bar',
+            data: {
+                labels: topMecanicos.map(i => i.nome.length > 26 ? i.nome.slice(0, 26) + '...' : i.nome),
+                datasets: [{ label: 'Serviços realizados', data: topMecanicos.map(i => i.total), backgroundColor: '#6f42c1' }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'right',
+                        color: '#212529',
+                        font: { weight: 'bold' },
+                        formatter: (value) => value
+                    }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('chartServicos'), {
+            type: 'bar',
+            data: {
+                labels: topServicos.map(i => i.nome.length > 30 ? i.nome.slice(0, 30) + '...' : i.nome),
+                datasets: [{ label: 'Ocorrências', data: topServicos.map(i => i.total), backgroundColor: '#fd7e14' }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'right',
+                        color: '#212529',
+                        font: { weight: 'bold' },
+                        formatter: (value) => value
+                    }
+                }
+            }
+        });
+
+        const registrosTurnoOriginais = {{ registros | tojson | safe }};
+        let chartTurnosObj = null;
+        let chartDiasObj = null;
+        let chartMecanicosObj = null;
+        let chartServicosObj = null;
+
+        function nomeServicoTurno(r) {
+            return ((r.descricao_servico || '').trim() || (r.servico || '').trim() || 'SEM SERVICO');
+        }
+
+        function nomeMecanicoTurno(r) {
+            return ((r.nome_mecanico || '').trim() || (r.mecanico || '').trim() || 'SEM MECANICO');
+        }
+
+        function duracaoMinutosTurno(inicio, fim) {
+            if (!inicio || !fim) return 0;
+            const pIni = inicio.split(':').map(Number);
+            const pFim = fim.split(':').map(Number);
+            if (pIni.length < 2 || pFim.length < 2 || pIni.some(Number.isNaN) || pFim.some(Number.isNaN)) return 0;
+            let minIni = pIni[0] * 60 + pIni[1];
+            let minFim = pFim[0] * 60 + pFim[1];
+            let mins = minFim - minIni;
+            if (mins < 0) mins += 24 * 60;
+            return Math.max(mins, 0);
+        }
+
+        function formatarDataIsoTurno(dataIso) {
+            if (!dataIso || dataIso.length !== 10) return dataIso || '';
+            const partes = dataIso.split('-');
+            return `${partes[2]}/${partes[1]}/${partes[0]}`;
+        }
+
+        function contarValoresTurno(lista, extrator) {
+            const mapa = new Map();
+            lista.forEach(item => {
+                const chave = extrator(item);
+                mapa.set(chave, (mapa.get(chave) || 0) + 1);
+            });
+            return [...mapa.entries()]
+                .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+                .map(([nome, total]) => ({ nome, total }));
+        }
+
+        function gerarStatsTurnoFront(registros) {
+            const turnos = {
+                A: { nome: 'Turno A (07:00 - 15:20)', total: 0, mecanicos: new Set(), servicos: new Set(), tempo: 0 },
+                B: { nome: 'Turno B (15:20 - 23:20)', total: 0, mecanicos: new Set(), servicos: new Set(), tempo: 0 },
+                C: { nome: 'Turno C (23:20 - 07:20)', total: 0, mecanicos: new Set(), servicos: new Set(), tempo: 0 },
+                'N/I': { nome: 'Sem Turno Identificado', total: 0, mecanicos: new Set(), servicos: new Set(), tempo: 0 }
+            };
+            const contDias = new Map();
+            const datas = [];
+
+            registros.forEach(r => {
+                const turno = turnos[r.turno] ? r.turno : 'N/I';
+                const mecanico = nomeMecanicoTurno(r);
+                const servico = nomeServicoTurno(r);
+                turnos[turno].total += 1;
+                turnos[turno].mecanicos.add(mecanico);
+                turnos[turno].servicos.add(servico);
+                turnos[turno].tempo += duracaoMinutosTurno(r.hora_inicial || '', r.hora_final || '');
+
+                if ((r.data_execucao || '').trim()) {
+                    datas.push(r.data_execucao);
+                    contDias.set(r.data_execucao, (contDias.get(r.data_execucao) || 0) + 1);
+                }
+            });
+
+            const datasOrdenadas = [...new Set(datas)].sort();
+            const periodoInicio = datasOrdenadas.length ? formatarDataIsoTurno(datasOrdenadas[0]) : '';
+            const periodoFim = datasOrdenadas.length ? formatarDataIsoTurno(datasOrdenadas[datasOrdenadas.length - 1]) : '';
+            const periodo = periodoInicio ? `${periodoInicio} a ${periodoFim}` : 'Sem dados';
+            const periodoDias = datasOrdenadas.length
+                ? Math.floor((new Date(datasOrdenadas[datasOrdenadas.length - 1]) - new Date(datasOrdenadas[0])) / 86400000) + 1
+                : 0;
+
+            return {
+                total_registros: registros.length,
+                mecanicos_unicos: new Set(registros.map(nomeMecanicoTurno)).size,
+                tempo_total_horas: Math.round((Object.values(turnos).reduce((acc, t) => acc + t.tempo, 0) / 60) * 10) / 10,
+                periodo,
+                periodo_inicio: periodoInicio,
+                periodo_fim: periodoFim,
+                periodo_dias: periodoDias,
+                comparativo: ['A', 'B', 'C', 'N/I'].map(chave => ({
+                    nome: turnos[chave].nome,
+                    total: turnos[chave].total,
+                    mecanicos_unicos: turnos[chave].mecanicos.size,
+                    servicos_unicos: turnos[chave].servicos.size,
+                    tempo_horas: Math.round((turnos[chave].tempo / 60) * 10) / 10
+                })),
+                top_mecanicos: contarValoresTurno(registros, nomeMecanicoTurno).slice(0, 10),
+                top_servicos: contarValoresTurno(registros, nomeServicoTurno).slice(0, 10),
+                grafico_turnos_labels: ['Turno A', 'Turno B', 'Turno C'],
+                grafico_turnos: [turnos.A.total, turnos.B.total, turnos.C.total],
+                grafico_dias_labels: datasOrdenadas.map(d => formatarDataIsoTurno(d).slice(0, 5)),
+                grafico_dias: datasOrdenadas.map(d => contDias.get(d) || 0)
+            };
+        }
+
+        function atualizarKpisTurno(stats) {
+            const valores = document.querySelectorAll('#relatorioTurnoA4 .kpi-card .card-body > div:last-child');
+            if (valores[0]) valores[0].innerText = stats.total_registros;
+            if (valores[1]) valores[1].innerText = stats.mecanicos_unicos;
+            if (valores[2]) valores[2].innerText = `${stats.tempo_total_horas}h`;
+            if (valores[3]) valores[3].innerText = stats.periodo;
+            const pdfPeriodo = document.querySelector('#relatorioTurnoA4 .pdf-header .small.text-muted:not(#pdfFiltroTurno)');
+            if (pdfPeriodo) pdfPeriodo.innerText = `Periodo: ${stats.periodo_inicio || '-'} ate ${stats.periodo_fim || '-'} (${stats.periodo_dias} dia(s))`;
+            const pdfFiltro = document.getElementById('pdfFiltroTurno');
+            if (pdfFiltro) pdfFiltro.innerText = document.getElementById('resumoFiltroServicosTurno').innerText;
+        }
+
+        function atualizarTabelaTurno(stats) {
+            const tbody = document.getElementById('tbodyComparativoTurno');
+            tbody.innerHTML = stats.comparativo.map(item => `
+                <tr>
+                    <td class="fw-bold">${item.nome}</td>
+                    <td class="text-center fw-bold text-primary">${item.total}</td>
+                    <td class="text-center">${item.mecanicos_unicos}</td>
+                    <td class="text-center">${item.servicos_unicos}</td>
+                    <td class="text-center">${item.tempo_horas}</td>
+                </tr>
+            `).join('');
+        }
+
+        function destruirGraficoExistente(id) {
+            const grafico = Chart.getChart(document.getElementById(id));
+            if (grafico) grafico.destroy();
+        }
+
+        function renderizarGraficosTurno(stats) {
+            ['chartTurnos', 'chartDias', 'chartMecanicos', 'chartServicos'].forEach(destruirGraficoExistente);
+
+            chartTurnosObj = new Chart(document.getElementById('chartTurnos'), {
+                type: 'bar',
+                data: { labels: stats.grafico_turnos_labels, datasets: [{ label: 'Servicos', data: stats.grafico_turnos, backgroundColor: ['#0d6efd', '#198754', '#ffc107'] }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'end', color: '#212529', font: { weight: 'bold' }, formatter: value => value } } }
+            });
+
+            chartDiasObj = new Chart(document.getElementById('chartDias'), {
+                type: 'line',
+                data: { labels: stats.grafico_dias_labels, datasets: [{ label: 'Servicos por dia', data: stats.grafico_dias, borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.20)', fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#0d6efd' }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { align: 'top', anchor: 'end', color: '#212529', font: { weight: 'bold', size: 10 }, formatter: value => value } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+            });
+
+            chartMecanicosObj = new Chart(document.getElementById('chartMecanicos'), {
+                type: 'bar',
+                data: { labels: stats.top_mecanicos.map(i => i.nome.length > 26 ? i.nome.slice(0, 26) + '...' : i.nome), datasets: [{ label: 'Servicos realizados', data: stats.top_mecanicos.map(i => i.total), backgroundColor: '#6f42c1' }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'right', color: '#212529', font: { weight: 'bold' }, formatter: value => value } } }
+            });
+
+            chartServicosObj = new Chart(document.getElementById('chartServicos'), {
+                type: 'bar',
+                data: { labels: stats.top_servicos.map(i => i.nome.length > 30 ? i.nome.slice(0, 30) + '...' : i.nome), datasets: [{ label: 'Ocorrencias', data: stats.top_servicos.map(i => i.total), backgroundColor: '#fd7e14' }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'right', color: '#212529', font: { weight: 'bold' }, formatter: value => value } } }
+            });
+        }
+
+        function atualizarDashboardTurno(registrosFiltrados) {
+            const stats = gerarStatsTurnoFront(registrosFiltrados);
+            atualizarKpisTurno(stats);
+            atualizarTabelaTurno(stats);
+            renderizarGraficosTurno(stats);
+        }
+
+        function servicosSelecionadosTurno() {
+            return [...document.getElementById('filtroServicosTurno').selectedOptions].map(opt => opt.value);
+        }
+
+        function aplicarFiltroServicosTurno() {
+            const selecionados = servicosSelecionadosTurno();
+            const registrosFiltrados = selecionados.length
+                ? registrosTurnoOriginais.filter(r => selecionados.includes(nomeServicoTurno(r)))
+                : [];
+            const resumo = document.getElementById('resumoFiltroServicosTurno');
+            resumo.innerText = selecionados.length
+                ? `${registrosFiltrados.length} registro(s) em ${selecionados.length} servico(s) selecionado(s).`
+                : 'Nenhum servico selecionado.';
+            atualizarDashboardTurno(registrosFiltrados);
+        }
+
+        function selecionarTodosServicosTurno() {
+            document.querySelectorAll('#filtroServicosTurno option').forEach(opt => opt.selected = true);
+            aplicarFiltroServicosTurno();
+        }
+
+        function prepararFiltroServicosTurno() {
+            const select = document.getElementById('filtroServicosTurno');
+            const servicos = [...new Set(registrosTurnoOriginais.map(nomeServicoTurno))].sort((a, b) => a.localeCompare(b));
+            select.innerHTML = '';
+            servicos.forEach(servico => {
+                const option = document.createElement('option');
+                option.value = servico;
+                option.textContent = servico;
+                option.selected = true;
+                select.appendChild(option);
+            });
+            select.addEventListener('change', aplicarFiltroServicosTurno);
+            aplicarFiltroServicosTurno();
+        }
+
+        prepararFiltroServicosTurno();
+
+        function baixarDashTurnoPDF() {
+            const el = document.getElementById('relatorioTurnoA4');
+            const btn = document.getElementById('btnPdfTurno');
+            if (!el || !btn) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Gerando PDF...';
+            el.classList.add('pdf-mode');
+
+            setTimeout(() => {
+                try {
+                    const opt = {
+                        margin: 0,
+                        filename: `dashboard_turno_${new Date().toISOString().slice(0, 10)}.pdf`,
+                        image: { type: 'jpeg', quality: 1.0 },
+                        html2canvas: { scale: 2, useCORS: true, scrollX: 0, scrollY: 0 },
+                        jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' }
+                    };
+                    html2pdf().set(opt).from(el).save().then(() => {
+                        el.classList.remove('pdf-mode');
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar PDF A4';
+                    });
+                } catch (e) {
+                    alert('Não foi possível gerar o PDF. Tente novamente.');
+                    el.classList.remove('pdf-mode');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar PDF A4';
+                }
+            }, 180);
+        }
+    </script>
+    {% endif %}
+</body>
+</html>

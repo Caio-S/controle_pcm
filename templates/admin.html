@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Admin - Gestão PCM</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; transition: background-color 0.3s, color 0.3s; background-color: #f4f6f9; }
+        .nav-pills .nav-link.active { background-color: #00509E; }
+        .nav-pills .nav-link { color: #495057; font-weight: bold; }
+        .table-excel th { border-bottom: 2px solid #000; color: #00509E; user-select: none; }
+        .table-excel th:hover { background-color: rgba(0,0,0,0.05); }
+        .linha-frota:hover { background-color: rgba(0,0,0,0.05) !important; transition: 0.2s; }
+        .card-filtro { border-left: 5px solid #6c757d; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; }
+        .card-filtro:hover { transform: scale(1.02); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+        .card-filtro.ativo { border-left-color: #00509E !important; transform: scale(1.05); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; background-color: #e9ecef !important; }
+
+        .accordion-button:not(.collapsed) { background-color: #00509E; color: white; }
+        .accordion-button { font-weight: bold; font-size: 1.1rem; }
+
+        [data-bs-theme="dark"] body { background-color: #212529; }
+        [data-bs-theme="dark"] .card, [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .table-excel th { color: #6ea8fe; border-bottom: 2px solid #6ea8fe; }
+        [data-bs-theme="dark"] .table-striped>tbody>tr:nth-of-type(odd)>* { background-color: #2b3035; color: #fff; }
+        [data-bs-theme="dark"] .table-striped>tbody>tr:nth-of-type(even)>* { background-color: #343a40; color: #fff; }
+        [data-bs-theme="dark"] .table td { color: #f8f9fa; border-color: #495057; }
+        [data-bs-theme="dark"] .nav-pills .nav-link { color: #dee2e6; }
+        [data-bs-theme="dark"] .bg-light { background-color: #343a40 !important; }
+        [data-bs-theme="dark"] .card-filtro.ativo { background-color: #495057 !important; border-left-color: #6ea8fe !important; }
+        [data-bs-theme="dark"] .accordion-item { background-color: #2b3035; border-color: #495057; }
+        [data-bs-theme="dark"] .accordion-button { background-color: #343a40; color: #fff; }
+        [data-bs-theme="dark"] .accordion-button:not(.collapsed) { background-color: #00509E; color: white; }
+    </style>
+</head>
+<body class="bg-light">
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow">
+        <div class="container-fluid px-4">
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-gear-fill me-2"></i>PCM | {{ 'Administrador' if usuario_admin else usuario_perfil_nome }}</span>
+            <div class="d-flex align-items-center">
+                <button id="btnDarkMode" class="btn btn-warning btn-sm me-2 fw-bold text-dark shadow-sm" onclick="toggleDarkMode()">
+    <i class="bi bi-moon-fill"></i>
+</button>
+                <span class="navbar-text me-3 text-light">Olá, {{ 'Admin' if usuario_admin else usuario_perfil_nome }}</span>
+                <a href="/logout" class="btn btn-danger btn-sm fw-bold"><i class="bi bi-box-arrow-right me-1"></i>Sair</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4 px-4">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm">
+                <i class="bi bi-check-circle-fill me-2"></i> {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="row">
+            <div class="col-md-2 mb-4">
+                <div class="nav flex-column nav-pills shadow-sm bg-white rounded p-2" id="v-pills-tab" role="tablist">
+                    <button class="nav-link active mb-2" id="tab-bloqueados" data-bs-toggle="pill" data-bs-target="#bloqueados" type="button"><i class="bi bi-tools me-2"></i>Frotas Bloqueadas</button>
+                    <button class="nav-link mb-2" id="tab-novo" data-bs-toggle="pill" data-bs-target="#novo" type="button"><i class="bi bi-lock-fill me-2"></i>Novo Bloqueio</button>
+                    {% if usuario_admin or perm_bloqueios %}
+                    <button class="nav-link mb-2" id="tab-historico" data-bs-toggle="pill" data-bs-target="#historico" type="button"><i class="bi bi-clock-history me-2"></i>Consultar Histórico</button>
+                    {% else %}
+                    <button class="nav-link mb-2 disabled" id="tab-historico" type="button" disabled title="Sem permissão"><i class="bi bi-clock-history me-2"></i>Consultar Histórico</button>
+                    {% endif %}
+                    <button class="nav-link mb-2 text-primary border border-primary mt-2" id="tab-frota" data-bs-toggle="pill" data-bs-target="#gestao-frota" type="button"><i class="bi bi-truck me-2"></i>Gestão de Frotas</button>
+                    {% if usuario_admin %}
+                    <button class="nav-link mb-2 text-primary border border-primary" id="tab-perfis" data-bs-toggle="pill" data-bs-target="#gestao-perfis" type="button"><i class="bi bi-person-badge me-2"></i>Perfis de Acesso</button>
+                    {% endif %}
+
+                    <hr>
+
+                    <a href="/programacao" class="nav-link text-dark text-start border mb-2" onclick="return validarPermissaoLink('programacao')"><i class="bi bi-calendar-week-fill text-warning me-2"></i>Programação Semanal</a>
+                    <a href="/lavagem" class="nav-link text-dark text-start border mb-2" onclick="return validarPermissaoLink('lavagem')"><i class="bi bi-droplet-half text-info me-2"></i>Lavagem / Lubrificação</a>
+
+                    <a href="/externos" class="nav-link text-primary text-start border border-primary fw-bold shadow-sm mb-3" onclick="return validarPermissaoLink('externos')">
+                        <i class="bi bi-cone-striped me-2"></i>Serviços Externos
+                    </a>
+                    <a href="/dash_turno" class="nav-link text-dark text-start border mb-2" onclick="return validarPermissaoLink('dash_turno')">
+                        <i class="bi bi-bar-chart-steps me-2"></i>Dashboard por Turno
+                    </a>
+                    <a href="/dash_os" class="nav-link text-dark text-start border mb-2" onclick="return validarPermissaoLink('dash_turno')">
+                        <i class="bi bi-clipboard2-data-fill me-2"></i>Dashboard de OS
+                    </a>
+
+                    <a href="/abastecimentos" class="nav-link text-dark text-start border mb-2" onclick="return validarPermissaoLink('abastecimentos')">
+                        <i class="bi bi-fuel-pump me-1"></i>Abastecimentos
+                    </a>
+
+                    <a href="/analises" class="nav-link text-dark text-start border mb-2" onclick="return validarPermissaoLink('analises')">
+                        <i class="bi bi-eyedropper me-2"></i>Análises Críticas
+                    </a>
+
+                    <a href="/ferramentaria" class="nav-link text-dark text-start border mb-2" onclick="return validarPermissaoLink('ferramentaria')">
+                        <i class="bi bi-hammer me-2"></i>Ferramentaria
+                    </a>
+
+                    {% if usuario_admin %}
+                    <a href="/reforma" class="nav-link text-warning text-start border border-warning fw-bold shadow-sm mb-2">
+                        <i class="bi bi-wrench-adjustable-circle-fill me-2"></i>Reforma de Máquinas
+                    </a>
+                    {% endif %}
+
+                    {% if usuario_admin or perm_compras %}
+                    <a href="/compras" class="nav-link text-dark text-start border mb-2">
+                        <i class="bi bi-cart3 me-2 text-primary"></i>Compras & Pedidos
+                    </a>
+                    {% endif %}
+
+                    <a href="/relatorio" target="_blank" class="nav-link text-success border border-success text-center"><i class="bi bi-file-earmark-pdf-fill me-2"></i>Gerar Relatório PDF</a>
+                </div>
+            </div>
+
+            <div class="col-md-10">
+                <div class="tab-content bg-white shadow-sm rounded p-4 border" id="v-pills-tabContent">
+
+                    <div class="tab-pane fade show active" id="bloqueados">
+                        <div class="d-flex flex-wrap gap-3 mb-4">
+                            <div class="bg-light p-3 rounded shadow-sm card-filtro ativo" onclick="filtrarPorMotivo('TODOS', this)">
+                                <h6 class="text-muted mb-0 fw-bold">TOTAL BLOQUEADA</h6>
+                                <h3 class="mb-0 text-primary fw-bold">{{ total }}</h3>
+                            </div>
+                            {% for motivo, qtd in contagem.items() %}
+                            <div class="bg-light p-3 rounded shadow-sm card-filtro" onclick="filtrarPorMotivo('{{ motivo }}', this)">
+                                <h6 class="text-muted mb-0 fw-bold">{{ motivo }}</h6>
+                                <h3 class="mb-0 text-secondary fw-bold">{{ qtd }}</h3>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="text-primary mb-0" id="tituloTabelaAtivos"><i class="bi bi-tools me-2"></i>Frotas na Oficina</h4>
+                            <div class="input-group w-50 shadow-sm">
+                                <span class="input-group-text bg-white text-primary border-secondary"><i class="bi bi-search"></i></span>
+                                <input type="text" id="buscaAtivos" class="form-control border-start-0 border-secondary bg-white text-body" placeholder="Pesquisar frota..." onkeyup="pesquisarTabelaGeral('buscaAtivos')">
+                            </div>
+                        </div>
+
+                        <div class="accordion" id="accordionEspecialidades">
+                            {% for esp, frotas_lista in ativos.items() %}
+                            <div class="accordion-item mb-3 shadow-sm border rounded">
+                                <h2 class="accordion-header" id="heading-{{ loop.index }}">
+                                    <button class="accordion-button rounded" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ loop.index }}">
+                                        <i class="bi bi-tags-fill me-2"></i> {{ esp }}
+                                        <span class="badge bg-light text-dark ms-2 shadow-sm">{{ frotas_lista|length }}</span>
+                                    </button>
+                                </h2>
+                                <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse show" aria-labelledby="heading-{{ loop.index }}">
+                                    <div class="accordion-body p-0 table-responsive">
+                                        <table class="table table-hover align-middle table-excel mb-0" id="tabelaAtivos-{{ loop.index }}" data-ordem="asc">
+                                            <thead>
+                                                <tr class="bg-light">
+                                                    <th style="cursor: pointer; width: 15%; padding-left: 15px;" onclick="ordenarTabelaGeral('tabelaAtivos-{{ loop.index }}', 0, 'numero')">FROTA <i class="bi bi-arrow-down-up small"></i></th>
+                                                    <th style="width: 35%">DESCRIÇÃO</th>
+                                                    <th style="width: 25%">MOTIVO(S)</th>
+                                                    <th style="cursor: pointer; width: 10%" onclick="ordenarTabelaGeral('tabelaAtivos-{{ loop.index }}', 3, 'data')">ENTRADA <i class="bi bi-arrow-down-up small"></i></th>
+                                                    <th class="text-center" style="width: 15%">AÇÕES</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for item in frotas_lista %}
+                                                <tr class="linha-dados-ativo">
+                                                    <td class="fw-bold fs-6 frota-id-coluna" style="padding-left: 15px;">{{ item.id_frota }}</td>
+                                                    {% if item.descricao %}
+                                                        <td>{{ item.descricao }}</td>
+                                                    {% else %}
+                                                        <td class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i>SEM CADASTRO</td>
+                                                    {% endif %}
+                                                    <td class="motivo-texto text-danger fw-bold">{{ item.motivo }}</td>
+                                                    <td>{{ item.data_bloqueio }}</td>
+                                                    <td class="text-center">
+                                                        {% if usuario_admin or perm_bloqueios %}
+                                                        <button type="button" class="btn btn-warning btn-sm fw-bold me-1" data-bs-toggle="modal" data-bs-target="#modalEditar{{ item.id_frota }}"><i class="bi bi-pencil-square"></i></button>
+                                                        <button type="button" class="btn btn-success btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalLiberar{{ item.id_frota }}"><i class="bi bi-unlock-fill"></i></button>
+                                                        {% else %}
+                                                        <button type="button" class="btn btn-warning btn-sm fw-bold me-1" disabled title="Sem permissão"><i class="bi bi-pencil-square"></i></button>
+                                                        <button type="button" class="btn btn-success btn-sm fw-bold" disabled title="Sem permissão"><i class="bi bi-unlock-fill"></i></button>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+
+                                                <div class="modal fade" id="modalEditar{{ item.id_frota }}" tabindex="-1">
+                                                    <div class="modal-dialog modal-dialog-centered">
+                                                        <div class="modal-content">
+                                                            <div class="modal-header bg-warning">
+                                                                <h5 class="modal-title text-dark"><i class="bi bi-pencil-square me-2"></i>Editar Registro - {{ item.id_frota }}</h5>
+                                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                            </div>
+                                                            <form action="/editar" method="POST">
+                                                                <div class="modal-body text-dark">
+                                                                    <input type="hidden" name="id_bloqueio" value="{{ item.ids }}">
+                                                                    <label class="form-label fw-bold small mt-2">Motivo do Bloqueio</label>
+                                                                    <input type="text" name="novo_motivo" class="form-control mb-3" value="{{ item.motivo }}" required>
+                                                                    <label class="form-label fw-bold small">Data de Entrada Oficial</label>
+                                                                    <input type="text" name="nova_data" class="form-control" value="{{ item.data_bloqueio }}" required>
+                                                                </div>
+                                                                <div class="modal-footer"><button type="submit" class="btn btn-warning fw-bold text-dark">Salvar Alterações</button></div>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="modal fade" id="modalLiberar{{ item.id_frota }}" tabindex="-1">
+                                                    <div class="modal-dialog modal-dialog-centered">
+                                                        <div class="modal-content">
+                                                            <div class="modal-header bg-success text-white">
+                                                                <h5 class="modal-title"><i class="bi bi-unlock-fill me-2"></i>Liberar Frota - {{ item.id_frota }}</h5>
+                                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                                            </div>
+                                                            <form action="/desbloquear" method="POST">
+                                                                <div class="modal-body text-dark">
+                                                                    <input type="hidden" name="id_bloqueio" value="{{ item.ids }}">
+                                                                    <textarea name="observacao" class="form-control" rows="3" placeholder="Observação Geral (Opcional)"></textarea>
+                                                                </div>
+                                                                <div class="modal-footer"><button type="submit" class="btn btn-success fw-bold">Confirmar</button></div>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <p class="text-center text-muted mt-5">Nenhuma frota bloqueada na oficina.</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="novo">
+                        <h4 class="mb-4 text-primary"><i class="bi bi-lock-fill me-2"></i>Registrar Novo Bloqueio</h4>
+                        <form action="/bloquear" method="POST" id="formBloqueio">
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Código da Frota</label>
+                                    <input type="text" name="frota" class="form-control" list="listaFrotasBloqueio" required placeholder="Digite a frota...">
+                                    <datalist id="listaFrotasBloqueio">
+                                        {% for f in frotas_cadastradas %}
+                                            <option value="{{ f.id_frota }}">{{ f.descricao }}</option>
+                                        {% endfor %}
+                                    </datalist>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Status (Oficina)</label>
+                                    <select name="status" class="form-select" required>
+                                        <option value="AGUARDANDO EQUIP.">AGUARDANDO EQUIP.</option>
+                                        <option value="REFORMA">REFORMA</option>
+                                        <option value="REVISÃO GERAL">REVISÃO GERAL</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row mb-4">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Motivo Principal</label>
+                                    <select name="motivo1" id="selectMotivo1" class="form-select" onchange="verificarNovo('selectMotivo1', 'inputMotivo1')" required>
+                                        <option value="PREVENTIVA">PREVENTIVA</option>
+                                        <option value="TROCA DE OLEO">TROCA DE OLEO</option>
+                                        <option value="ANALISE DE OLEO">ANALISE DE OLEO</option>
+                                        <option value="PENDÊNCIA NO RASTREADOR">PENDÊNCIA NO RASTREADOR</option>
+                                        <option value="NOVO" class="fw-bold text-primary">+ ADICIONAR MOTIVO</option>
+                                    </select>
+                                    <input type="text" name="motivo1_novo" id="inputMotivo1" class="form-control mt-2 d-none" placeholder="Digite o novo motivo...">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Motivo Adicional</label>
+                                    <select name="motivo2" id="selectMotivo2" class="form-select" onchange="verificarNovo('selectMotivo2', 'inputMotivo2')">
+                                        <option value="NENHUM">NENHUM</option>
+                                        <option value="PREVENTIVA">PREVENTIVA</option>
+                                        <option value="TROCA DE OLEO">TROCA DE OLEO</option>
+                                        <option value="NOVO" class="fw-bold text-primary">+ ADICIONAR MOTIVO</option>
+                                    </select>
+                                    <input type="text" name="motivo2_novo" id="inputMotivo2" class="form-control mt-2 d-none" placeholder="Digite o novo motivo...">
+                                </div>
+                            </div>
+                            <button type="submit" id="btnSubmit" class="btn btn-danger fw-bold"><i class="bi bi-lock-fill me-2"></i>BLOQUEAR FROTA</button>
+                        </form>
+                    </div>
+
+                    <div class="tab-pane fade" id="historico">
+                        {% if usuario_admin or perm_bloqueios %}
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h4 class="text-primary mb-0"><i class="bi bi-search me-2"></i>Consulta Rápida</h4>
+                            <div class="input-group w-50 shadow-sm">
+                                <span class="input-group-text bg-white border-secondary"><i class="bi bi-search text-primary"></i></span>
+                                <input type="text" id="inputPesquisa" class="form-control border-start-0 border-secondary bg-white text-body" placeholder="Buscar frota ou descrição..." onkeyup="filtrarTabela()">
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table align-middle" id="tabelaHistorico">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Frota</th>
+                                        <th>Descrição</th>
+                                        <th class="text-center">Total de Ocorrências</th>
+                                        <th class="text-center">Expandir</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for frota, dados in historico_agrupado.items() %}
+                                    <tr class="linha-frota" data-bs-toggle="collapse" data-bs-target="#hist-{{ frota }}" style="cursor: pointer;">
+                                        <td class="fw-bold text-primary fs-5">{{ frota }}</td>
+                                        <td class="descricao-frota">{{ dados.descricao }}</td>
+                                        <td class="text-center"><span class="badge bg-secondary rounded-pill">{{ dados.eventos|length }} registros</span></td>
+                                        <td class="text-center"><i class="bi bi-chevron-down text-muted"></i></td>
+                                    </tr>
+                                    <tr class="linha-detalhe">
+                                        <td colspan="4" class="p-0 border-0">
+                                            <div class="collapse bg-light border-bottom border-primary" id="hist-{{ frota }}">
+                                                <div class="p-4">
+                                                    <table class="table table-sm table-bordered bg-white mb-0 shadow-sm" style="font-size: 0.9rem;">
+                                                        <thead class="table-secondary">
+                                                            <tr>
+                                                                <th>Motivo Específico</th>
+                                                                <th>Status Fim</th>
+                                                                <th class="text-center">Bloqueio</th>
+                                                                <th class="text-center">Desbloqueio</th>
+                                                                <th>Observação</th>
+                                                                <th class="text-center">Ação</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for ev in dados.eventos %}
+                                                            <tr>
+                                                                <td class="fw-bold">{{ ev.motivo }}</td>
+                                                                <td>{{ ev.status_oficina }}</td>
+                                                                <td class="text-center">{{ ev.data_bloqueio }}</td>
+                                                                <td class="text-center fw-bold {% if not ev.data_desbloqueio %}text-danger{% else %}text-success{% endif %}">
+                                                                    {{ ev.data_desbloqueio if ev.data_desbloqueio else 'ATIVO' }}
+                                                                </td>
+                                                                <td class="text-muted fst-italic">{{ ev.observacao if ev.observacao else '-' }}</td>
+                                                                <td class="text-center">
+                                                                    <a href="/excluir_historico/{{ ev.id }}" class="btn btn-outline-danger btn-sm border-0" onclick="return confirm('ATENÇÃO: Deseja APAGAR este registo histórico permanentemente?')"><i class="bi bi-trash3-fill"></i></a>
+                                                                </td>
+                                                            </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-lock-fill fs-1 d-block mb-3"></i>
+                            Seu perfil não tem permissão para consultar o histórico de bloqueios.
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="tab-pane fade" id="gestao-frota">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-3">
+                                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #0d6efd;">
+                                    <div class="card-body text-center py-3">
+                                        <h6 class="text-muted fw-bold small mb-1">TOTAL DE FROTAS</h6>
+                                        <h2 class="fw-bold text-primary mb-0">{{ frotas_cadastradas|length }}</h2>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-9 d-flex align-items-center justify-content-end gap-3">
+                                <input type="text" id="buscaBancoFrota" class="form-control border-secondary fw-bold text-primary w-50 shadow-sm" placeholder="Pesquisar placa, modelo, setor..." onkeyup="filtrarFrotasBanco()">
+                            </div>
+                        </div>
+
+                        <div class="card shadow-sm border-0 mb-5">
+                            <div class="card-header bg-primary text-white fw-bold"><i class="bi bi-plus-circle me-2"></i>Inserir ou Atualizar Máquina</div>
+                            <div class="card-body bg-light">
+                                <form id="formCadastroFrota" action="/cadastrar_frota" method="POST">
+                                    <div class="row mb-3">
+                                        <div class="col-md-2">
+                                            <label class="form-label fw-bold">ID / Placa</label>
+                                            <input type="text" name="frota" id="inputCadFrota" class="form-control fw-bold" required placeholder="Ex: 60817">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Descrição Completa</label>
+                                            <input type="text" name="descricao" id="inputCadDesc" class="form-control" required placeholder="Ex: TRATOR JOHN DEERE">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Grupo (Macro)</label>
+                                            <input type="text" name="agrupamento" id="inputCadAgrup" class="form-control" list="listaAgrupamentos" placeholder="Ex: TRATOR">
+                                            <datalist id="listaAgrupamentos">
+                                                {% for a in agrupamentos_unicos %} <option value="{{ a.agrupamento }}"></option> {% endfor %}
+                                            </datalist>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold text-success">Especialidade (Micro)</label>
+                                            <input type="text" name="especialidade" id="inputCadEsp" class="form-control border-success" list="listaEspecialidades" placeholder="Ex: TRATOR PNEU">
+                                            <datalist id="listaEspecialidades">
+                                                {% for e in especialidades_unicas %} <option value="{{ e.especialidade }}"></option> {% endfor %}
+                                            </datalist>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Setor</label>
+                                            <input type="text" name="setor" id="inputCadSetor" class="form-control" list="listaSetores" placeholder="Ex: PREPARO">
+                                            <datalist id="listaSetores">
+                                                {% for s in setores_unicos %} <option value="{{ s.setor }}"></option> {% endfor %}
+                                            </datalist>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-primary fw-bold" onclick="prepararConfirmacaoFrota()"><i class="bi bi-save-fill me-2"></i>Salvar / Atualizar Equipamento</button>
+                                    <button type="button" class="btn btn-outline-secondary fw-bold ms-2" onclick="limparFormFrota()"><i class="bi bi-eraser-fill me-2"></i>Limpar Campos</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <h5 class="mb-3 text-secondary"><i class="bi bi-card-list me-2"></i>Base de Dados Atual</h5>
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-sm table-striped table-hover align-middle table-excel" id="tabelaBancoFrotas">
+                                <thead class="table-dark" style="position: sticky; top: 0; z-index: 1;">
+                                    <tr>
+                                        <th class="ps-2" style="width: 10%;">FROTA</th>
+                                        <th style="width: 30%;">DESCRIÇÃO</th>
+                                        <th style="width: 20%;">MACRO</th>
+                                        <th style="width: 20%;">MICRO</th>
+                                        <th style="width: 10%;">SETOR</th>
+                                        <th class="text-center" style="width: 10%;">AÇÃO</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for f in frotas_cadastradas %}
+                                    <tr class="linha-banco-frota">
+                                        <td class="fw-bold ps-2">{{ f.id_frota }}</td>
+                                        <td>{{ f.descricao }}</td>
+                                        <td><span class="badge bg-secondary">{{ f.agrupamento if f.agrupamento else 'GERAL' }}</span></td>
+                                        <td class="text-success fw-bold">{{ f.especialidade if f.especialidade else 'OUTROS' }}</td>
+                                        <td>{{ f.setor }}</td>
+                                        <td class="text-center">
+                                            <button class="btn btn-sm btn-outline-primary border-0" title="Editar" onclick='abrirEdicaoFrota("{{ f.id_frota }}", "{{ f.descricao }}", "{{ f.agrupamento }}", "{{ f.especialidade }}", "{{ f.setor }}")'><i class="bi bi-pencil-fill"></i></button>
+                                            <button class="btn btn-sm btn-outline-danger border-0" title="Excluir" onclick="confirmarExclusaoFrota('{{ f.id_frota }}')"><i class="bi bi-trash-fill"></i></button>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="6" class="text-center text-muted py-4">Base de dados vazia.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {% if usuario_admin %}
+                    <div class="tab-pane fade" id="gestao-perfis">
+                        <h4 class="mb-4 text-primary"><i class="bi bi-person-badge-fill me-2"></i>Gestão de Perfis de Acesso</h4>
+
+                        <div class="card shadow-sm border-0 mb-4">
+                            <div class="card-header bg-primary text-white fw-bold"><i class="bi bi-shield-check me-2"></i>Criar / Atualizar Perfil</div>
+                            <div class="card-body bg-light">
+                                <form action="/api/perfis/salvar" method="POST">
+                                    <input type="hidden" name="perfil_id" id="perfilIdEdicao">
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Nome do Perfil</label>
+                                            <input type="text" name="nome_perfil" id="nomePerfil" class="form-control fw-bold" placeholder="Ex: OPERADOR, PCM, SUPERVISOR" required>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Senha do Perfil</label>
+                                            <div class="input-group">
+                                                <input type="password" name="senha_perfil" id="senhaPerfil" class="form-control" minlength="4" placeholder="Defina a senha do perfil">
+                                                <button type="button" class="btn btn-outline-secondary" onclick="toggleSenhaPerfil()" tabindex="-1" title="Mostrar/ocultar senha">
+                                                    <i class="bi bi-eye-fill" id="iconeOlhoSenha"></i>
+                                                </button>
+                                            </div>
+                                            <small class="text-muted" id="hintSenhaPerfil">Ao atualizar, deixe em branco para manter a senha atual.</small>
+                                        </div>
+                                        <div class="col-md-12">
+                                            <label class="form-label fw-bold">Permissões</label>
+                                            <div class="d-flex flex-wrap gap-3 p-3 bg-white rounded border shadow-sm">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_bloqueios" id="permBloqueios" checked>
+                                                    <label class="form-check-label fw-bold" for="permBloqueios">Bloqueios</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_programacao" id="permProgramacao" checked>
+                                                    <label class="form-check-label fw-bold" for="permProgramacao">Programação</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_lavagem" id="permLavagem" checked>
+                                                    <label class="form-check-label fw-bold" for="permLavagem">Lavagem / Lubrificação</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_analises" id="permAnalises" checked>
+                                                    <label class="form-check-label fw-bold" for="permAnalises">Análises</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_abastecimentos" id="permAbastecimentos" checked>
+                                                    <label class="form-check-label fw-bold" for="permAbastecimentos">Abastecimentos</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_externos" id="permExternos" checked>
+                                                    <label class="form-check-label fw-bold" for="permExternos">Serviços Externos</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_ferramentaria" id="permFerramentaria">
+                                                    <label class="form-check-label fw-bold" for="permFerramentaria">Ferramentaria</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_compras" id="permCompras">
+                                                    <label class="form-check-label fw-bold" for="permCompras">Compras & Pedidos</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3">
+                                        <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-save-fill me-2"></i>Guardar Perfil</button>
+                                        <button type="button" class="btn btn-outline-secondary fw-bold ms-2" onclick="limparEdicaoPerfil()"><i class="bi bi-eraser-fill me-2"></i>Novo Perfil</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card shadow-sm border-0">
+                            <div class="card-header bg-dark text-white fw-bold"><i class="bi bi-list-check me-2"></i>Perfis Cadastrados</div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table align-middle mb-0">
+                                        <thead class="table-secondary">
+                                            <tr>
+                                                <th style="width: 20%;">Perfil</th>
+                                                <th style="width: 15%;">Senha</th>
+                                                <th style="width: 50%;">Acessos</th>
+                                                <th class="text-center" style="width: 15%;">Ação</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for p in perfis %}
+                                            <tr>
+                                                <td class="fw-bold text-primary">{{ p.nome }}</td>
+                                                <td>
+                                                    {% if p.senha_txt %}
+                                                    <div class="d-flex align-items-center gap-1">
+                                                        <code class="senha-mask">••••••</code>
+                                                        <code class="senha-txt d-none text-success fw-bold">{{ p.senha_txt }}</code>
+                                                        <button type="button" class="btn btn-link p-0 btn-sm text-muted" onclick="toggleSenhaLista(this)" title="Ver/ocultar senha">
+                                                            <i class="bi bi-eye-fill"></i>
+                                                        </button>
+                                                    </div>
+                                                    {% elif p.senha_hash %}
+                                                    <span class="badge bg-success">Definida</span>
+                                                    {% else %}
+                                                    <span class="badge bg-danger">Nao definida</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if p.acesso_bloqueios %}<span class="badge bg-primary me-1">Bloqueios</span>{% endif %}
+                                                    {% if p.acesso_programacao %}<span class="badge bg-success me-1">Programação</span>{% endif %}
+                                                    {% if p.acesso_lavagem %}<span class="badge bg-info me-1">Lavagem</span>{% endif %}
+                                                    {% if p.acesso_analises %}<span class="badge bg-warning text-dark me-1">Análises</span>{% endif %}
+                                                    {% if p.acesso_abastecimentos %}<span class="badge bg-info text-dark me-1">Abastecimentos</span>{% endif %}
+                                                    {% if p.acesso_externos %}<span class="badge bg-secondary me-1">Externos</span>{% endif %}
+                                                    {% if p.acesso_ferramentaria %}<span class="badge bg-dark me-1">Ferramentaria</span>{% endif %}
+                                                    {% if p.acesso_compras %}<span class="badge bg-primary me-1"><i class="bi bi-cart3 me-1"></i>Compras</span>{% endif %}
+                                                    {% if not p.acesso_bloqueios and not p.acesso_programacao and not p.acesso_lavagem and not p.acesso_analises and not p.acesso_abastecimentos and not p.acesso_externos and not p.acesso_ferramentaria and not p.acesso_compras %}
+                                                    <span class="text-muted">Sem acesso definido</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="text-center">
+                                                    <div class="d-flex justify-content-center gap-1">
+                                                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                                            data-id="{{ p.id }}"
+                                                            data-nome="{{ p.nome }}"
+                                                            data-bloqueios="{{ p.acesso_bloqueios }}"
+                                                            data-programacao="{{ p.acesso_programacao }}"
+                                                            data-lavagem="{{ p.acesso_lavagem }}"
+                                                            data-analises="{{ p.acesso_analises }}"
+                                                            data-abastecimentos="{{ p.acesso_abastecimentos }}"
+                                                            data-externos="{{ p.acesso_externos }}"
+                                                            data-ferramentaria="{{ p.acesso_ferramentaria }}"
+                                                            data-compras="{{ p.acesso_compras or 0 }}"
+                                                            data-compras-criar="{{ p.compras_criar if p.compras_criar is not none else 1 }}"
+                                                            data-compras-editar="{{ p.compras_editar if p.compras_editar is not none else 1 }}"
+                                                            data-compras-status="{{ p.compras_alterar_status if p.compras_alterar_status is not none else 1 }}"
+                                                            onclick="editarPerfil(this)">
+                                                            <i class="bi bi-pencil-fill"></i>
+                                                        </button>
+                                                        <form action="/api/perfis/excluir/{{ p.id }}" method="POST" onsubmit="return confirm('Deseja excluir o perfil {{ p.nome }}?')">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash-fill"></i></button>
+                                                        </form>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% else %}
+                                            <tr><td colspan="4" class="text-center text-muted py-4">Nenhum perfil cadastrado ainda.</td></tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalConfirmaFrota" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-check-circle-fill me-2"></i>Confirmar Cadastro</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-dark">
+                    <div class="p-3 border rounded text-center shadow-sm mb-2" style="background-color: #e9ecef;">
+                        <h4 class="text-primary fw-bold mb-1" id="previewFrota"></h4>
+                        <span class="badge bg-secondary mb-2" id="previewMacro"></span> <i class="bi bi-arrow-right small text-muted mx-1"></i> <span class="badge bg-success mb-2" id="previewMicro"></span>
+                        <h6 class="text-muted mb-0" id="previewDesc"></h6>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary fw-bold" onclick="document.getElementById('formCadastroFrota').submit()">Confirmar e Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const USUARIO_ADMIN = {{ 'true' if usuario_admin else 'false' }};
+        const PODE_BLOQUEIOS = {{ 'true' if (usuario_admin or perm_bloqueios) else 'false' }};
+        const PODE_PROGRAMACAO = {{ 'true' if (usuario_admin or perm_programacao) else 'false' }};
+        const PODE_LAVAGEM = {{ 'true' if (usuario_admin or perm_lavagem) else 'false' }};
+        const PODE_EXTERNOS = {{ 'true' if (usuario_admin or perm_externos) else 'false' }};
+        const PODE_ABASTECIMENTOS = {{ 'true' if (usuario_admin or perm_abastecimentos) else 'false' }};
+        const PODE_ANALISES = {{ 'true' if (usuario_admin or perm_analises) else 'false' }};
+        const PODE_FERRAMENTARIA = {{ 'true' if (usuario_admin or perm_ferramentaria) else 'false' }};
+
+        const htmlElement = document.documentElement;
+        const btnDarkMode = document.getElementById('btnDarkMode');
+
+        function avisoPermissao(msg) {
+            alert(msg || 'Você não tem permissão para esta ação.');
+            return false;
+        }
+
+        function validarPermissaoLink(destino) {
+            if (USUARIO_ADMIN) return true;
+            if (destino === 'programacao' && !PODE_PROGRAMACAO) return avisoPermissao('Seu perfil não tem permissão para acessar Programação.');
+            if (destino === 'lavagem' && !PODE_LAVAGEM) return avisoPermissao('Seu perfil não tem permissão para acessar Lavagem / Lubrificação.');
+            if (destino === 'externos' && !PODE_EXTERNOS) return avisoPermissao('Seu perfil não tem permissão para acessar Serviços Externos.');
+            if (destino === 'dash_turno' && !PODE_EXTERNOS) return avisoPermissao('Seu perfil não tem permissão para acessar Dashboard por Turno.');
+            if (destino === 'abastecimentos' && !PODE_ABASTECIMENTOS) return avisoPermissao('Seu perfil não tem permissão para acessar Abastecimentos.');
+            if (destino === 'analises' && !PODE_ANALISES) return avisoPermissao('Seu perfil não tem permissão para acessar Análises.');
+            if (destino === 'ferramentaria' && !PODE_FERRAMENTARIA) return avisoPermissao('Seu perfil não tem permissão para acessar Ferramentaria.');
+            return true;
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const tabNovo = document.getElementById('tab-novo');
+            if (tabNovo && !PODE_BLOQUEIOS && !USUARIO_ADMIN) {
+                tabNovo.removeAttribute('data-bs-toggle');
+                tabNovo.removeAttribute('data-bs-target');
+                tabNovo.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    avisoPermissao('Seu perfil não tem permissão para abrir Novo Bloqueio.');
+                    return false;
+                }, true);
+            }
+
+            const tabHistorico = document.getElementById('tab-historico');
+            if (tabHistorico && !PODE_BLOQUEIOS && !USUARIO_ADMIN) {
+                tabHistorico.removeAttribute('data-bs-toggle');
+                tabHistorico.removeAttribute('data-bs-target');
+                tabHistorico.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    avisoPermissao('Seu perfil não tem permissão para consultar o histórico de bloqueios.');
+                    return false;
+                }, true);
+            }
+        });
+
+        // MÁGICA DO MODO ESCURO (Ícone simples escuro sobre o botão amarelo)
+        if (localStorage.getItem('theme') === 'dark') {
+            htmlElement.setAttribute('data-bs-theme', 'dark');
+            if(btnDarkMode) btnDarkMode.innerHTML = '<i class="bi bi-sun-fill"></i>';
+        } else {
+            if(btnDarkMode) btnDarkMode.innerHTML = '<i class="bi bi-moon-fill"></i>';
+        }
+
+        function toggleDarkMode() {
+            if (htmlElement.getAttribute('data-bs-theme') === 'dark') {
+                htmlElement.setAttribute('data-bs-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                if(btnDarkMode) btnDarkMode.innerHTML = '<i class="bi bi-moon-fill"></i>';
+            } else {
+                htmlElement.setAttribute('data-bs-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                if(btnDarkMode) btnDarkMode.innerHTML = '<i class="bi bi-sun-fill"></i>';
+            }
+        }
+
+        function filtrarPorMotivo(motivoSelecionado, elementoClicado) {
+            let cards = document.getElementsByClassName("card-filtro");
+            for (let i = 0; i < cards.length; i++) cards[i].classList.remove("ativo");
+            elementoClicado.classList.add("ativo");
+
+            let trs = document.getElementsByClassName("linha-dados-ativo");
+            for (let i = 0; i < trs.length; i++) {
+                let textoMotivo = trs[i].getElementsByClassName("motivo-texto")[0].innerText.toUpperCase();
+                if (motivoSelecionado === 'TODOS') trs[i].style.display = "";
+                else trs[i].style.display = textoMotivo.includes(motivoSelecionado.toUpperCase()) ? "" : "none";
+            }
+        }
+
+        function pesquisarTabelaGeral(inputId) {
+            let input = document.getElementById(inputId).value.toUpperCase();
+            let trs = document.getElementsByClassName("linha-dados-ativo");
+            for (let i = 0; i < trs.length; i++) {
+                let textoLinha = trs[i].innerText.toUpperCase();
+                trs[i].style.display = textoLinha.includes(input) ? "" : "none";
+            }
+        }
+
+        function ordenarTabelaGeral(tabelaId, colunaIndex, tipo) {
+            let table = document.getElementById(tabelaId);
+            let tbody = table.querySelector("tbody");
+            let rows = Array.from(tbody.querySelectorAll("tr:not(.modal-dialog tr)"));
+            let modais = rows.filter(r => r.cells.length === 1 || r.innerHTML.includes('modal fade'));
+            let linhasDados = rows.filter(r => r.cells.length > 1 && !r.innerHTML.includes('modal fade'));
+
+            let asc = table.getAttribute("data-ordem") === "asc";
+            table.setAttribute("data-ordem", asc ? "desc" : "asc");
+
+            linhasDados.sort((a, b) => {
+                let valA = a.cells[colunaIndex].innerText.trim();
+                let valB = b.cells[colunaIndex].innerText.trim();
+                if (tipo === 'data') { valA = valA.split('/').reverse().join(''); valB = valB.split('/').reverse().join(''); }
+                else if (tipo === 'numero') { valA = parseInt(valA) || 0; valB = parseInt(valB) || 0; }
+                if (valA < valB) return asc ? 1 : -1;
+                if (valA > valB) return asc ? -1 : 1;
+                return 0;
+            });
+            linhasDados.forEach(row => tbody.appendChild(row));
+            modais.forEach(row => tbody.appendChild(row));
+        }
+
+        function verificarNovo(selectId, inputId) {
+            let select = document.getElementById(selectId);
+            let input = document.getElementById(inputId);
+            if(select.value === 'NOVO') { input.classList.remove('d-none'); input.required = true; input.focus(); }
+            else { input.classList.add('d-none'); input.required = false; }
+        }
+
+        function filtrarTabela() {
+            let input = document.getElementById("inputPesquisa").value.toUpperCase();
+            let tabela = document.getElementById("tabelaHistorico");
+            let linhasMestres = tabela.getElementsByClassName("linha-frota");
+            let linhasDetalhes = tabela.getElementsByClassName("linha-detalhe");
+            for (let i = 0; i < linhasMestres.length; i++) {
+                let textoFrota = linhasMestres[i].getElementsByTagName("td")[0].innerText.toUpperCase();
+                let textoDesc = linhasMestres[i].getElementsByTagName("td")[1].innerText.toUpperCase();
+                if (textoFrota.indexOf(input) > -1 || textoDesc.indexOf(input) > -1) {
+                    linhasMestres[i].style.display = ""; linhasDetalhes[i].style.display = "";
+                } else {
+                    linhasMestres[i].style.display = "none"; linhasDetalhes[i].style.display = "none";
+                }
+            }
+        }
+
+        // ==========================================
+        // NOVAS FUNÇÕES: GESTÃO DE FROTAS
+        // ==========================================
+        function abrirEdicaoFrota(id, desc, agrup, esp, setor) {
+            document.getElementById('inputCadFrota').value = id;
+            document.getElementById('inputCadFrota').readOnly = true;
+            document.getElementById('inputCadDesc').value = desc !== 'None' ? desc : '';
+            document.getElementById('inputCadAgrup').value = agrup !== 'None' ? agrup : '';
+            document.getElementById('inputCadEsp').value = esp !== 'None' ? esp : '';
+            document.getElementById('inputCadSetor').value = setor !== 'None' ? setor : '';
+
+            // Fazer scroll suave para o form
+            document.getElementById('formCadastroFrota').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function limparFormFrota() {
+            document.getElementById('inputCadFrota').readOnly = false;
+            document.getElementById('inputCadFrota').value = '';
+            document.getElementById('inputCadDesc').value = '';
+            document.getElementById('inputCadAgrup').value = '';
+            document.getElementById('inputCadEsp').value = '';
+            document.getElementById('inputCadSetor').value = '';
+        }
+
+        function prepararConfirmacaoFrota() {
+            let frota = document.getElementById('inputCadFrota').value.trim().toUpperCase();
+            let desc = document.getElementById('inputCadDesc').value.trim().toUpperCase();
+            let macro = document.getElementById('inputCadAgrup').value.trim().toUpperCase() || 'GERAL';
+            let micro = document.getElementById('inputCadEsp').value.trim().toUpperCase() || 'OUTROS';
+
+            if(frota === '' || desc === '') { alert('Por favor, preencha o código (ID) e a descrição da frota.'); return; }
+
+            document.getElementById('previewFrota').innerText = frota;
+            document.getElementById('previewDesc').innerText = desc;
+            document.getElementById('previewMacro').innerText = macro;
+            document.getElementById('previewMicro').innerText = micro;
+
+            new bootstrap.Modal(document.getElementById('modalConfirmaFrota')).show();
+        }
+
+        function confirmarExclusaoFrota(id) {
+            if(confirm('ATENÇÃO: Tem a certeza que pretende APAGAR a frota ' + id + ' do sistema?\n\nIsto não será possível se a frota já tiver manutenções gravadas no histórico ou na programação.')) {
+                window.location.href = '/excluir_frota/' + id;
+            }
+        }
+
+        function filtrarFrotasBanco() {
+            let input = document.getElementById("buscaBancoFrota").value.toUpperCase();
+            let trs = document.getElementsByClassName("linha-banco-frota");
+            for (let i = 0; i < trs.length; i++) {
+                let texto = trs[i].innerText.toUpperCase();
+                trs[i].style.display = texto.includes(input) ? "" : "none";
+            }
+        }
+
+        function editarPerfil(btn) {
+            document.getElementById('perfilIdEdicao').value = btn.dataset.id || '';
+            document.getElementById('nomePerfil').value = btn.dataset.nome || '';
+            document.getElementById('senhaPerfil').value = '';
+            document.getElementById('permBloqueios').checked = btn.dataset.bloqueios === '1';
+            document.getElementById('permProgramacao').checked = btn.dataset.programacao === '1';
+            document.getElementById('permLavagem').checked = btn.dataset.lavagem === '1';
+            document.getElementById('permAnalises').checked = btn.dataset.analises === '1';
+            document.getElementById('permAbastecimentos').checked = btn.dataset.abastecimentos === '1';
+            document.getElementById('permExternos').checked = btn.dataset.externos === '1';
+            document.getElementById('permFerramentaria').checked = btn.dataset.ferramentaria === '1';
+            document.getElementById('permCompras').checked = btn.dataset.compras === '1';
+            document.getElementById('hintSenhaPerfil').innerText = 'Edicao: informe senha apenas se quiser alterar.';
+            document.getElementById('nomePerfil').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            document.getElementById('nomePerfil').focus();
+        }
+
+        function limparEdicaoPerfil() {
+            document.getElementById('perfilIdEdicao').value = '';
+            document.getElementById('nomePerfil').value = '';
+            document.getElementById('senhaPerfil').value = '';
+            document.getElementById('iconeOlhoSenha').className = 'bi bi-eye-fill';
+            document.getElementById('senhaPerfil').type = 'password';
+            document.getElementById('permBloqueios').checked = true;
+            document.getElementById('permProgramacao').checked = true;
+            document.getElementById('permLavagem').checked = true;
+            document.getElementById('permAnalises').checked = true;
+            document.getElementById('permAbastecimentos').checked = true;
+            document.getElementById('permExternos').checked = true;
+            document.getElementById('permFerramentaria').checked = false;
+            document.getElementById('permCompras').checked = false;
+            document.getElementById('hintSenhaPerfil').innerText = 'Ao atualizar, deixe em branco para manter a senha atual.';
+        }
+
+        function toggleSenhaPerfil() {
+            const input = document.getElementById('senhaPerfil');
+            const icon = document.getElementById('iconeOlhoSenha');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'bi bi-eye-slash-fill';
+            } else {
+                input.type = 'password';
+                icon.className = 'bi bi-eye-fill';
+            }
+        }
+
+        function toggleSenhaLista(btn) {
+            const td = btn.closest('td');
+            const mask = td.querySelector('.senha-mask');
+            const txt = td.querySelector('.senha-txt');
+            const icon = btn.querySelector('i');
+            if (txt.classList.contains('d-none')) {
+                txt.classList.remove('d-none');
+                mask.classList.add('d-none');
+                icon.className = 'bi bi-eye-slash-fill';
+            } else {
+                txt.classList.add('d-none');
+                mask.classList.remove('d-none');
+                icon.className = 'bi bi-eye-fill';
+            }
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reforma de Máquinas - Gestão PCM</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #f4f6f9; }
+
+        /* TABS */
+        .nav-tabs .nav-link { font-weight: 700; font-size: 0.84rem; color: #495057; }
+        .nav-tabs .nav-link.active { color: #0d6efd; border-bottom: 3px solid #0d6efd; }
+
+        /* GRADE MENSAL */
+        .grade-container { width: 100%; overflow-x: auto; padding-bottom: 8px; }
+        .grade-container::-webkit-scrollbar { height: 8px; }
+        .grade-container::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+        .grade-table { border-collapse: collapse; min-width: 900px; width: 100%; }
+        .grade-table th, .grade-table td { border: 1px solid #dee2e6; padding: 0; }
+        .grade-table thead th { background-color: #212529; color: #fff; font-size: 0.72rem; font-weight: 700; text-align: center; padding: 7px 4px; white-space: nowrap; }
+        .grade-table thead th.col-frota { background-color: #00509E; min-width: 110px; }
+        .grade-table thead th.col-desc  { background-color: #00509E; min-width: 180px; }
+        .grade-table thead th.col-info  { background-color: #343a40; min-width: 80px; }
+        .grade-table thead th.col-mes   { min-width: 78px; }
+        .linha-grupo td { background-color: #343a40; color: #fff; font-weight: 700; font-size: 0.85rem; padding: 5px 12px !important; }
+        .linha-subgrupo td { background-color: #e9ecef; color: #00509E; font-weight: 700; font-size: 0.80rem; padding: 3px 12px !important; border-left: 5px solid #0d6efd !important; }
+        .linha-frota { transition: background-color 0.15s; }
+        .linha-frota:hover { background-color: rgba(13, 110, 253, 0.05); }
+        .linha-frota td { vertical-align: middle; font-size: 0.80rem; }
+        .td-frota { font-weight: 700; color: #0d6efd; font-size: 0.90rem; text-align: center; white-space: nowrap; padding: 4px 8px !important; }
+        .td-desc  { padding: 4px 8px !important; }
+        .td-info  { text-align: center; padding: 4px 5px !important; font-size: 0.72rem; color: #555; }
+        .celula-mes { text-align: center; cursor: pointer; padding: 0 !important; transition: filter 0.15s; position: relative; }
+        .celula-mes:hover { filter: brightness(0.90); }
+        .celula-inner { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 48px; padding: 4px 3px; font-size: 0.68rem; font-weight: 700; line-height: 1.2; letter-spacing: 0.01em; }
+        .status-REFORMA    { background-color: #dc3545; color: #fff; }
+        .status-LINEAR     { background-color: #0d6efd; color: #fff; }
+        .status-AGUARDANDO { background-color: #ffc107; color: #212529; }
+        .status-CONCLUIDA  { background-color: #198754; color: #fff; }
+        .status-VAZIO      { background-color: #f8f9fa; color: transparent; }
+        .celula-mes .edit-icon { position: absolute; top: 2px; right: 3px; font-size: 0.60rem; opacity: 0; color: inherit; transition: opacity 0.15s; }
+        .celula-mes:hover .edit-icon { opacity: 0.7; }
+
+        /* KPI */
+        .kpi-card { border-left: 5px solid; transition: transform 0.2s, box-shadow 0.2s; }
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.1) !important; }
+
+        /* Legenda */
+        .legenda-item { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; font-size: 0.82rem; font-weight: 600; }
+        .legenda-cor { width: 16px; height: 16px; border-radius: 3px; display: inline-block; }
+
+        /* Filtros */
+        .filtro-pill { cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
+        .filtro-pill:hover { transform: scale(1.05); }
+        .filtro-pill.ativo { border-color: #fff !important; transform: scale(1.05); }
+
+        /* TABELAS GERAIS */
+        .tab-table { width: 100%; border-collapse: collapse; font-size: 0.80rem; }
+        .tab-table thead th { background: #212529; color: #fff; padding: 8px 10px; font-size: 0.72rem; text-align: center; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
+        .tab-table tbody td { padding: 6px 10px; border-bottom: 1px solid #dee2e6; vertical-align: middle; }
+        .tab-table tbody tr:hover { background: rgba(13,110,253,0.06); }
+        .tab-table .grupo-header td { background: #343a40; color: #fff; font-weight: 700; font-size: 0.80rem; padding: 5px 12px; }
+        .tab-table .subgrupo-header td { background: #e9ecef; color: #00509E; font-weight: 700; font-size: 0.75rem; padding: 4px 12px; border-left: 4px solid #0d6efd; }
+        .tab-table .total-row td { background: #f8f9fa; font-weight: 700; border-top: 2px solid #212529; }
+        .table-scroll { overflow-x: auto; max-height: 62vh; overflow-y: auto; }
+        .table-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .table-scroll::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+
+        /* Dark mode */
+        [data-bs-theme="dark"] body { background-color: #212529; }
+        [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .linha-subgrupo td { background-color: #343a40; color: #6ea8fe; }
+        [data-bs-theme="dark"] .grade-table td, [data-bs-theme="dark"] .grade-table th { border-color: #495057; }
+        [data-bs-theme="dark"] .td-info { color: #adb5bd; }
+        [data-bs-theme="dark"] .status-VAZIO { background-color: #2b3035; }
+        [data-bs-theme="dark"] .tab-table .subgrupo-header td { background: #343a40; }
+        [data-bs-theme="dark"] .tab-table .total-row td { background: #2b3035; }
+        [data-bs-theme="dark"] .tab-table tbody td { border-color: #495057; }
+        [data-bs-theme="dark"] .tab-content { background-color: #2b3035 !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .card { background-color: #2b3035 !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .nav-tabs { border-color: #495057; }
+        [data-bs-theme="dark"] .nav-tabs .nav-link { color: #adb5bd; }
+        [data-bs-theme="dark"] .nav-tabs .nav-link.active { color: #6ea8fe; border-color: #6ea8fe; background: #2b3035; }
+    </style>
+</head>
+<body class="bg-light">
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow">
+        <div class="container-fluid px-4">
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-wrench-adjustable-circle-fill me-2"></i>PCM | Reforma de Máquinas</span>
+            <div class="d-flex align-items-center gap-2">
+                <button id="btnDarkMode" class="btn btn-warning btn-sm fw-bold text-dark shadow-sm" onclick="toggleDarkMode()"><i class="bi bi-moon-fill"></i></button>
+                <a href="/programacao" class="btn btn-outline-light btn-sm"><i class="bi bi-calendar3 me-1"></i>Programação</a>
+                <a href="/admin" class="btn btn-outline-light btn-sm"><i class="bi bi-arrow-left me-1"></i>Painel</a>
+                <a href="/logout" class="btn btn-danger btn-sm fw-bold"><i class="bi bi-box-arrow-right me-1"></i>Sair</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3 px-4">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <!-- TABS NAV -->
+        <ul class="nav nav-tabs" id="tabsReforma" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tabBtnPlanejamento" data-bs-toggle="tab" data-bs-target="#tabPlanejamento" type="button" role="tab">
+                    <i class="bi bi-grid-3x3-gap-fill me-1"></i>Planejamento
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabBtnResumo" data-bs-toggle="tab" data-bs-target="#tabResumo" type="button" role="tab">
+                    <i class="bi bi-bar-chart-fill me-1"></i>Resumo
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabBtnOrcamento" data-bs-toggle="tab" data-bs-target="#tabOrcamento" type="button" role="tab">
+                    <i class="bi bi-currency-dollar me-1"></i>Orçamento
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabBtnOs" data-bs-toggle="tab" data-bs-target="#tabOs" type="button" role="tab">
+                    <i class="bi bi-clipboard-fill me-1"></i>O.S Abertas
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabBtnGastos" data-bs-toggle="tab" data-bs-target="#tabGastos" type="button" role="tab">
+                    <i class="bi bi-cash-stack me-1"></i>Gastos
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content bg-white border border-top-0 shadow-sm rounded-bottom mb-4" style="min-height:300px;">
+
+            <!-- ===== TAB 1: PLANEJAMENTO ===== -->
+            <div class="tab-pane fade show active p-3" id="tabPlanejamento" role="tabpanel">
+
+                <div class="row g-3 mb-3" id="kpiArea">
+                    <div class="col-md-3">
+                        <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color:#0d6efd;">
+                            <div class="card-body text-center py-2">
+                                <h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">TOTAL DE FROTAS</h6>
+                                <h2 class="fw-bold text-primary mb-0" id="kpiTotal">{{ frotas_reforma | length }}</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color:#dc3545;">
+                            <div class="card-body text-center py-2">
+                                <h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">REFORMA PROGRAMADA</h6>
+                                <h2 class="fw-bold text-danger mb-0" id="kpiReforma">0</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color:#0d6efd;">
+                            <div class="card-body text-center py-2">
+                                <h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">MANUTENÇÃO LINEAR</h6>
+                                <h2 class="fw-bold text-primary mb-0" id="kpiLinear">0</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color:#198754;">
+                            <div class="card-body text-center py-2">
+                                <h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">CONCLUÍDAS</h6>
+                                <h2 class="fw-bold text-success mb-0" id="kpiConcluida">0</h2>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-white border-0 shadow-sm mb-3">
+                    <div class="card-body p-3 d-flex flex-wrap align-items-center gap-3">
+                        <div class="d-flex flex-wrap align-items-center gap-1 me-3">
+                            <span class="legenda-item"><span class="legenda-cor" style="background:#dc3545;"></span>Reforma</span>
+                            <span class="legenda-item"><span class="legenda-cor" style="background:#0d6efd;"></span>Linear</span>
+                            <span class="legenda-item"><span class="legenda-cor" style="background:#ffc107;"></span>Aguardando</span>
+                            <span class="legenda-item"><span class="legenda-cor" style="background:#198754;"></span>Concluída</span>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 flex-grow-1">
+                            <button class="btn btn-dark btn-sm fw-bold filtro-pill ativo" onclick="filtrarGrupo('TODOS', this)">Todos</button>
+                            {% for agrup in agrupamentos %}
+                            <button class="btn btn-outline-dark btn-sm fw-bold filtro-pill" onclick="filtrarGrupo('{{ agrup }}', this)">{{ agrup }}</button>
+                            {% endfor %}
+                        </div>
+                        <div class="d-flex gap-2 ms-auto">
+                            <input type="text" id="buscaFrota" class="form-control form-control-sm border-secondary" placeholder="Buscar frota..." style="width:170px;" oninput="filtrarBusca()">
+                            <button class="btn btn-success btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalAdicionarFrota">
+                                <i class="bi bi-plus-circle-fill me-1"></i>Adicionar Frota
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalImportar">
+                                <i class="bi bi-upload me-1"></i>Importar Lote
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-white border-0 shadow-sm">
+                    <div class="card-body p-0">
+                        <div class="grade-container">
+                            <table class="grade-table" id="gradeReforma">
+                                <thead>
+                                    <tr>
+                                        <th class="col-frota">Frota</th>
+                                        <th class="col-desc">Descrição</th>
+                                        <th class="col-info">Ano Fab.</th>
+                                        <th class="col-info">KM / Hor.</th>
+                                        <th class="col-info">Últ. Reforma</th>
+                                        {% for m in meses_grade %}
+                                        <th class="col-mes">{{ m.label }}</th>
+                                        {% endfor %}
+                                        <th style="min-width:50px; background:#343a40;">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbodyGrade">
+                                    {% set ns = namespace(agrup_atual='', esp_atual='') %}
+                                    {% for f in frotas_reforma %}
+                                        {% if f.agrupamento != ns.agrup_atual %}
+                                            {% set ns.agrup_atual = f.agrupamento %}
+                                            {% set ns.esp_atual = '' %}
+                                            <tr class="linha-grupo linha-agrup" data-agrup="{{ f.agrupamento }}">
+                                                <td colspan="{{ 6 + meses_grade | length }}"><i class="bi bi-folder-fill me-2 opacity-75"></i>{{ f.agrupamento }}</td>
+                                            </tr>
+                                        {% endif %}
+                                        {% if f.especialidade != ns.esp_atual %}
+                                            {% set ns.esp_atual = f.especialidade %}
+                                            <tr class="linha-subgrupo linha-agrup" data-agrup="{{ f.agrupamento }}">
+                                                <td colspan="{{ 6 + meses_grade | length }}"><i class="bi bi-arrow-return-right me-2 text-primary"></i>{{ f.especialidade }}</td>
+                                            </tr>
+                                        {% endif %}
+                                        <tr class="linha-frota linha-agrup" data-agrup="{{ f.agrupamento }}" data-frota="{{ f.id_frota }}" data-desc="{{ f.descricao }}">
+                                            <td class="td-frota">{{ f.id_frota }}</td>
+                                            <td class="td-desc">{{ f.descricao }}</td>
+                                            <td class="td-info">{{ f.ano_fabricacao or '—' }}</td>
+                                            <td class="td-info">{{ f.km_horimetro or '—' }}</td>
+                                            <td class="td-info">
+                                                {% if f.dt_ultima_reforma %}
+                                                    <span class="badge bg-secondary">{{ f.dt_ultima_reforma }}</span>
+                                                {% else %}
+                                                    <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
+                                            {% for m in meses_grade %}
+                                                {% set chave = m.ano | string + '_' + m.mes | string %}
+                                                {% set prog = prog_dict.get(f.id_frota, {}).get(chave, {}) %}
+                                                {% set status_cel = prog.get('status', '') %}
+                                                {% set obs_cel = prog.get('observacao', '') %}
+                                                <td class="celula-mes status-{{ status_cel if status_cel else 'VAZIO' }}"
+                                                    onclick="abrirModalCelula('{{ f.id_frota }}', {{ m.ano }}, {{ m.mes }}, '{{ m.label }}', '{{ status_cel }}', '{{ obs_cel | replace("'","") }}')"
+                                                    title="{{ status_cel }} {% if obs_cel %}— {{ obs_cel }}{% endif %}">
+                                                    <div class="celula-inner">
+                                                        {% if status_cel %}
+                                                            <span>{{ status_cel }}</span>
+                                                            {% if obs_cel %}<span style="font-size:0.60rem; opacity:0.85; margin-top:2px;">{{ obs_cel[:18] }}</span>{% endif %}
+                                                        {% endif %}
+                                                        <i class="bi bi-pencil-fill edit-icon"></i>
+                                                    </div>
+                                                </td>
+                                            {% endfor %}
+                                            <td class="text-center" style="padding:3px !important;">
+                                                <button class="btn btn-outline-primary btn-sm border-0 p-1" title="Editar dados da frota"
+                                                    onclick='abrirModalFrota("{{ f.id_frota }}", "{{ f.descricao | replace('"', '&quot;') }}", "{{ f.ano_fabricacao }}", "{{ f.km_horimetro }}", "{{ f.dt_ultima_reforma }}", "{{ f.observacao | replace('"', '&quot;') }}")'>
+                                                    <i class="bi bi-pencil-square"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="{{ 6 + meses_grade | length }}" class="text-center py-5 text-muted fw-bold">
+                                                <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                                                Nenhuma frota cadastrada. Importe uma planilha ou clique em "Adicionar Frota".
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /tabPlanejamento -->
+
+            <!-- ===== TAB 2: RESUMO ===== -->
+            <div class="tab-pane fade p-3" id="tabResumo" role="tabpanel">
+                <div id="resumoLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="fw-bold text-muted">Carregando dados...</div>
+                    <div id="resumoErro" class="alert alert-danger mt-3 d-none" style="max-width:400px;margin:0 auto;"></div>
+                </div>
+                <div id="resumoContent" style="display:none;">
+                    <div class="row g-3 mb-3" id="resumoKpis"></div>
+                    <div class="d-flex flex-wrap gap-2 mb-3" id="resumoFiltros"></div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-scroll">
+                                <table class="tab-table" id="tabelaResumo">
+                                    <thead id="resumoThead"></thead>
+                                    <tbody id="resumoTbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="resumoVazio" style="display:none;" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                    <div class="fw-bold">Nenhum dado de planejamento encontrado.</div>
+                </div>
+            </div>
+
+            <!-- ===== TAB 3: ORÇAMENTO ===== -->
+            <div class="tab-pane fade p-3" id="tabOrcamento" role="tabpanel">
+                <div id="orcLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="fw-bold text-muted">Carregando dados...</div>
+                    <div id="orcErro" class="alert alert-danger mt-3 d-none" style="max-width:400px;margin:0 auto;"></div>
+                </div>
+                <div id="orcContent" style="display:none;">
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                        <div id="orcFiltros" class="d-flex flex-wrap gap-2 flex-grow-1"></div>
+                        <input type="text" id="orcBusca" class="form-control form-control-sm border-secondary" placeholder="Buscar frota..." style="width:180px;" oninput="filtrarOrcamento()">
+                        <div class="fw-bold text-success small ms-2" id="orcTotal"></div>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-scroll">
+                                <table class="tab-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:left;padding-left:12px;min-width:90px;">Frota</th>
+                                            <th style="text-align:left;min-width:200px;">Descrição</th>
+                                            <th style="text-align:left;min-width:130px;">Agrupamento</th>
+                                            <th style="text-align:left;min-width:120px;">Especialidade</th>
+                                            <th style="text-align:left;min-width:180px;">Componente</th>
+                                            <th style="min-width:130px;">Valor (R$)</th>
+                                            <th style="text-align:left;min-width:140px;">Aba / Origem</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="orcTbody"></tbody>
+                                </table>
+                            </div>
+                            <div id="orcPagCtrl" class="px-3 py-2 border-top"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="orcVazio" style="display:none;" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                    <div class="fw-bold">Nenhum dado de orçamento encontrado.</div>
+                </div>
+            </div>
+
+            <!-- ===== TAB 4: O.S ABERTAS ===== -->
+            <div class="tab-pane fade p-3" id="tabOs" role="tabpanel">
+                <div id="osLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="fw-bold text-muted">Carregando dados...</div>
+                    <div id="osErro" class="alert alert-danger mt-3 d-none" style="max-width:400px;margin:0 auto;"></div>
+                </div>
+                <div id="osContent" style="display:none;">
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                        <input type="text" id="osBusca" class="form-control form-control-sm border-secondary" placeholder="Buscar frota/documento..." style="width:220px;" oninput="filtrarOs()">
+                        <select id="osFiltroStatus" class="form-select form-select-sm border-secondary" style="width:200px;" onchange="filtrarOs()">
+                            <option value="">Todos os status</option>
+                        </select>
+                        <div class="fw-bold text-muted small ms-auto" id="osTotal"></div>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-scroll">
+                                <table class="tab-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:left;padding-left:12px;min-width:100px;">Documento</th>
+                                            <th style="text-align:left;min-width:80px;">Frota</th>
+                                            <th style="text-align:left;min-width:160px;">Descrição</th>
+                                            <th style="min-width:120px;">Status O.S</th>
+                                            <th style="text-align:left;min-width:150px;">Empresa</th>
+                                            <th style="min-width:100px;">Abertura</th>
+                                            <th style="text-align:left;min-width:150px;">Tipo Manutenção</th>
+                                            <th style="text-align:left;min-width:130px;">Especialidade</th>
+                                            <th style="text-align:left;min-width:130px;">Agrupamento</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="osTbody"></tbody>
+                                </table>
+                            </div>
+                            <div id="osPagCtrl" class="px-3 py-2 border-top"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="osVazio" style="display:none;" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                    <div class="fw-bold">Nenhuma O.S encontrada.</div>
+                </div>
+            </div>
+
+            <!-- ===== TAB 5: GASTOS ===== -->
+            <div class="tab-pane fade p-3" id="tabGastos" role="tabpanel">
+                <div id="gastosLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="fw-bold text-muted">Carregando dados...</div>
+                    <div id="gastosErro" class="alert alert-danger mt-3 d-none" style="max-width:400px;margin:0 auto;"></div>
+                </div>
+                <div id="gastosContent" style="display:none;">
+                    <div class="row g-3 mb-3" id="gastosKpis"></div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                        <input type="text" id="gastosBusca" class="form-control form-control-sm border-secondary" placeholder="Buscar frota/empresa..." style="width:220px;" oninput="filtrarGastos()">
+                        <select id="gastosFiltroAba" class="form-select form-select-sm border-secondary" style="width:220px;" onchange="filtrarGastos()">
+                            <option value="">Todas as fontes</option>
+                        </select>
+                        <div class="fw-bold text-success small ms-auto" id="gastosTotal"></div>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body p-0">
+                            <div class="table-scroll">
+                                <table class="tab-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:left;padding-left:12px;min-width:80px;">Frota</th>
+                                            <th style="text-align:left;min-width:180px;">Descrição</th>
+                                            <th style="text-align:left;min-width:150px;">Empresa</th>
+                                            <th style="min-width:60px;">Ano</th>
+                                            <th style="min-width:60px;">Mês</th>
+                                            <th style="text-align:left;min-width:130px;">Especialidade</th>
+                                            <th style="min-width:130px;">Valor (R$)</th>
+                                            <th style="text-align:left;min-width:140px;">Fonte</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gastosTbody"></tbody>
+                                </table>
+                            </div>
+                            <div id="gastosPagCtrl" class="px-3 py-2 border-top"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="gastosVazio" style="display:none;" class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                    <div class="fw-bold">Nenhum dado de gastos encontrado.</div>
+                </div>
+            </div>
+
+        </div><!-- /tab-content -->
+    </div><!-- /container -->
+
+    <!-- MODAL: Editar Célula -->
+    <div class="modal fade" id="modalCelula" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-calendar-event me-2"></i>Programar Mês: <span id="celTitulo" class="text-warning"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center border-bottom pb-3 mb-3">
+                        <h4 class="fw-bold text-primary mb-0" id="celFrota"></h4>
+                    </div>
+                    <input type="hidden" id="celInputFrota">
+                    <input type="hidden" id="celInputAno">
+                    <input type="hidden" id="celInputMes">
+                    <label class="form-label fw-bold text-secondary small mb-2">Status da Reforma</label>
+                    <div class="d-flex flex-wrap gap-2 mb-3" id="celStatusBtns">
+                        <button type="button" class="btn btn-outline-danger fw-bold btn-status" onclick="selecionarStatus('REFORMA')"><i class="bi bi-tools me-1"></i>REFORMA</button>
+                        <button type="button" class="btn btn-outline-primary fw-bold btn-status" onclick="selecionarStatus('LINEAR')"><i class="bi bi-activity me-1"></i>LINEAR</button>
+                        <button type="button" class="btn btn-outline-warning fw-bold btn-status" onclick="selecionarStatus('AGUARDANDO')"><i class="bi bi-hourglass-split me-1"></i>AGUARDANDO</button>
+                        <button type="button" class="btn btn-outline-success fw-bold btn-status" onclick="selecionarStatus('CONCLUIDA')"><i class="bi bi-check-circle me-1"></i>CONCLUÍDA</button>
+                    </div>
+                    <input type="hidden" id="celStatusSelecionado" value="">
+                    <label class="form-label fw-bold text-secondary small mb-2">Observação (opcional)</label>
+                    <input type="text" id="celObservacao" class="form-control border-secondary" placeholder="Ex: Aguardando peças, Reforma completa...">
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button type="button" class="btn btn-outline-danger btn-sm fw-bold" onclick="limparCelula()"><i class="bi bi-x-circle me-1"></i>Limpar Célula</button>
+                    <div>
+                        <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary fw-bold" id="btnSalvarCelula" onclick="salvarCelula()"><i class="bi bi-save me-1"></i>Salvar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Adicionar / Editar Frota -->
+    <div class="modal fade" id="modalAdicionarFrota" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title fw-bold" id="modalFrotaTitulo"><i class="bi bi-plus-circle-fill me-2"></i>Adicionar Frota à Grade</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">Código da Frota</label>
+                        <input type="text" id="inputFrotaCod" class="form-control border-primary fw-bold text-primary text-uppercase" placeholder="Ex: 60817">
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-secondary">Ano de Fabricação</label>
+                            <input type="text" id="inputFrotaAno" class="form-control border-secondary" placeholder="Ex: 2018">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-secondary">KM / Horímetro</label>
+                            <input type="text" id="inputFrotaKm" class="form-control border-secondary" placeholder="Ex: 12500">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-secondary">Última Reforma</label>
+                            <input type="text" id="inputFrotaUltReforma" class="form-control border-secondary" placeholder="mm/aaaa">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">Observação Geral</label>
+                        <input type="text" id="inputFrotaObs" class="form-control border-secondary" placeholder="Opcional...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success fw-bold shadow-sm" id="btnSalvarFrota" onclick="salvarFrota()"><i class="bi bi-save-fill me-1"></i>Salvar Frota</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Importar Lote -->
+    <div class="modal fade" id="modalImportar" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-warning border-2 shadow-lg">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-upload me-2"></i>Importar Frotas em Lote</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info small border-info shadow-sm mb-3">
+                        <i class="bi bi-info-circle-fill me-1"></i>
+                        Cole abaixo as frotas no formato: <b>FROTA;ANO_FABRICACAO;KM_HORIMETRO;DT_ULTIMA_REFORMA</b><br>
+                        Exemplo: <code>60817;2019;8500;03/2022</code> (uma por linha)
+                    </div>
+                    <textarea id="inputImportarLote" class="form-control font-monospace fw-bold text-primary border-primary" rows="10"
+                        placeholder="60817;2019;8500;03/2022&#10;62200;2021;3200;&#10;63001;2018;15000;07/2021"></textarea>
+                    <div id="importarPreview" class="mt-2 small text-muted fw-bold"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-warning fw-bold text-dark shadow-sm" onclick="importarLote()"><i class="bi bi-upload me-1"></i>Importar Frotas</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // ── HELPERS ────────────────────────────────────────────────────────
+        function esc(s) {
+            return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function fmtBrl(v) {
+            if (v===null||v===undefined||isNaN(Number(v))) return '—';
+            return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+        }
+        function fmtData(s) { return s ? String(s).slice(0,10) : '—'; }
+
+        // ── DARK MODE ──────────────────────────────────────────────────────
+        const htmlEl = document.documentElement;
+        const btnDM = document.getElementById('btnDarkMode');
+        if (localStorage.getItem('theme') === 'dark') {
+            htmlEl.setAttribute('data-bs-theme', 'dark');
+            btnDM.innerHTML = '<i class="bi bi-sun-fill"></i>';
+        }
+        function toggleDarkMode() {
+            if (htmlEl.getAttribute('data-bs-theme') === 'dark') {
+                htmlEl.setAttribute('data-bs-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                btnDM.innerHTML = '<i class="bi bi-moon-fill"></i>';
+            } else {
+                htmlEl.setAttribute('data-bs-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                btnDM.innerHTML = '<i class="bi bi-sun-fill"></i>';
+            }
+        }
+
+        // ── KPIs dinâmicos ─────────────────────────────────────────────────
+        function calcularKpis() {
+            let reforma=0, linear=0, concluida=0;
+            document.querySelectorAll('.celula-mes').forEach(cel => {
+                if (cel.classList.contains('status-REFORMA'))   reforma++;
+                if (cel.classList.contains('status-LINEAR'))    linear++;
+                if (cel.classList.contains('status-CONCLUIDA')) concluida++;
+            });
+            document.getElementById('kpiReforma').innerText   = reforma;
+            document.getElementById('kpiLinear').innerText    = linear;
+            document.getElementById('kpiConcluida').innerText = concluida;
+        }
+        calcularKpis();
+
+        // ── FILTROS PLANEJAMENTO ───────────────────────────────────────────
+        let filtroGrupoAtual = 'TODOS';
+        function filtrarGrupo(grupo, btnClicado) {
+            filtroGrupoAtual = grupo;
+            document.querySelectorAll('.filtro-pill').forEach(b => { b.classList.remove('ativo','btn-dark'); b.classList.add('btn-outline-dark'); });
+            btnClicado.classList.add('ativo','btn-dark'); btnClicado.classList.remove('btn-outline-dark');
+            aplicarFiltros();
+        }
+        function filtrarBusca() { aplicarFiltros(); }
+        function aplicarFiltros() {
+            const busca = (document.getElementById('buscaFrota').value||'').toUpperCase();
+            const grupoVisivel = {};
+            document.querySelectorAll('.linha-frota').forEach(tr => {
+                const agrup = tr.getAttribute('data-agrup')||'';
+                const frota = tr.getAttribute('data-frota')||'';
+                const desc  = tr.getAttribute('data-desc')||'';
+                const vis = (filtroGrupoAtual==='TODOS'||agrup===filtroGrupoAtual) && (!busca||frota.includes(busca)||desc.includes(busca));
+                tr.style.display = vis ? '' : 'none';
+                if (vis) grupoVisivel[agrup] = true;
+            });
+            document.querySelectorAll('.linha-grupo, .linha-subgrupo').forEach(tr => {
+                tr.style.display = grupoVisivel[tr.getAttribute('data-agrup')||''] ? '' : 'none';
+            });
+        }
+
+        // ── MODAL CÉLULA ───────────────────────────────────────────────────
+        let modalCelulaUI = null;
+        document.addEventListener('DOMContentLoaded', () => {
+            modalCelulaUI = new bootstrap.Modal(document.getElementById('modalCelula'));
+        });
+        function abrirModalCelula(frota, ano, mes, label, statusAtual, obsAtual) {
+            document.getElementById('celFrota').innerText = frota;
+            document.getElementById('celTitulo').innerText = label;
+            document.getElementById('celInputFrota').value = frota;
+            document.getElementById('celInputAno').value = ano;
+            document.getElementById('celInputMes').value = mes;
+            document.getElementById('celObservacao').value = obsAtual||'';
+            document.getElementById('celStatusSelecionado').value = statusAtual||'';
+            const mapa = {REFORMA:['btn-outline-danger','btn-danger'], LINEAR:['btn-outline-primary','btn-primary'], AGUARDANDO:['btn-outline-warning','btn-warning'], CONCLUIDA:['btn-outline-success','btn-success']};
+            document.querySelectorAll('.btn-status').forEach(b => {
+                const s = b.getAttribute('onclick')?.match(/'([A-Z]+)'/)?.[1];
+                const p = mapa[s]; if (p) { b.classList.remove(p[1]); b.classList.add(p[0]); }
+            });
+            if (statusAtual) selecionarStatus(statusAtual);
+            modalCelulaUI.show();
+        }
+        function selecionarStatus(status) {
+            document.getElementById('celStatusSelecionado').value = status;
+            const mapa = {REFORMA:['btn-outline-danger','btn-danger'], LINEAR:['btn-outline-primary','btn-primary'], AGUARDANDO:['btn-outline-warning','btn-warning'], CONCLUIDA:['btn-outline-success','btn-success']};
+            document.querySelectorAll('.btn-status').forEach(b => {
+                const s = b.getAttribute('onclick')?.match(/'([A-Z]+)'/)?.[1];
+                const p = mapa[s]; if (!p) return;
+                if (s===status) { b.classList.remove(p[0]); b.classList.add(p[1]); }
+                else { b.classList.remove(p[1]); b.classList.add(p[0]); }
+            });
+        }
+        function limparCelula() { document.getElementById('celStatusSelecionado').value='LIMPAR'; salvarCelula(); }
+        function salvarCelula() {
+            const frota  = document.getElementById('celInputFrota').value;
+            const ano    = parseInt(document.getElementById('celInputAno').value);
+            const mes    = parseInt(document.getElementById('celInputMes').value);
+            const status = document.getElementById('celStatusSelecionado').value;
+            const obs    = document.getElementById('celObservacao').value.trim();
+            const btn    = document.getElementById('btnSalvarCelula');
+            if (!status) { alert('Selecione um status para salvar.'); return; }
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Salvando...'; btn.disabled = true;
+            fetch('/api/reforma/atualizar_celula', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id_frota:frota, ano, mes, status, observacao:obs}) })
+            .then(r=>r.json()).then(d=>{
+                if (d.status==='sucesso') { window.location.reload(); }
+                else { alert('Erro: '+(d.msg||'tente novamente')); btn.innerHTML='<i class="bi bi-save me-1"></i>Salvar'; btn.disabled=false; }
+            }).catch(()=>{ alert('Erro de conexão.'); btn.innerHTML='<i class="bi bi-save me-1"></i>Salvar'; btn.disabled=false; });
+        }
+
+        // ── MODAL FROTA ────────────────────────────────────────────────────
+        let modalFrotaUI = null;
+        document.addEventListener('DOMContentLoaded', () => { modalFrotaUI = new bootstrap.Modal(document.getElementById('modalAdicionarFrota')); });
+        function abrirModalFrota(cod, desc, ano, km, ultReforma, obs) {
+            document.getElementById('modalFrotaTitulo').innerHTML = '<i class="bi bi-pencil-square me-2"></i>Editar Dados: '+cod;
+            document.getElementById('inputFrotaCod').value = cod;
+            document.getElementById('inputFrotaCod').readOnly = true;
+            document.getElementById('inputFrotaAno').value = ano||'';
+            document.getElementById('inputFrotaKm').value = km||'';
+            document.getElementById('inputFrotaUltReforma').value = ultReforma||'';
+            document.getElementById('inputFrotaObs').value = obs||'';
+            modalFrotaUI.show();
+        }
+        document.getElementById('modalAdicionarFrota').addEventListener('hidden.bs.modal', function() {
+            document.getElementById('modalFrotaTitulo').innerHTML = '<i class="bi bi-plus-circle-fill me-2"></i>Adicionar Frota à Grade';
+            document.getElementById('inputFrotaCod').readOnly = false;
+            ['inputFrotaCod','inputFrotaAno','inputFrotaKm','inputFrotaUltReforma','inputFrotaObs'].forEach(id => document.getElementById(id).value='');
+        });
+        function salvarFrota() {
+            const cod = document.getElementById('inputFrotaCod').value.trim().toUpperCase();
+            if (!cod) { alert('Informe o código da frota.'); return; }
+            const btn = document.getElementById('btnSalvarFrota');
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Salvando...'; btn.disabled=true;
+            fetch('/api/reforma/salvar_frota', { method:'POST', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({id_frota:cod, ano_fabricacao:document.getElementById('inputFrotaAno').value.trim(),
+                km_horimetro:document.getElementById('inputFrotaKm').value.trim(),
+                dt_ultima_reforma:document.getElementById('inputFrotaUltReforma').value.trim(),
+                observacao:document.getElementById('inputFrotaObs').value.trim()}) })
+            .then(r=>r.json()).then(d=>{
+                if (d.status==='sucesso') { window.location.reload(); }
+                else { alert('Erro: '+(d.msg||'tente novamente')); btn.innerHTML='<i class="bi bi-save-fill me-1"></i>Salvar Frota'; btn.disabled=false; }
+            });
+        }
+
+        // ── IMPORTAR LOTE ──────────────────────────────────────────────────
+        document.getElementById('inputImportarLote').addEventListener('input', function() {
+            const n = this.value.split('\n').filter(l=>l.trim()).length;
+            document.getElementById('importarPreview').innerText = n+' frota(s) detectada(s).';
+        });
+        function importarLote() {
+            const frotas = document.getElementById('inputImportarLote').value.split('\n').filter(l=>l.trim()).map(l=>{
+                const p=l.split(';'); return {id_frota:(p[0]||'').trim(), ano_fabricacao:(p[1]||'').trim(), km_horimetro:(p[2]||'').trim(), dt_ultima_reforma:(p[3]||'').trim()};
+            }).filter(f=>f.id_frota);
+            if (!frotas.length) { alert('Nenhuma frota válida detectada.'); return; }
+            fetch('/api/reforma/importar_frotas', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({frotas})})
+            .then(r=>r.json()).then(d=>{
+                if (d.status==='sucesso') { alert(d.inseridas+' frota(s) importada(s)!'); window.location.reload(); }
+                else alert('Erro: '+(d.msg||'tente novamente'));
+            });
+        }
+
+        // ── TAB DATA STATE ─────────────────────────────────────────────────
+        const tabLoaded = {resumo:false, orcamento:false, os:false, gastos:false};
+        let dadosResumo=[], dadosOrc=[], dadosOs=[], dadosGastos=[];
+        let filtroResumoAtual='TODOS', filtroOrcAtual='TODOS';
+        const mNomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+        // ── BOOTSTRAP TAB EVENTS (carregamento lazy via shown.bs.tab) ──────
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('tabBtnResumo').addEventListener('shown.bs.tab', carregarResumo);
+            document.getElementById('tabBtnOrcamento').addEventListener('shown.bs.tab', carregarOrcamento);
+            document.getElementById('tabBtnOs').addEventListener('shown.bs.tab', carregarOs);
+            document.getElementById('tabBtnGastos').addEventListener('shown.bs.tab', carregarGastos);
+        });
+
+        function mostrarErro(prefixo, msg) {
+            const el = document.getElementById(prefixo+'Erro');
+            if (el) { el.classList.remove('d-none'); el.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i>Erro ao carregar: ' + esc(msg); }
+        }
+
+        // ── TAB RESUMO ─────────────────────────────────────────────────────
+        function carregarResumo() {
+            if (tabLoaded.resumo) return;
+            fetch('/api/reforma/resumo_data')
+            .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+            .then(dados=>{
+                dadosResumo = dados;
+                document.getElementById('resumoLoading').style.display = 'none';
+                if (!dados.length) { document.getElementById('resumoVazio').style.display=''; return; }
+                document.getElementById('resumoContent').style.display = '';
+                renderResumo(dados); tabLoaded.resumo = true;
+            }).catch(e=>{ mostrarErro('resumo', e.message); document.getElementById('resumoLoading').querySelector('.spinner-border').style.display='none'; document.getElementById('resumoLoading').querySelector('.fw-bold').style.display='none'; });
+        }
+        function renderResumo(dados) {
+            const t = {REFORMA:0, LINEAR:0, AGUARDANDO:0, CONCLUIDA:0};
+            dados.forEach(r=>{ if(t[r.status]!==undefined) t[r.status]+=r.total; });
+            document.getElementById('resumoKpis').innerHTML = `
+                <div class="col-md-3"><div class="card border-0 shadow-sm h-100 kpi-card" style="border-left-color:#dc3545;"><div class="card-body text-center py-2"><h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">REFORMA</h6><h2 class="fw-bold text-danger mb-0">${t.REFORMA}</h2></div></div></div>
+                <div class="col-md-3"><div class="card border-0 shadow-sm h-100 kpi-card" style="border-left-color:#0d6efd;"><div class="card-body text-center py-2"><h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">LINEAR</h6><h2 class="fw-bold text-primary mb-0">${t.LINEAR}</h2></div></div></div>
+                <div class="col-md-3"><div class="card border-0 shadow-sm h-100 kpi-card" style="border-left-color:#ffc107;"><div class="card-body text-center py-2"><h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">AGUARDANDO</h6><h2 class="fw-bold text-warning mb-0">${t.AGUARDANDO}</h2></div></div></div>
+                <div class="col-md-3"><div class="card border-0 shadow-sm h-100 kpi-card" style="border-left-color:#198754;"><div class="card-body text-center py-2"><h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">CONCLUÍDA</h6><h2 class="fw-bold text-success mb-0">${t.CONCLUIDA}</h2></div></div></div>`;
+            const agrupamentos = [...new Set(dados.map(r=>r.agrupamento))].sort();
+            let fHtml = '<button class="btn btn-dark btn-sm fw-bold filtro-pill ativo" onclick="filtrarResumo(\'TODOS\',this)">Todos</button>';
+            agrupamentos.forEach(a => { fHtml += `<button class="btn btn-outline-dark btn-sm fw-bold filtro-pill" onclick="filtrarResumo('${esc(a)}',this)">${esc(a)}</button>`; });
+            document.getElementById('resumoFiltros').innerHTML = fHtml;
+            renderResumoTabela(dados);
+        }
+        function filtrarResumo(grupo, btn) {
+            filtroResumoAtual = grupo;
+            document.querySelectorAll('#resumoFiltros .filtro-pill').forEach(b=>{ b.classList.remove('ativo','btn-dark'); b.classList.add('btn-outline-dark'); });
+            btn.classList.add('ativo','btn-dark'); btn.classList.remove('btn-outline-dark');
+            renderResumoTabela(filtroResumoAtual==='TODOS' ? dadosResumo : dadosResumo.filter(r=>r.agrupamento===filtroResumoAtual));
+        }
+        function renderResumoTabela(dados) {
+            const grouped = {};
+            dados.forEach(r => {
+                const key = `${r.agrupamento}||${r.especialidade}`;
+                const mk = `${r.ano}-${String(r.mes).padStart(2,'0')}`;
+                if (!grouped[key]) grouped[key] = {agrupamento:r.agrupamento, especialidade:r.especialidade, meses:{}, total:0};
+                if (!grouped[key].meses[mk]) grouped[key].meses[mk] = {REFORMA:0,LINEAR:0,AGUARDANDO:0,CONCLUIDA:0};
+                grouped[key].meses[mk][r.status] = (grouped[key].meses[mk][r.status]||0) + r.total;
+                grouped[key].total += r.total;
+            });
+            const allMonths = [...new Set(dados.map(r=>`${r.ano}-${String(r.mes).padStart(2,'0')}`))].sort();
+            const nCols = 1 + allMonths.length * 4 + 1;
+
+            // Cabeçalho (igual à planilha original: 4 sub-colunas por mês)
+            let hHtml = '<tr><th style="text-align:left;padding-left:12px;min-width:180px;">Especialidade</th>';
+            allMonths.forEach(m => {
+                const [ano,mes] = m.split('-');
+                hHtml += `<th colspan="4" style="background:#00509E;">${mNomes[parseInt(mes)-1]}/${ano.slice(2)}</th>`;
+            });
+            hHtml += '<th>Total</th></tr><tr><th></th>';
+            allMonths.forEach(() => {
+                hHtml += '<th><span class="badge" style="background:#dc3545;font-size:0.58rem;">REF</span></th>';
+                hHtml += '<th><span class="badge" style="background:#0d6efd;font-size:0.58rem;">LIN</span></th>';
+                hHtml += '<th><span class="badge" style="background:#ffc107;color:#212529;font-size:0.58rem;">AGU</span></th>';
+                hHtml += '<th><span class="badge" style="background:#198754;font-size:0.58rem;">CON</span></th>';
+            });
+            hHtml += '<th></th></tr>';
+            document.getElementById('resumoThead').innerHTML = hHtml;
+
+            // Corpo — oculta linhas onde total = 0 (sem nenhuma informação)
+            let html='', lastAgrup='', agrupComDados=new Set();
+            const linhas = Object.values(grouped)
+                .sort((a,b)=>(a.agrupamento+a.especialidade).localeCompare(b.agrupamento+b.especialidade))
+                .filter(g => g.total > 0);  // ← oculta especialidades sem dados
+
+            // pré-calcula quais agrupamentos têm ao menos 1 linha com dados
+            linhas.forEach(g => agrupComDados.add(g.agrupamento));
+
+            linhas.forEach(g => {
+                if (g.agrupamento !== lastAgrup) {
+                    html += `<tr class="grupo-header"><td colspan="${nCols}"><i class="bi bi-folder-fill me-2"></i>${esc(g.agrupamento)}</td></tr>`;
+                    lastAgrup = g.agrupamento;
+                }
+                let cells = '';
+                allMonths.forEach(m => {
+                    const ms = g.meses[m]||{};
+                    cells += `<td style="text-align:center;">${ms.REFORMA>0?`<span class="badge" style="background:#dc3545;">${ms.REFORMA}</span>`:''}</td>`;
+                    cells += `<td style="text-align:center;">${ms.LINEAR>0?`<span class="badge" style="background:#0d6efd;">${ms.LINEAR}</span>`:''}</td>`;
+                    cells += `<td style="text-align:center;">${ms.AGUARDANDO>0?`<span class="badge" style="background:#ffc107;color:#212529;">${ms.AGUARDANDO}</span>`:''}</td>`;
+                    cells += `<td style="text-align:center;">${ms.CONCLUIDA>0?`<span class="badge" style="background:#198754;">${ms.CONCLUIDA}</span>`:''}</td>`;
+                });
+                html += `<tr><td style="padding-left:20px;font-weight:700;color:#0d6efd;">${esc(g.especialidade)}</td>${cells}<td class="fw-bold text-center">${g.total}</td></tr>`;
+            });
+            document.getElementById('resumoTbody').innerHTML = html ||
+                `<tr><td colspan="${nCols}" class="text-center text-muted py-3">Nenhum dado</td></tr>`;
+        }
+
+        // ── PAGINAÇÃO ──────────────────────────────────────────────────────
+        const POR_PAG = 200;
+        let orcPagAtual=0, osPagAtual=0, gastosPagAtual=0;
+        let orcFiltrado=[], osFiltrado=[], gastosFiltrado=[];
+
+        function ctrlPag(total, pag, prefixo) {
+            const totalPags = Math.ceil(total / POR_PAG);
+            if (totalPags <= 1) return '';
+            const ini = pag * POR_PAG + 1, fim = Math.min((pag+1)*POR_PAG, total);
+            return `<div class="d-flex align-items-center justify-content-between py-1">
+                <span class="text-muted small fw-bold">Exibindo ${ini}–${fim} de ${total} registros</span>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="${prefixo}IrPag(${pag-1})" ${pag===0?'disabled':''}>‹ Ant.</button>
+                    <span class="btn btn-sm btn-light fw-bold text-primary disabled" style="pointer-events:none;">${pag+1} / ${totalPags}</span>
+                    <button class="btn btn-sm btn-outline-secondary fw-bold" onclick="${prefixo}IrPag(${pag+1})" ${pag>=totalPags-1?'disabled':''}>Próx. ›</button>
+                </div>
+            </div>`;
+        }
+
+        // ── TAB ORÇAMENTO ──────────────────────────────────────────────────
+        function carregarOrcamento() {
+            if (tabLoaded.orcamento) return;
+            fetch('/api/reforma/orcamento_data')
+            .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+            .then(dados=>{
+                // Filtra linhas sem valor
+                dadosOrc = dados.filter(r => r.valor && Number(r.valor) !== 0);
+                document.getElementById('orcLoading').style.display = 'none';
+                if (!dadosOrc.length) { document.getElementById('orcVazio').style.display=''; return; }
+                document.getElementById('orcContent').style.display = '';
+                const agrupamentos = [...new Set(dadosOrc.map(r=>r.agrupamento||'GERAL'))].sort();
+                let fHtml = '<button class="btn btn-dark btn-sm fw-bold filtro-pill ativo" onclick="filtrarOrcAgrup(\'TODOS\',this)">Todos</button>';
+                agrupamentos.forEach(a => { fHtml += `<button class="btn btn-outline-dark btn-sm fw-bold filtro-pill" onclick="filtrarOrcAgrup('${esc(a)}',this)">${esc(a)}</button>`; });
+                document.getElementById('orcFiltros').innerHTML = fHtml;
+                orcPagAtual = 0; filtrarOrcamento(); tabLoaded.orcamento = true;
+            }).catch(e=>{ mostrarErro('orc', e.message); document.getElementById('orcLoading').querySelector('.spinner-border').style.display='none'; document.getElementById('orcLoading').querySelector('.fw-bold').style.display='none'; });
+        }
+        function filtrarOrcAgrup(grupo, btn) {
+            filtroOrcAtual = grupo;
+            document.querySelectorAll('#orcFiltros .filtro-pill').forEach(b=>{ b.classList.remove('ativo','btn-dark'); b.classList.add('btn-outline-dark'); });
+            btn.classList.add('ativo','btn-dark'); btn.classList.remove('btn-outline-dark');
+            orcPagAtual = 0; filtrarOrcamento();
+        }
+        function filtrarOrcamento() {
+            const busca = (document.getElementById('orcBusca').value||'').toUpperCase();
+            let f = dadosOrc;
+            if (filtroOrcAtual!=='TODOS') f = f.filter(r=>(r.agrupamento||'GERAL')===filtroOrcAtual);
+            if (busca) f = f.filter(r=>(r.id_frota||'').toUpperCase().includes(busca)||(r.descricao_frota||'').toUpperCase().includes(busca));
+            orcFiltrado = f; orcPagAtual = 0; renderOrcamento();
+        }
+        function orcIrPag(p) { orcPagAtual = p; renderOrcamento(); }
+        function renderOrcamento() {
+            const dados = orcFiltrado;
+            const totalGeral = dados.reduce((s,r)=>s+(r.valor||0),0);
+            if (!dados.length) {
+                document.getElementById('orcTbody').innerHTML='<tr><td colspan="7" class="text-center text-muted py-3">Nenhum dado com esses filtros</td></tr>';
+                document.getElementById('orcTotal').innerText='';
+                document.getElementById('orcPagCtrl').innerHTML=''; return;
+            }
+            const pagina = dados.slice(orcPagAtual*POR_PAG, (orcPagAtual+1)*POR_PAG);
+            let html='';
+            pagina.forEach(r => {
+                html += `<tr>
+                    <td class="fw-bold text-primary" style="padding-left:12px;font-family:monospace;">${esc(r.id_frota)}</td>
+                    <td style="font-size:0.78rem;">${esc(r.descricao_frota)}</td>
+                    <td style="font-size:0.72rem;color:#6c757d;">${esc(r.agrupamento||'—')}</td>
+                    <td style="font-size:0.75rem;">${esc(r.especialidade||'')}</td>
+                    <td><span class="badge bg-secondary" style="font-size:0.70rem;">${esc(r.componente)}</span></td>
+                    <td class="fw-bold text-success text-end" style="font-family:monospace;">${fmtBrl(r.valor)}</td>
+                    <td style="font-size:0.70rem;color:#6c757d;">${esc(r.aba)}</td>
+                </tr>`;
+            });
+            document.getElementById('orcTbody').innerHTML = html;
+            document.getElementById('orcTotal').innerText = `Total geral: ${fmtBrl(totalGeral)} | ${dados.length} itens`;
+            document.getElementById('orcPagCtrl').innerHTML = ctrlPag(dados.length, orcPagAtual, 'orc');
+        }
+
+        // ── TAB O.S ABERTAS ────────────────────────────────────────────────
+        function carregarOs() {
+            if (tabLoaded.os) return;
+            fetch('/api/reforma/os_data')
+            .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+            .then(dados=>{
+                dadosOs = dados;
+                document.getElementById('osLoading').style.display = 'none';
+                if (!dados.length) { document.getElementById('osVazio').style.display=''; return; }
+                document.getElementById('osContent').style.display = '';
+                const statuses = [...new Set(dados.map(r=>r.status_os).filter(Boolean))].sort();
+                const sel = document.getElementById('osFiltroStatus');
+                statuses.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+                osPagAtual = 0; osFiltrado = dadosOs; renderOs(); tabLoaded.os = true;
+            }).catch(e=>{ mostrarErro('os', e.message); document.getElementById('osLoading').querySelector('.spinner-border').style.display='none'; document.getElementById('osLoading').querySelector('.fw-bold').style.display='none'; });
+        }
+        function filtrarOs() {
+            const busca = (document.getElementById('osBusca').value||'').toUpperCase();
+            const status = document.getElementById('osFiltroStatus').value;
+            let f = dadosOs;
+            if (busca) f = f.filter(r=>(r.id_frota||'').toUpperCase().includes(busca)||(r.documento||'').toUpperCase().includes(busca)||(r.descricao_frota||'').toUpperCase().includes(busca));
+            if (status) f = f.filter(r=>r.status_os===status);
+            osFiltrado = f; osPagAtual = 0; renderOs();
+        }
+        function osIrPag(p) { osPagAtual = p; renderOs(); }
+        function renderOs() {
+            const dados = osFiltrado;
+            document.getElementById('osTotal').innerText = `${dados.length} O.S encontrada(s)`;
+            if (!dados.length) {
+                document.getElementById('osTbody').innerHTML='<tr><td colspan="9" class="text-center text-muted py-3">Nenhuma O.S com esses filtros</td></tr>';
+                document.getElementById('osPagCtrl').innerHTML=''; return;
+            }
+            const corStatus = s => { if (!s) return 'secondary'; s=s.toUpperCase(); if (s.includes('ABER')) return 'danger'; if (s.includes('FECHA')) return 'success'; if (s.includes('ANDA')) return 'info'; return 'secondary'; };
+            const pagina = dados.slice(osPagAtual*POR_PAG, (osPagAtual+1)*POR_PAG);
+            let html = '';
+            pagina.forEach(r => {
+                html += `<tr>
+                    <td class="fw-bold" style="padding-left:12px;color:#0d6efd;font-family:monospace;">${esc(r.documento||'—')}</td>
+                    <td class="fw-bold">${esc(r.id_frota||'—')}</td>
+                    <td>${esc(r.descricao_frota||'—')}</td>
+                    <td class="text-center"><span class="badge bg-${corStatus(r.status_os)}">${esc(r.status_os||'—')}</span></td>
+                    <td>${esc(r.empresa||'—')}</td>
+                    <td class="text-center">${fmtData(r.data_abertura)}</td>
+                    <td>${esc(r.tipo_manutencao||'—')}</td>
+                    <td>${esc(r.especialidade||'—')}</td>
+                    <td>${esc(r.agrupamento||'—')}</td>
+                </tr>`;
+            });
+            document.getElementById('osTbody').innerHTML = html;
+            document.getElementById('osPagCtrl').innerHTML = ctrlPag(dados.length, osPagAtual, 'os');
+        }
+
+        // ── TAB GASTOS ─────────────────────────────────────────────────────
+        function carregarGastos() {
+            if (tabLoaded.gastos) return;
+            fetch('/api/reforma/gastos_data')
+            .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+            .then(dados=>{
+                // Filtra linhas sem valor
+                dadosGastos = dados.filter(r => r.valor && Number(r.valor) !== 0);
+                document.getElementById('gastosLoading').style.display = 'none';
+                if (!dadosGastos.length) { document.getElementById('gastosVazio').style.display=''; return; }
+                document.getElementById('gastosContent').style.display = '';
+                const totalGeral = dadosGastos.reduce((s,r)=>s+(r.valor||0),0);
+                const abas = [...new Set(dadosGastos.map(r=>r.aba))];
+                document.getElementById('gastosKpis').innerHTML = `
+                    <div class="col-md-4"><div class="card border-0 shadow-sm kpi-card" style="border-left-color:#198754;"><div class="card-body text-center py-2"><h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">TOTAL GERAL</h6><h4 class="fw-bold text-success mb-0">${fmtBrl(totalGeral)}</h4></div></div></div>
+                    <div class="col-md-4"><div class="card border-0 shadow-sm kpi-card" style="border-left-color:#0d6efd;"><div class="card-body text-center py-2"><h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">REGISTROS</h6><h4 class="fw-bold text-primary mb-0">${dadosGastos.length}</h4></div></div></div>
+                    <div class="col-md-4"><div class="card border-0 shadow-sm kpi-card" style="border-left-color:#6c757d;"><div class="card-body text-center py-2"><h6 class="text-muted fw-bold mb-1" style="font-size:0.72rem;">FONTES</h6><h4 class="fw-bold text-secondary mb-0">${abas.length}</h4></div></div></div>`;
+                const sel = document.getElementById('gastosFiltroAba');
+                abas.forEach(a=>{ const o=document.createElement('option'); o.value=a; o.textContent=a; sel.appendChild(o); });
+                gastosPagAtual = 0; gastosFiltrado = dadosGastos; renderGastos(); tabLoaded.gastos = true;
+            }).catch(e=>{ mostrarErro('gastos', e.message); document.getElementById('gastosLoading').querySelector('.spinner-border').style.display='none'; document.getElementById('gastosLoading').querySelector('.fw-bold').style.display='none'; });
+        }
+        function filtrarGastos() {
+            const busca = (document.getElementById('gastosBusca').value||'').toUpperCase();
+            const aba = document.getElementById('gastosFiltroAba').value;
+            let f = dadosGastos;
+            if (busca) f = f.filter(r=>(r.id_frota||'').toUpperCase().includes(busca)||(r.empresa||'').toUpperCase().includes(busca)||(r.descricao_frota||'').toUpperCase().includes(busca));
+            if (aba) f = f.filter(r=>r.aba===aba);
+            gastosFiltrado = f; gastosPagAtual = 0; renderGastos();
+        }
+        function gastosIrPag(p) { gastosPagAtual = p; renderGastos(); }
+        function renderGastos() {
+            const dados = gastosFiltrado;
+            const total = dados.reduce((s,r)=>s+(r.valor||0),0);
+            document.getElementById('gastosTotal').innerText = `Total filtrado: ${fmtBrl(total)}`;
+            if (!dados.length) {
+                document.getElementById('gastosTbody').innerHTML='<tr><td colspan="8" class="text-center text-muted py-3">Nenhum dado com esses filtros</td></tr>';
+                document.getElementById('gastosPagCtrl').innerHTML=''; return;
+            }
+            const pagina = dados.slice(gastosPagAtual*POR_PAG, (gastosPagAtual+1)*POR_PAG);
+            let html='';
+            pagina.forEach(r => {
+                const mesLabel = r.mes>0 ? mNomes[(r.mes-1)%12] : '—';
+                html += `<tr>
+                    <td class="fw-bold text-primary" style="padding-left:12px;font-family:monospace;">${esc(r.id_frota||'—')}</td>
+                    <td>${esc(r.descricao_frota||'—')}</td>
+                    <td>${esc(r.empresa||'—')}</td>
+                    <td class="text-center">${r.ano>0?r.ano:'—'}</td>
+                    <td class="text-center">${mesLabel}</td>
+                    <td>${esc(r.especialidade||'—')}</td>
+                    <td class="fw-bold text-success text-end" style="font-family:monospace;">${fmtBrl(r.valor)}</td>
+                    <td style="font-size:0.70rem;color:#6c757d;">${esc(r.aba)}</td>
+                </tr>`;
+            });
+            document.getElementById('gastosTbody').innerHTML = html;
+            document.getElementById('gastosPagCtrl').innerHTML = ctrlPag(dados.length, gastosPagAtual, 'gastos');
+        }
+    </script>
+</body>
+</html>

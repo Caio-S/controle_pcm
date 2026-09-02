@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório PDF - PCM</title>
+    <style>
+        body { font-family: Calibri, Arial, sans-serif; background-color: #ffffff; padding: 20px; }
+        .tabela-excel { 
+            border-collapse: collapse; 
+            width: 100%; 
+            font-size: 11px;
+            border: none; 
+            margin: 0 auto; 
+            max-width: 700px;
+            table-layout: fixed; 
+            word-wrap: break-word; 
+        }
+        .titulo { background-color: #d9d9d9; font-size: 14px; font-weight: bold; padding: 10px; text-align: center; }
+        .cabecalho th { border-top: 1px solid #000; border-bottom: 2px solid #000; color: #00509E; padding: 6px; font-weight: bold; }
+        .linha-dados td { border-bottom: 1px solid #bfbfbf; padding: 6px; vertical-align: middle; }
+        .caixa-resumo { max-width: 700px; margin: 0 auto 15px auto; padding: 8px; border: 1px solid #000; background-color: #f2f2f2; font-size: 12px; font-weight: bold;}
+        .resumo-item { display: inline-block; margin-right: 15px; margin-bottom: 5px; }
+        @media print { 
+            @page { margin: 1cm; size: A4 portrait; } 
+            body { padding: 0; } 
+        }
+    </style>
+</head>
+<body>
+    <div class="caixa-resumo">
+        <div class="resumo-item" style="color: #00509E;">TOTAL BLOQUEADA: {{ total }}</div>
+        {% for motivo, qtd in contagem.items() %}
+            <div class="resumo-item">| {{ motivo }}: {{ qtd }}</div>
+        {% endfor %}
+    </div>
+
+    <table class="tabela-excel">
+        <tr><td colspan="5" class="titulo">BLOQUEIO DE ABASTECIMENTO - {{ data_hoje }}</td></tr>
+        <tr><td colspan="5" style="padding: 2px;"></td></tr>
+        <tr class="cabecalho">
+            <th style="text-align: center; width: 10%;">FROTA</th>
+            <th style="text-align: left; width: 40%;">DESCRIÇÃO</th>
+            <th style="text-align: left; width: 20%;">MOTIVO</th>
+            <th style="text-align: center; width: 14%;">DATA</th>
+            <th style="text-align: left; width: 16%;">STATUS</th>
+        </tr>
+        {% for linha in frotas %}
+        <tr class="linha-dados" style="background-color: {{ '#f2f2f2' if loop.index0 % 2 == 0 else '#ffffff' }};">
+            <td style="text-align: center; font-weight: bold;">{{ linha.id_frota }}</td>
+            <td style="text-align: left;">{{ linha.descricao }}</td>
+            <td style="text-align: left;">{{ linha.motivo }}</td>
+            <td style="text-align: center;">{{ linha.data_bloqueio }}</td>
+            <td style="text-align: left;">{{ linha.status_oficina }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <script>window.onload = function() { window.print(); }</script>
+</body>
+</html>
