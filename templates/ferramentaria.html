@@ -144,6 +144,14 @@
                     <i class="bi bi-truck me-1"></i>Caminhões Oficina
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'conferencia' %}active{% endif %}" id="conferencia-tab" data-bs-toggle="tab" data-bs-target="#conferencia" type="button" role="tab">
+                    <i class="bi bi-clipboard2-check-fill me-1"></i>Conferência
+                    {% if conferencia_faltando_por_caminhao %}
+                    <span class="badge bg-danger ms-1">{{ conferencia_faltando_por_caminhao.values() | map(attribute='itens') | map('length') | sum }}</span>
+                    {% endif %}
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content" id="ferramentariaTabsContent">
@@ -1100,9 +1108,14 @@
             <div class="tab-pane fade {% if active_tab == 'caminhoes' %}show active{% endif %}" id="caminhoes" role="tabpanel" aria-labelledby="caminhoes-tab">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="fw-bold mb-0"><i class="bi bi-truck text-success me-2"></i>Estoque dos Caminhões Oficina</h5>
-                    <button class="btn btn-success fw-bold" onclick="novoCaminhao()">
-                        <i class="bi bi-plus-lg me-1"></i>Novo Caminhão
-                    </button>
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('relatorio_geral_caminhoes') }}" target="_blank" class="btn btn-outline-dark fw-bold">
+                            <i class="bi bi-file-earmark-pdf-fill me-1"></i>Relatório Geral (PDF)
+                        </a>
+                        <button class="btn btn-success fw-bold" onclick="novoCaminhao()">
+                            <i class="bi bi-plus-lg me-1"></i>Novo Caminhão
+                        </button>
+                    </div>
                 </div>
 
                 {% if caminhoes %}
@@ -1137,6 +1150,11 @@
                                 {% if cam.observacao %}
                                 <div class="small text-muted mt-1"><i class="bi bi-chat-text me-1"></i>{{ cam.observacao }}</div>
                                 {% endif %}
+                                <div class="mt-2">
+                                    <a href="{{ url_for('ficha_caminhao_oficina', caminhao_id=cam.id) }}" target="_blank" class="btn btn-sm btn-outline-primary w-100">
+                                        <i class="bi bi-printer-fill me-1"></i>Imprimir Ficha
+                                    </a>
+                                </div>
                                 {% if cam.termo_pdf %}
                                 <div class="mt-2">
                                     <a href="/ferramentaria/termos/{{ cam.termo_pdf }}" target="_blank" class="btn btn-sm btn-outline-danger w-100">
@@ -1148,6 +1166,11 @@
                                     <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Sem termo</span>
                                 </div>
                                 {% endif %}
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-outline-success w-100" onclick="abrirConferencia({{ cam.id }})">
+                                        <i class="bi bi-clipboard2-check me-1"></i>Nova Conferência
+                                    </button>
+                                </div>
                                 {% if cam.atualizado_em %}
                                 <div class="text-end mt-2"><small class="text-muted">Atualizado: {{ cam.atualizado_em[:10] }}</small></div>
                                 {% endif %}
@@ -1165,6 +1188,104 @@
                     </button>
                 </div>
                 {% endif %}
+            </div>
+
+            <div class="tab-pane fade {% if active_tab == 'conferencia' %}show active{% endif %}" id="conferencia" role="tabpanel" aria-labelledby="conferencia-tab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-clipboard2-check-fill text-success me-2"></i>Conferência de Estoque — Caminhões Oficina</h5>
+                    <button class="btn btn-success fw-bold" onclick="abrirConferencia()">
+                        <i class="bi bi-plus-lg me-1"></i>Nova Conferência
+                    </button>
+                </div>
+
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-danger text-white fw-bold">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>Ferramentas Faltando (última conferência de cada caminhão)
+                    </div>
+                    <div class="card-body">
+                        {% if conferencia_faltando_por_caminhao %}
+                        <div class="row g-3">
+                            {% for caminhao_id, grupo in conferencia_faltando_por_caminhao.items() %}
+                            <div class="col-md-6">
+                                <div class="border rounded p-2 h-100">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="fw-bold"><i class="bi bi-truck me-1"></i>{{ grupo.identificacao }}</span>
+                                        <small class="text-muted">Conferido em {{ grupo.data_conferencia[:10] }}</small>
+                                    </div>
+                                    {% if grupo.responsavel %}
+                                    <div class="small text-muted mb-2"><i class="bi bi-person me-1"></i>{{ grupo.responsavel }}</div>
+                                    {% endif %}
+                                    <ul class="list-group list-group-flush">
+                                        {% for item in grupo.itens %}
+                                        <li class="list-group-item px-0 py-1 d-flex justify-content-between">
+                                            <span>{{ item.descricao }} {% if item.codigo %}<small class="text-muted">({{ item.codigo }})</small>{% endif %}</span>
+                                            <span class="badge bg-danger">Falta</span>
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-emoji-smile fs-1 d-block mb-2 text-success opacity-75"></i>
+                            Nenhuma ferramenta faltando registrada. Faça uma conferência para começar a acompanhar.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-secondary text-white fw-bold">
+                        <i class="bi bi-clock-history me-1"></i>Histórico de Conferências
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Caminhão</th>
+                                    <th class="text-center">Data</th>
+                                    <th>Conferente</th>
+                                    <th class="text-center">Itens</th>
+                                    <th class="text-center">Faltando</th>
+                                    <th class="text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if conferencias_historico %}
+                                    {% for c in conferencias_historico %}
+                                    <tr>
+                                        <td class="fw-bold">{{ c.identificacao }}</td>
+                                        <td class="text-center">{{ c.data_conferencia[:16] | replace('T', ' ') }}</td>
+                                        <td>{{ c.usuario or '-' }}</td>
+                                        <td class="text-center">{{ c.total_itens }}</td>
+                                        <td class="text-center">
+                                            {% if c.total_faltando > 0 %}
+                                                <span class="badge bg-danger">{{ c.total_faltando }}</span>
+                                            {% else %}
+                                                <span class="badge bg-success">0</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="verDetalhesConferencia({{ c.id }})" title="Ver detalhes">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            {% if usuario_admin %}
+                                            <button class="btn btn-sm btn-outline-danger" onclick="excluirConferencia({{ c.id }})" title="Excluir">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr><td colspan="6" class="text-center py-4 text-muted">Nenhuma conferência registrada ainda.</td></tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -2812,13 +2933,13 @@
             if (data.itens.length === 0) {
                 adicionarLinhaCaminhao();
             } else {
-                data.itens.forEach(i => adicionarLinhaCaminhao(i.codigo, i.descricao, i.quantidade, i.valor_unitario));
+                data.itens.forEach(i => adicionarLinhaCaminhao(i.codigo, i.descricao, i.quantidade, i.valor_unitario, i.observacao));
             }
             _mostrarTermoCaminhao(data.caminhao.termo_pdf || '');
             new bootstrap.Modal(document.getElementById('modalCaminhao')).show();
         }
 
-        function adicionarLinhaCaminhao(codigo='', descricao='', quantidade=1, valor=0) {
+        function adicionarLinhaCaminhao(codigo='', descricao='', quantidade=1, valor=0, observacao='') {
             const tbody = document.getElementById('caminhaoTabelaItens').querySelector('tbody');
             const tr = document.createElement('tr');
             tr.className = 'item-row';
@@ -2833,12 +2954,14 @@
                 </td>
                 <td><input type="number" name="quantidade[]" class="form-control form-control-sm text-end" min="0.01" step="0.01" style="max-width:80px;" value="1"></td>
                 <td><input type="number" name="valor_unitario[]" class="form-control form-control-sm valor-ferramenta text-end" min="0" step="0.01" style="max-width:110px;" value="0"></td>
+                <td><input type="text" name="observacao_item[]" class="form-control form-control-sm" placeholder="Ex: danificado, vazando óleo..."></td>
                 <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="this.closest('tr').remove()" title="Remover"><i class="bi bi-trash-fill"></i></button></td>`;
             tbody.appendChild(tr);
             tr.querySelector('.codigo-ferramenta').value = codigo;
             tr.querySelector('.descricao-ferramenta').value = descricao;
             tr.querySelector('input[name="quantidade[]"]').value = quantidade;
             tr.querySelector('.valor-ferramenta').value = valor;
+            tr.querySelector('input[name="observacao_item[]"]').value = observacao || '';
             if (!codigo && !descricao) tr.querySelector('.descricao-ferramenta').focus();
         }
 
@@ -2999,6 +3122,180 @@
                 alert('Erro: ' + data.msg);
             }
         }
+
+        // ── Conferência de Estoque (Caminhão Oficina) ───────────────────────────
+        function abrirConferencia(caminhaoId) {
+            const select = document.getElementById('confCaminhaoSelect');
+            select.value = caminhaoId || '';
+            document.getElementById('confObservacao').value = '';
+            document.getElementById('confErro').classList.add('d-none');
+            if (caminhaoId) {
+                carregarItensConferencia(caminhaoId);
+            } else {
+                document.getElementById('confChecklistWrap').classList.add('d-none');
+                document.getElementById('confSemItens').classList.remove('d-none');
+                document.getElementById('btnSalvarConferencia').disabled = true;
+            }
+            new bootstrap.Modal(document.getElementById('modalConferencia')).show();
+        }
+
+        async function carregarItensConferencia(caminhaoId) {
+            const wrap = document.getElementById('confChecklistWrap');
+            const semItens = document.getElementById('confSemItens');
+            const btnSalvar = document.getElementById('btnSalvarConferencia');
+            const tbody = document.getElementById('confTabelaItens').querySelector('tbody');
+            tbody.innerHTML = '';
+
+            if (!caminhaoId) {
+                wrap.classList.add('d-none');
+                semItens.classList.remove('d-none');
+                btnSalvar.disabled = true;
+                return;
+            }
+
+            const r = await fetch(`/api/ferramentaria/caminhoes/${caminhaoId}/itens`);
+            const data = await r.json();
+            if (data.status !== 'ok' || !data.itens.length) {
+                wrap.classList.add('d-none');
+                semItens.classList.remove('d-none');
+                semItens.innerHTML = '<i class="bi bi-exclamation-circle fs-1 d-block mb-2 opacity-50"></i>Este caminhão não tem itens de estoque cadastrados.';
+                btnSalvar.disabled = true;
+                return;
+            }
+
+            data.itens.forEach(i => {
+                const tr = document.createElement('tr');
+                tr.dataset.codigo = i.codigo || '';
+                tr.dataset.descricao = i.descricao;
+                tr.dataset.quantidade = i.quantidade;
+                tr.innerHTML = `
+                    <td class="font-monospace">${i.codigo || '-'}</td>
+                    <td>${i.descricao}</td>
+                    <td class="text-center">${i.quantidade}</td>
+                    <td class="text-center">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <input type="radio" class="btn-check conf-presente" name="conf_${i.id}" value="1" checked>
+                            <label class="btn btn-outline-success">OK</label>
+                            <input type="radio" class="btn-check conf-presente" name="conf_${i.id}" value="0">
+                            <label class="btn btn-outline-danger">Falta</label>
+                        </div>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+            // liga cada label ao seu radio (evita precisar de IDs únicos por linha)
+            tbody.querySelectorAll('.btn-group').forEach(grupo => {
+                grupo.querySelectorAll('label').forEach((label, idx) => {
+                    const input = grupo.querySelectorAll('input')[idx];
+                    label.addEventListener('click', () => { input.checked = true; });
+                });
+            });
+
+            semItens.classList.add('d-none');
+            wrap.classList.remove('d-none');
+            btnSalvar.disabled = false;
+        }
+
+        function confMarcarTodos(presente) {
+            document.querySelectorAll('#confTabelaItens tbody tr').forEach(tr => {
+                const radios = tr.querySelectorAll('.conf-presente');
+                radios.forEach(r => { if (r.value === (presente ? '1' : '0')) r.checked = true; });
+            });
+        }
+
+        async function salvarConferencia() {
+            const caminhaoId = document.getElementById('confCaminhaoSelect').value;
+            const erro = document.getElementById('confErro');
+            erro.classList.add('d-none');
+            if (!caminhaoId) { erro.textContent = 'Selecione um caminhão.'; erro.classList.remove('d-none'); return; }
+
+            const itens = [...document.querySelectorAll('#confTabelaItens tbody tr')].map(tr => {
+                const presente = tr.querySelector('.conf-presente:checked')?.value !== '0';
+                return {
+                    codigo: tr.dataset.codigo,
+                    descricao: tr.dataset.descricao,
+                    quantidade_esperada: tr.dataset.quantidade,
+                    presente: presente
+                };
+            });
+
+            const btn = document.getElementById('btnSalvarConferencia');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Salvando...';
+
+            try {
+                const r = await fetch('/api/ferramentaria/conferencia/salvar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        caminhao_id: caminhaoId,
+                        observacao: document.getElementById('confObservacao').value,
+                        itens: itens
+                    })
+                });
+                const data = await r.json();
+                if (data.status === 'ok') {
+                    window.location.href = '/ferramentaria?aba=conferencia';
+                } else {
+                    erro.textContent = 'Erro: ' + data.msg;
+                    erro.classList.remove('d-none');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Salvar Conferência';
+                }
+            } catch (e) {
+                erro.textContent = 'Erro de conexão: ' + e.message;
+                erro.classList.remove('d-none');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Salvar Conferência';
+            }
+        }
+
+        async function verDetalhesConferencia(id) {
+            document.getElementById('confDetalheBody').innerHTML =
+                '<div class="text-center text-muted py-4"><i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>Carregando...</div>';
+            new bootstrap.Modal(document.getElementById('modalConferenciaDetalhe')).show();
+
+            const r = await fetch(`/api/ferramentaria/conferencia/${id}`);
+            const data = await r.json();
+            if (data.status !== 'ok') {
+                document.getElementById('confDetalheBody').innerHTML = '<div class="alert alert-danger">Não foi possível carregar a conferência.</div>';
+                return;
+            }
+            const c = data.conferencia;
+            document.getElementById('confDetalheTitulo').innerHTML =
+                `<i class="bi bi-clipboard2-check me-2"></i>${c.identificacao} — ${c.data_conferencia.slice(0, 16).replace('T', ' ')}`;
+
+            let linhas = data.itens.map(i => `
+                <tr class="${i.presente ? '' : 'table-danger'}">
+                    <td class="font-monospace">${i.codigo || '-'}</td>
+                    <td>${i.descricao}</td>
+                    <td class="text-center">${i.quantidade_esperada}</td>
+                    <td class="text-center">${i.presente ? '<span class="badge bg-success">OK</span>' : '<span class="badge bg-danger">Falta</span>'}</td>
+                </tr>`).join('');
+
+            document.getElementById('confDetalheBody').innerHTML = `
+                <div class="mb-2"><strong>Conferente:</strong> ${c.usuario || '-'}</div>
+                ${c.responsavel ? `<div class="mb-2"><strong>Responsável pelo Caminhão:</strong> ${c.responsavel}</div>` : ''}
+                ${c.observacao ? `<div class="mb-2"><strong>Observação:</strong> ${c.observacao}</div>` : ''}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                            <tr><th>Código</th><th>Descrição</th><th class="text-center">Qtd</th><th class="text-center">Status</th></tr>
+                        </thead>
+                        <tbody>${linhas}</tbody>
+                    </table>
+                </div>`;
+        }
+
+        async function excluirConferencia(id) {
+            if (!confirm('Excluir esta conferência do histórico? Esta ação não pode ser desfeita.')) return;
+            const r = await fetch(`/api/ferramentaria/conferencia/excluir/${id}`, { method: 'POST' });
+            const data = await r.json();
+            if (data.status === 'ok') {
+                window.location.href = '/ferramentaria?aba=conferencia';
+            } else {
+                alert('Erro: ' + data.msg);
+            }
+        }
     </script>
 
     <!-- Modal Caixa de Ferramentas -->
@@ -3117,10 +3414,11 @@
                             <table class="table table-sm align-middle mb-0" id="caminhaoTabelaItens">
                                 <thead class="table-secondary">
                                     <tr>
-                                        <th style="width:14%">Código</th>
-                                        <th>Descrição</th>
-                                        <th style="width:10%">Qtd</th>
-                                        <th style="width:14%">Valor Unit. (R$)</th>
+                                        <th style="width:12%">Código</th>
+                                        <th style="width:26%">Descrição</th>
+                                        <th style="width:8%">Qtd</th>
+                                        <th style="width:12%">Valor Unit. (R$)</th>
+                                        <th>Observação (ex: danificado, com desgaste)</th>
                                         <th style="width:6%" class="text-center"></th>
                                     </tr>
                                 </thead>
@@ -3162,6 +3460,91 @@
                     <button type="button" class="btn btn-success fw-bold" onclick="salvarCaminhao()">
                         <i class="bi bi-check-lg me-1"></i>Salvar
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nova Conferência -->
+    <div class="modal fade" id="modalConferencia" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-clipboard2-check me-2"></i>Nova Conferência de Estoque</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label fw-bold">Caminhão Oficina</label>
+                            <select id="confCaminhaoSelect" class="form-select fw-bold" onchange="carregarItensConferencia(this.value)">
+                                <option value="">Selecione...</option>
+                                {% for cam in caminhoes %}
+                                <option value="{{ cam.id }}">{{ cam.identificacao }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Data</label>
+                            <input type="text" class="form-control" value="{{ hoje }}" disabled>
+                        </div>
+                    </div>
+
+                    <div id="confSemItens" class="text-center text-muted py-4">
+                        <i class="bi bi-truck fs-1 d-block mb-2 opacity-50"></i>Selecione um caminhão para carregar o estoque cadastrado.
+                    </div>
+
+                    <div id="confChecklistWrap" class="d-none">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold text-secondary"><i class="bi bi-list-check me-1"></i>Marque o que NÃO foi encontrado</span>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-success" onclick="confMarcarTodos(true)">Tudo Presente</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="confMarcarTodos(false)">Tudo Faltando</button>
+                            </div>
+                        </div>
+                        <div class="table-responsive border rounded shadow-sm" style="max-height: 350px;">
+                            <table class="table table-sm align-middle mb-0" id="confTabelaItens">
+                                <thead class="table-secondary" style="position: sticky; top: 0;">
+                                    <tr>
+                                        <th style="width:14%">Código</th>
+                                        <th>Descrição</th>
+                                        <th style="width:10%" class="text-center">Qtd</th>
+                                        <th style="width:14%" class="text-center">Presente?</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <div class="mt-3">
+                            <label class="form-label fw-bold">Observação Geral</label>
+                            <textarea id="confObservacao" class="form-control" rows="2" placeholder="Observações sobre a conferência (opcional)"></textarea>
+                        </div>
+                    </div>
+                    <div id="confErro" class="alert alert-danger mt-3 d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" id="btnSalvarConferencia" class="btn btn-success fw-bold" onclick="salvarConferencia()" disabled>
+                        <i class="bi bi-check-lg me-1"></i>Salvar Conferência
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Detalhes da Conferência -->
+    <div class="modal fade" id="modalConferenciaDetalhe" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-secondary text-white">
+                    <h5 class="modal-title" id="confDetalheTitulo"><i class="bi bi-clipboard2-check me-2"></i>Detalhes da Conferência</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="confDetalheBody">
+                    <div class="text-center text-muted py-4"><i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>Carregando...</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
                 </div>
             </div>
         </div>

@@ -32,6 +32,33 @@
         .pdf-mode .table-custom td { font-size: 0.65rem; padding: 0.3rem 0.4rem; border-bottom: 1px solid #dee2e6; }
         .pdf-mode .table-custom tr { page-break-inside: avoid; }
 
+        /* ---------- Filtros por coluna (estilo Excel) ---------- */
+        .th-filtro { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+        .th-titulo { flex: 1 1 auto; }
+        .btn-filtro-col {
+            flex: 0 0 auto; border: none; background: transparent; color: #6c757d;
+            padding: 0 3px; line-height: 1; border-radius: 4px; cursor: pointer; font-size: 0.85rem;
+        }
+        .btn-filtro-col:hover { background-color: rgba(13, 110, 253, 0.15); color: #0d6efd; }
+        .btn-filtro-col.filtro-ativo { color: #0d6efd; background-color: rgba(13, 110, 253, 0.15); }
+
+        .painel-filtro-coluna {
+            position: absolute; z-index: 1080; width: 265px; background: #fff;
+            border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 .5rem 1rem rgba(0,0,0,.20);
+            font-size: 0.8rem; display: none;
+        }
+        .painel-filtro-coluna .pfc-head { padding: 8px; border-bottom: 1px solid #e9ecef; }
+        .painel-filtro-coluna .pfc-ordenar { display: flex; gap: 4px; margin-bottom: 6px; }
+        .painel-filtro-coluna .pfc-lista { max-height: 230px; overflow-y: auto; padding: 6px 8px; }
+        .painel-filtro-coluna .pfc-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+        .painel-filtro-coluna .pfc-item label { margin: 0; cursor: pointer; flex: 1; word-break: break-word; }
+        .painel-filtro-coluna .pfc-foot { padding: 8px; border-top: 1px solid #e9ecef; display: flex; gap: 6px; }
+
+        [data-bs-theme="dark"] .painel-filtro-coluna { background: #2b3035; border-color: #495057; color: #f8f9fa; }
+        [data-bs-theme="dark"] .painel-filtro-coluna .pfc-head,
+        [data-bs-theme="dark"] .painel-filtro-coluna .pfc-foot { border-color: #495057; }
+        [data-bs-theme="dark"] .btn-filtro-col { color: #adb5bd; }
+
         [data-bs-theme="dark"] body { background-color: #212529; }
         [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; border-color: #495057 !important; }
         [data-bs-theme="dark"] .table { color: #f8f9fa; border-color: #495057;}
@@ -41,6 +68,15 @@
     </style>
 </head>
 <body class="bg-light">
+
+    {%- macro th_filtro(escopo, col, titulo) -%}
+    <div class="th-filtro">
+        <span class="th-titulo">{{ titulo }}</span>
+        <button type="button" class="btn-filtro-col" id="btnFiltro_{{ escopo }}_{{ col }}"
+                onclick="abrirFiltroColuna(event, '{{ escopo }}', '{{ col }}', '{{ titulo }}')"
+                title="Filtrar / ordenar por {{ titulo }}"><i class="bi bi-funnel"></i></button>
+    </div>
+    {%- endmacro -%}
 
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow mb-4 no-print">
         <div class="container-fluid px-4">
@@ -68,12 +104,13 @@
           {% endif %}
         {% endwith %}
 
-        <div class="row row-cols-1 row-cols-md-3 g-3 mb-4 no-print">
+        <div class="row row-cols-1 row-cols-md-3 g-3 mb-3 no-print">
             <div class="col">
                 <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #0dcaf0;">
                     <div class="card-body text-center py-2 px-1">
-                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.75rem;">REALIZADAS NA SEMANA (TOTAL)</h6>
-                        <h2 class="fw-bold text-info mb-0">{{ stats.total }}</h2>
+                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.75rem;">TOTAL DE ANÁLISES <span class="text-info" id="kpiSufixoPeriodo"></span></h6>
+                        <h2 class="fw-bold text-info mb-0" id="kpiTotal">{{ stats.total }}</h2>
+                        <div class="small text-muted fw-bold" id="kpiPeriodoLabel" style="font-size: 0.65rem;">&nbsp;</div>
                     </div>
                 </div>
             </div>
@@ -81,7 +118,8 @@
                 <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #dc3545;">
                     <div class="card-body text-center py-2 px-1">
                         <h6 class="text-muted fw-bold mb-1" style="font-size: 0.75rem;">ANOMALIAS CRÍTICAS</h6>
-                        <h2 class="fw-bold text-danger mb-0">{{ stats.criticas }}</h2>
+                        <h2 class="fw-bold text-danger mb-0" id="kpiCriticas">{{ stats.criticas }}</h2>
+                        <div class="small text-muted fw-bold" style="font-size: 0.65rem;">&nbsp;</div>
                     </div>
                 </div>
             </div>
@@ -89,8 +127,42 @@
                 <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #198754;">
                     <div class="card-body text-center py-2 px-1">
                         <h6 class="text-muted fw-bold mb-1" style="font-size: 0.75rem;">TRATATIVAS CONCLUÍDAS</h6>
-                        <h2 class="fw-bold text-success mb-0">{{ stats.concluidas }}</h2>
+                        <h2 class="fw-bold text-success mb-0" id="kpiConcluidas">{{ stats.concluidas }}</h2>
+                        <div class="small text-muted fw-bold" style="font-size: 0.65rem;">&nbsp;</div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-white mb-4 no-print" id="barraPeriodo">
+            <div class="card-body py-2 px-3 d-flex flex-wrap align-items-end gap-3">
+                <div>
+                    <label class="form-label fw-bold text-secondary mb-1" style="font-size: 0.7rem;"><i class="bi bi-calendar-range me-1"></i>PERÍODO DA COLETA</label>
+                    <div class="d-flex align-items-center gap-1">
+                        <input type="date" id="fDataInicio" class="form-control form-control-sm border-info fw-bold text-dark" style="width: 155px;" onchange="onMudouPeriodo()">
+                        <span class="fw-bold text-muted small">até</span>
+                        <input type="date" id="fDataFim" class="form-control form-control-sm border-info fw-bold text-dark" style="width: 155px;" onchange="onMudouPeriodo()">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label fw-bold text-secondary mb-1" style="font-size: 0.7rem;"><i class="bi bi-calendar-week me-1"></i>SEMANAS DISPONÍVEIS</label>
+                    <select id="fSemanaRapida" class="form-select form-select-sm fw-bold border-info text-dark" style="min-width: 230px;" onchange="aplicarSemanaRapida(this.value)">
+                        <option value="">Todo o período carregado</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label fw-bold text-secondary mb-1" style="font-size: 0.7rem;">&nbsp;</label>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-outline-secondary btn-sm fw-bold" onclick="limparPeriodo()" title="Voltar a mostrar todas as datas"><i class="bi bi-x-circle me-1"></i>Limpar período</button>
+                        <button class="btn btn-outline-danger btn-sm fw-bold" onclick="limparTodosFiltros()" title="Limpar período e todos os filtros de coluna"><i class="bi bi-funnel me-1"></i>Limpar filtros</button>
+                    </div>
+                </div>
+
+                <div class="ms-auto text-end">
+                    <div class="fw-bold text-secondary" style="font-size: 0.7rem;" id="labelDisponivel"></div>
+                    <div class="fw-bold text-info" style="font-size: 0.8rem;" id="labelContagem"></div>
                 </div>
             </div>
         </div>
@@ -141,7 +213,7 @@
                                 <button id="btnPdfAnalises" class="btn btn-warning btn-sm fw-bold text-dark shadow-sm" onclick="baixarAnalisesPDF()">
                                     <i class="bi bi-printer-fill me-1"></i>Exportar PDF (A4)
                                 </button>
-                                <a href="{{ url_for('analises_dashboard_pdf') }}" target="_blank" class="btn btn-dark btn-sm fw-bold shadow-sm">
+                                <a href="{{ url_for('analises_dashboard_pdf') }}" id="linkDashboardPdf" data-base="{{ url_for('analises_dashboard_pdf') }}" target="_blank" class="btn btn-dark btn-sm fw-bold shadow-sm">
                                     <i class="bi bi-graph-up me-1"></i>Dashboard (PDF)
                                 </a>
 
@@ -153,25 +225,25 @@
                             </div>
                         </div>
 
-                        <table class="table table-hover table-custom align-middle mb-0 bg-white no-print">
+                        <table class="table table-hover table-custom align-middle mb-0 bg-white no-print" id="tabelaPendentes">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="text-center" style="width: 10%;">Frota</th>
-                                    <th style="width: 15%;">Setor / Especialidade</th>
-                                    <th class="text-center" style="width: 10%;">Data Coleta</th>
-                                    <th style="width: 15%;">Compartimento</th>
-                                    <th style="width: 17%;">Diagnóstico / Parecer</th>
-                                    <th class="text-center" style="width: 13%;">Responsável</th>
+                                    <th class="text-center" style="width: 10%;">{{ th_filtro('pend', 'frota', 'Frota') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('pend', 'setor', 'Setor / Especialidade') }}</th>
+                                    <th class="text-center" style="width: 10%;">{{ th_filtro('pend', 'data', 'Data Coleta') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('pend', 'comp', 'Compartimento') }}</th>
+                                    <th style="width: 17%;">{{ th_filtro('pend', 'diag', 'Diagnóstico / Parecer') }}</th>
+                                    <th class="text-center" style="width: 13%;">{{ th_filtro('pend', 'resp', 'Responsável') }}</th>
                                     <th class="text-center" style="width: 20%;">Ação / Tratativa</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% set count_pendentes = 0 %}
+                                {% set ns_pend = namespace(count=0) %}
                                 {% if analises %}
                                     {% for a in analises %}
                                         {% if a.status_tratativa != 'CONCLUÍDO' %}
-                                        {% set count_pendentes = count_pendentes + 1 %}
-                                        <tr class="linha-analise {% if a.is_critica %}linha-critica is-critica{% else %}is-normal{% endif %}" data-responsavel="{{ a.responsavel }}">
+                                        {% set ns_pend.count = ns_pend.count + 1 %}
+                                        <tr class="linha-analise {% if a.is_critica %}linha-critica is-critica{% else %}is-normal{% endif %}" data-id="{{ a.id }}" data-responsavel="{{ a.responsavel }}">
                                             <td class="text-center fw-bold fs-6 border-end text-primary">{{ a.id_frota }}</td>
                                             <td>
                                                 <span class="fw-bold d-block text-dark">{{ a.agrupamento }}</span>
@@ -214,9 +286,10 @@
                                         {% endif %}
                                     {% endfor %}
 
-                                    {% if count_pendentes == 0 %}
+                                    {% if ns_pend.count == 0 %}
                                     <tr><td colspan="7" class="text-center py-5 text-muted fw-bold"><i class="bi bi-emoji-smile fs-1 d-block mb-3 text-success opacity-75"></i>Nenhuma análise pendente. O painel está limpo!</td></tr>
                                     {% endif %}
+                                    <tr id="semResultadoPend" style="display: none;"><td colspan="7" class="text-center py-5 text-muted fw-bold"><i class="bi bi-funnel fs-1 d-block mb-3 opacity-50"></i>Nenhuma análise pendente para os filtros selecionados.</td></tr>
                                 {% else %}
                                     <tr>
                                         <td colspan="7" class="text-center py-5 text-muted fw-bold">
@@ -237,25 +310,25 @@
                             <h5 class="fw-bold mb-0 m-0"><i class="bi bi-archive-fill me-2 text-white"></i>Histórico de Frotas Tratadas</h5>
                         </div>
 
-                        <table class="table table-hover table-custom align-middle mb-0 bg-white no-print">
+                        <table class="table table-hover table-custom align-middle mb-0 bg-white no-print" id="tabelaHistorico">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="text-center" style="width: 10%;">Frota</th>
-                                    <th style="width: 15%;">Setor / Especialidade</th>
-                                    <th class="text-center" style="width: 10%;">Data Coleta</th>
-                                    <th style="width: 15%;">Compartimento</th>
-                                    <th style="width: 15%;">Diagnóstico Original</th>
+                                    <th class="text-center" style="width: 10%;">{{ th_filtro('hist', 'frota', 'Frota') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('hist', 'setor', 'Setor / Especialidade') }}</th>
+                                    <th class="text-center" style="width: 10%;">{{ th_filtro('hist', 'data', 'Data Coleta') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('hist', 'comp', 'Compartimento') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('hist', 'diag', 'Diagnóstico Original') }}</th>
                                     <th style="width: 25%;">Tratativa Aplicada</th>
                                     <th class="text-center" style="width: 10%;">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% set count_historico = 0 %}
+                                {% set ns_hist = namespace(count=0) %}
                                 {% if analises %}
                                     {% for a in analises %}
                                         {% if a.status_tratativa == 'CONCLUÍDO' %}
-                                        {% set count_historico = count_historico + 1 %}
-                                        <tr>
+                                        {% set ns_hist.count = ns_hist.count + 1 %}
+                                        <tr class="linha-historico" data-id="{{ a.id }}">
                                             <td class="text-center fw-bold fs-6 border-end text-success">{{ a.id_frota }}</td>
                                             <td>
                                                 <span class="fw-bold d-block text-dark">{{ a.agrupamento }}</span>
@@ -279,9 +352,10 @@
                                         </tr>
                                         {% endif %}
                                     {% endfor %}
-                                    {% if count_historico == 0 %}
+                                    {% if ns_hist.count == 0 %}
                                     <tr><td colspan="7" class="text-center py-5 text-muted fw-bold"><i class="bi bi-journal-x fs-1 d-block mb-3 opacity-50"></i>O histórico está vazio. Nenhuma análise tratada ainda.</td></tr>
                                     {% endif %}
+                                    <tr id="semResultadoHist" style="display: none;"><td colspan="7" class="text-center py-5 text-muted fw-bold"><i class="bi bi-funnel fs-1 d-block mb-3 opacity-50"></i>Nenhum histórico para os filtros selecionados.</td></tr>
                                 {% endif %}
                             </tbody>
                         </table>
@@ -393,6 +467,11 @@
                         <label class="form-label fw-bold text-secondary small">Ação Corretiva Realizada (O que foi feito?)</label>
                         <textarea id="trTexto" class="form-control border-primary fw-bold text-dark shadow-sm" rows="4" placeholder="Descreva o plano de ação, limpeza, troca de filtro, etc..."></textarea>
                     </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-secondary small">Data de Resolução (quando a ação foi realizada)</label>
+                        <input type="date" id="trData" class="form-control border-primary fw-bold text-dark shadow-sm">
+                    </div>
                 </div>
                 <div class="modal-footer d-flex justify-content-between bg-white border-top-0">
                     <button type="button" class="btn btn-secondary fw-bold shadow-sm" data-bs-dismiss="modal">Cancelar</button>
@@ -412,16 +491,16 @@
 
             <div class="d-flex justify-content-between text-center gap-2 mb-3 px-3">
                 <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #0dcaf0 !important; background-color: #f8f9fa;">
-                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">REALIZADAS NA SEMANA</div>
-                    <div style="font-size: 1.1rem;" class="fw-bold text-info lh-1">{{ stats.total }}</div>
+                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">TOTAL DE ANÁLISES</div>
+                    <div style="font-size: 1.1rem;" class="fw-bold text-info lh-1" id="pdfKpiTotal">{{ stats.total }}</div>
                 </div>
                 <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #dc3545 !important; background-color: #f8f9fa;">
                     <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">ANOMALIAS CRÍTICAS</div>
-                    <div style="font-size: 1.1rem;" class="fw-bold text-danger lh-1">{{ stats.criticas }}</div>
+                    <div style="font-size: 1.1rem;" class="fw-bold text-danger lh-1" id="pdfKpiCriticas">{{ stats.criticas }}</div>
                 </div>
                 <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #198754 !important; background-color: #f8f9fa;">
                     <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">TRATATIVAS CONCLUÍDAS</div>
-                    <div style="font-size: 1.1rem;" class="fw-bold text-success lh-1">{{ stats.concluidas }}</div>
+                    <div style="font-size: 1.1rem;" class="fw-bold text-success lh-1" id="pdfKpiConcluidas">{{ stats.concluidas }}</div>
                 </div>
             </div>
 
@@ -439,6 +518,28 @@
                 <tbody id="pdfAnalisesTbody">
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <div id="painelFiltroColuna" class="painel-filtro-coluna no-print">
+        <div class="pfc-head">
+            <div class="fw-bold text-secondary mb-2" style="font-size: 0.7rem;">
+                FILTRAR: <span id="pfcTitulo" class="text-dark"></span>
+            </div>
+            <div class="pfc-ordenar">
+                <button class="btn btn-outline-secondary btn-sm py-0 px-2 flex-fill" style="font-size: 0.7rem;" onclick="pfcOrdenar('asc')"><i class="bi bi-sort-down-alt me-1"></i>Crescente</button>
+                <button class="btn btn-outline-secondary btn-sm py-0 px-2 flex-fill" style="font-size: 0.7rem;" onclick="pfcOrdenar('desc')"><i class="bi bi-sort-up me-1"></i>Decrescente</button>
+            </div>
+            <input type="text" id="pfcBusca" class="form-control form-control-sm" placeholder="Buscar valor..." oninput="pfcFiltrarBusca(this.value)">
+            <div class="pfc-item mt-2 border-top pt-2">
+                <input class="form-check-input mt-0" type="checkbox" id="pfcTodos" onchange="pfcMarcarTodos(this.checked)">
+                <label for="pfcTodos" class="fw-bold">(Selecionar tudo)</label>
+            </div>
+        </div>
+        <div class="pfc-lista" id="pfcLista"></div>
+        <div class="pfc-foot">
+            <button class="btn btn-outline-danger btn-sm flex-fill py-0" style="font-size: 0.75rem;" onclick="pfcLimpar()">Limpar</button>
+            <button class="btn btn-primary btn-sm flex-fill py-0 text-white fw-bold" style="font-size: 0.75rem;" onclick="pfcAplicar()">Aplicar</button>
         </div>
     </div>
 
@@ -478,9 +579,81 @@
             }
         }
 
-        // FILTRO VISUAL DA ABA PENDENTES (combina tipo Todas/Críticas + Responsável)
+        // ==========================================
+        // MOTOR DE FILTROS
+        // Combina: tipo (Todas/Críticas) + responsável + período de coleta
+        // + filtros por coluna (estilo Excel). Tudo é aplicado em cima do mesmo
+        // conjunto de dados, então tela, KPIs e PDF nunca divergem.
+        // ==========================================
         let filtroTipoAtual = 'todas';
         let filtroResponsavelAtual = 'TODOS';
+        let periodo = { inicio: '', fim: '' };
+        const filtrosColuna = { pend: {}, hist: {} };
+        let resumoFiltrado = { total: 0, criticas: 0, concluidas: 0, pendentes: 0 };
+
+        const isoData = a => String(a.data_coleta || '').slice(0, 10);
+        const escopoDe = a => (a.status_tratativa === 'CONCLUÍDO' ? 'hist' : 'pend');
+
+        function fmtISO(d) {
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+        function fmtBR(iso) {
+            if (!iso || iso.length < 10) return iso || '(sem data)';
+            return iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+        }
+        function fmtBRCurto(iso) {
+            if (!iso || iso.length < 10) return iso || '';
+            return iso.slice(8, 10) + '/' + iso.slice(5, 7);
+        }
+
+        function valorColuna(a, col) {
+            switch (col) {
+                case 'frota': return String(a.id_frota || '');
+                case 'setor': return String(a.agrupamento || 'GERAL');
+                case 'data':  return isoData(a);
+                case 'comp':  return String(a.compartimento || '');
+                case 'diag':  return String(a.diagnostico || '');
+                case 'resp':  return String(a.responsavel || 'Não Atribuído');
+            }
+            return '';
+        }
+        function escaparHtml(txt) {
+            const d = document.createElement('div');
+            d.textContent = txt;
+            return d.innerHTML;
+        }
+        function rotuloValor(col, valor) {
+            if (col === 'data') return fmtBR(valor);
+            return valor === '' ? '(vazio)' : valor;
+        }
+
+        function passaPeriodo(a) {
+            const d = isoData(a);
+            if (periodo.inicio && (!d || d < periodo.inicio)) return false;
+            if (periodo.fim && (!d || d > periodo.fim)) return false;
+            return true;
+        }
+
+        function passaColunas(a, escopo, ignorarCol) {
+            const conjunto = filtrosColuna[escopo];
+            for (const col in conjunto) {
+                if (col === ignorarCol) continue;
+                const sel = conjunto[col];
+                if (!sel || sel.size === 0) continue;
+                if (!sel.has(valorColuna(a, col))) return false;
+            }
+            return true;
+        }
+
+        function passaFiltros(a, ignorarCol) {
+            const escopo = escopoDe(a);
+            if (!passaPeriodo(a)) return false;
+            if (escopo === 'pend') {
+                if (filtroTipoAtual === 'criticas' && !a.is_critica) return false;
+                if (filtroResponsavelAtual !== 'TODOS' && a.responsavel !== filtroResponsavelAtual) return false;
+            }
+            return passaColunas(a, escopo, ignorarCol);
+        }
 
         function filtrarAnalises(tipo) {
             filtroTipoAtual = tipo;
@@ -507,61 +680,392 @@
         }
 
         function aplicarFiltrosTela() {
-            let linhas = document.querySelectorAll('#lista-pane .linha-analise');
-            linhas.forEach(linha => {
-                let passaTipo = filtroTipoAtual !== 'criticas' || linha.classList.contains('is-critica');
-                let passaResponsavel = filtroResponsavelAtual === 'TODOS' || linha.dataset.responsavel === filtroResponsavelAtual;
-                linha.style.setProperty('display', (passaTipo && passaResponsavel) ? '' : 'none', 'important');
+            const permitidos = new Set();
+            resumoFiltrado = { total: 0, criticas: 0, concluidas: 0, pendentes: 0 };
+
+            analisesBase.forEach(a => {
+                if (!passaFiltros(a)) return;
+                permitidos.add(String(a.id));
+                resumoFiltrado.total++;
+                if (a.is_critica && a.status_tratativa !== 'CONCLUÍDO') resumoFiltrado.criticas++;
+                if (a.status_tratativa === 'CONCLUÍDO') resumoFiltrado.concluidas++;
+                else resumoFiltrado.pendentes++;
+            });
+
+            let visiveisPend = 0, visiveisHist = 0;
+            document.querySelectorAll('#lista-pane .linha-analise').forEach(linha => {
+                const ok = permitidos.has(linha.dataset.id);
+                if (ok) visiveisPend++;
+                linha.style.setProperty('display', ok ? '' : 'none', 'important');
+            });
+            document.querySelectorAll('#historico-pane .linha-historico').forEach(linha => {
+                const ok = permitidos.has(linha.dataset.id);
+                if (ok) visiveisHist++;
+                linha.style.setProperty('display', ok ? '' : 'none', 'important');
+            });
+
+            const vazioPend = document.getElementById('semResultadoPend');
+            const vazioHist = document.getElementById('semResultadoHist');
+            const totalLinhasPend = document.querySelectorAll('#lista-pane .linha-analise').length;
+            const totalLinhasHist = document.querySelectorAll('#historico-pane .linha-historico').length;
+            if (vazioPend) vazioPend.style.display = (totalLinhasPend > 0 && visiveisPend === 0) ? '' : 'none';
+            if (vazioHist) vazioHist.style.display = (totalLinhasHist > 0 && visiveisHist === 0) ? '' : 'none';
+
+            document.getElementById('kpiTotal').innerText = resumoFiltrado.total;
+            document.getElementById('kpiCriticas').innerText = resumoFiltrado.criticas;
+            document.getElementById('kpiConcluidas').innerText = resumoFiltrado.concluidas;
+
+            const temFiltro = periodo.inicio || periodo.fim || temFiltroColunaAtivo();
+            document.getElementById('kpiSufixoPeriodo').innerText = temFiltro ? '(FILTRADO)' : '';
+            document.getElementById('kpiPeriodoLabel').innerText = descricaoPeriodo();
+            document.getElementById('labelContagem').innerText =
+                `Exibindo ${resumoFiltrado.total} de ${analisesBase.length} análises`;
+
+            const linkDash = document.getElementById('linkDashboardPdf');
+            if (linkDash) {
+                const params = new URLSearchParams();
+                if (periodo.inicio) params.set('data_inicio', periodo.inicio);
+                if (periodo.fim) params.set('data_fim', periodo.fim);
+                const qs = params.toString();
+                linkDash.href = linkDash.dataset.base + (qs ? '?' + qs : '');
+            }
+
+            atualizarIconesFiltro();
+        }
+
+        function temFiltroColunaAtivo() {
+            for (const escopo in filtrosColuna) {
+                for (const col in filtrosColuna[escopo]) {
+                    if (filtrosColuna[escopo][col] && filtrosColuna[escopo][col].size) return true;
+                }
+            }
+            return false;
+        }
+
+        function descricaoPeriodo() {
+            if (periodo.inicio && periodo.fim) return `Período: ${fmtBR(periodo.inicio)} a ${fmtBR(periodo.fim)}`;
+            if (periodo.inicio) return `A partir de ${fmtBR(periodo.inicio)}`;
+            if (periodo.fim) return `Até ${fmtBR(periodo.fim)}`;
+            return 'Todas as datas carregadas';
+        }
+
+        // ---------- Período / calendário ----------
+        function onMudouPeriodo() {
+            periodo.inicio = document.getElementById('fDataInicio').value;
+            periodo.fim = document.getElementById('fDataFim').value;
+            if (periodo.inicio && periodo.fim && periodo.inicio > periodo.fim) {
+                const tmp = periodo.inicio;
+                periodo.inicio = periodo.fim;
+                periodo.fim = tmp;
+                document.getElementById('fDataInicio').value = periodo.inicio;
+                document.getElementById('fDataFim').value = periodo.fim;
+            }
+            sincronizarSemanaSelecionada();
+            aplicarFiltrosTela();
+        }
+
+        function aplicarSemanaRapida(valor) {
+            if (!valor) { limparPeriodo(); return; }
+            const [ini, fim] = valor.split('|');
+            document.getElementById('fDataInicio').value = ini;
+            document.getElementById('fDataFim').value = fim;
+            periodo.inicio = ini;
+            periodo.fim = fim;
+            aplicarFiltrosTela();
+        }
+
+        function limparPeriodo() {
+            document.getElementById('fDataInicio').value = '';
+            document.getElementById('fDataFim').value = '';
+            document.getElementById('fSemanaRapida').value = '';
+            periodo = { inicio: '', fim: '' };
+            aplicarFiltrosTela();
+        }
+
+        function limparTodosFiltros() {
+            filtrosColuna.pend = {};
+            filtrosColuna.hist = {};
+            filtroResponsavelAtual = 'TODOS';
+            const selResp = document.getElementById('filtroResponsavel');
+            if (selResp) selResp.value = 'TODOS';
+            filtrarAnalises('todas');   // já chama aplicarFiltrosTela
+            limparPeriodo();
+        }
+
+        function sincronizarSemanaSelecionada() {
+            const sel = document.getElementById('fSemanaRapida');
+            const alvo = `${periodo.inicio}|${periodo.fim}`;
+            sel.value = [...sel.options].some(o => o.value === alvo) ? alvo : '';
+        }
+
+        function montarSeletoresDeData() {
+            const datas = [...new Set(analisesBase.map(isoData).filter(Boolean))].sort();
+            const inpIni = document.getElementById('fDataInicio');
+            const inpFim = document.getElementById('fDataFim');
+            const label = document.getElementById('labelDisponivel');
+
+            if (!datas.length) {
+                label.innerText = 'Nenhuma data de coleta na base';
+                inpIni.disabled = true; inpFim.disabled = true;
+                document.getElementById('fSemanaRapida').disabled = true;
+                return;
+            }
+
+            // O calendário só permite escolher dentro do intervalo que existe na base
+            inpIni.min = datas[0]; inpIni.max = datas[datas.length - 1];
+            inpFim.min = datas[0]; inpFim.max = datas[datas.length - 1];
+            label.innerText = `Disponível: ${fmtBR(datas[0])} a ${fmtBR(datas[datas.length - 1])} (${datas.length} data${datas.length > 1 ? 's' : ''} de coleta)`;
+
+            // Semanas (segunda a domingo) que realmente têm análise no relatório carregado
+            const semanas = new Map();
+            analisesBase.forEach(a => {
+                const iso = isoData(a);
+                if (!iso) return;
+                const d = new Date(iso + 'T00:00:00');
+                const dia = d.getDay();
+                d.setDate(d.getDate() + (dia === 0 ? -6 : 1 - dia));
+                const ini = fmtISO(d);
+                d.setDate(d.getDate() + 6);
+                const fim = fmtISO(d);
+                const chave = `${ini}|${fim}`;
+                semanas.set(chave, (semanas.get(chave) || 0) + 1);
+            });
+
+            const sel = document.getElementById('fSemanaRapida');
+            [...semanas.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([chave, qtd]) => {
+                const [ini, fim] = chave.split('|');
+                const opt = document.createElement('option');
+                opt.value = chave;
+                opt.text = `Semana ${fmtBRCurto(ini)} a ${fmtBRCurto(fim)} — ${qtd} análise${qtd > 1 ? 's' : ''}`;
+                sel.appendChild(opt);
             });
         }
 
+        // ---------- Filtros por coluna (estilo Excel) ----------
+        let painelAberto = null;
+
+        function valoresDisponiveis(escopo, col) {
+            const contagem = new Map();
+            analisesBase.forEach(a => {
+                if (escopoDe(a) !== escopo) return;
+                if (!passaFiltros(a, col)) return;
+                const v = valorColuna(a, col);
+                contagem.set(v, (contagem.get(v) || 0) + 1);
+            });
+            const sel = filtrosColuna[escopo][col];
+            if (sel) sel.forEach(v => { if (!contagem.has(v)) contagem.set(v, 0); });
+
+            const lista = [...contagem.entries()];
+            lista.sort((x, y) => {
+                if (col === 'frota') return (Number(x[0]) || 0) - (Number(y[0]) || 0);
+                if (col === 'data') return String(x[0]).localeCompare(String(y[0]));
+                return String(x[0]).localeCompare(String(y[0]), 'pt-BR');
+            });
+            return lista;
+        }
+
+        function abrirFiltroColuna(ev, escopo, col, titulo) {
+            ev.stopPropagation();
+            const painel = document.getElementById('painelFiltroColuna');
+
+            if (painelAberto && painelAberto.escopo === escopo && painelAberto.col === col && painel.style.display === 'block') {
+                fecharFiltroColuna();
+                return;
+            }
+            painelAberto = { escopo, col, titulo };
+            renderPainelFiltro();
+
+            painel.style.display = 'block';
+            const r = ev.currentTarget.getBoundingClientRect();
+            const largura = painel.offsetWidth || 265;
+            let left = r.left + window.scrollX;
+            const limite = window.scrollX + document.documentElement.clientWidth - largura - 12;
+            if (left > limite) left = limite;
+            painel.style.left = Math.max(10, left) + 'px';
+            painel.style.top = (r.bottom + window.scrollY + 4) + 'px';
+            const busca = document.getElementById('pfcBusca');
+            busca.value = '';
+            busca.focus();
+        }
+
+        function fecharFiltroColuna() {
+            document.getElementById('painelFiltroColuna').style.display = 'none';
+            painelAberto = null;
+        }
+
+        function renderPainelFiltro() {
+            const { escopo, col, titulo } = painelAberto;
+            const sel = filtrosColuna[escopo][col];
+            const vals = valoresDisponiveis(escopo, col);
+
+            document.getElementById('pfcTitulo').innerText = titulo;
+            const lista = document.getElementById('pfcLista');
+            lista.innerHTML = '';
+
+            vals.forEach((par, idx) => {
+                const [valor, qtd] = par;
+                const marcado = !sel || sel.size === 0 || sel.has(valor);
+                const div = document.createElement('div');
+                div.className = 'pfc-item';
+                div.dataset.busca = rotuloValor(col, valor).toLowerCase();
+                div.innerHTML = `
+                    <input class="form-check-input mt-0 pfc-check" type="checkbox" id="pfc_${idx}" ${marcado ? 'checked' : ''}>
+                    <label for="pfc_${idx}">${escaparHtml(rotuloValor(col, valor))} <span class="text-muted">(${qtd})</span></label>`;
+                div.querySelector('input').dataset.valor = valor;
+                lista.appendChild(div);
+            });
+
+            if (!vals.length) {
+                lista.innerHTML = '<div class="text-muted fw-bold text-center py-3">Nenhum valor disponível</div>';
+            }
+            document.getElementById('pfcTodos').checked = !sel || sel.size === 0;
+        }
+
+        function pfcFiltrarBusca(texto) {
+            const t = texto.trim().toLowerCase();
+            document.querySelectorAll('#pfcLista .pfc-item').forEach(item => {
+                item.style.display = (!t || item.dataset.busca.includes(t)) ? '' : 'none';
+            });
+        }
+
+        function pfcMarcarTodos(marcado) {
+            document.querySelectorAll('#pfcLista .pfc-item').forEach(item => {
+                if (item.style.display === 'none') return;
+                item.querySelector('input').checked = marcado;
+            });
+        }
+
+        function pfcAplicar() {
+            if (!painelAberto) return;
+            const { escopo, col } = painelAberto;
+            const checks = [...document.querySelectorAll('#pfcLista .pfc-check')];
+            const marcados = checks.filter(c => c.checked).map(c => c.dataset.valor);
+
+            if (!marcados.length) {
+                alert('Selecione pelo menos um valor (ou use "Limpar" para remover o filtro desta coluna).');
+                return;
+            }
+            if (marcados.length === checks.length) delete filtrosColuna[escopo][col];
+            else filtrosColuna[escopo][col] = new Set(marcados);
+
+            fecharFiltroColuna();
+            aplicarFiltrosTela();
+        }
+
+        function pfcLimpar() {
+            if (!painelAberto) return;
+            delete filtrosColuna[painelAberto.escopo][painelAberto.col];
+            fecharFiltroColuna();
+            aplicarFiltrosTela();
+        }
+
+        function pfcOrdenar(dir) {
+            if (!painelAberto) return;
+            const { escopo, col } = painelAberto;
+            const tabela = document.getElementById(escopo === 'pend' ? 'tabelaPendentes' : 'tabelaHistorico');
+            const tbody = tabela.querySelector('tbody');
+            const classe = escopo === 'pend' ? 'linha-analise' : 'linha-historico';
+            const mapa = new Map(analisesBase.map(a => [String(a.id), a]));
+
+            const linhas = [...tbody.querySelectorAll('tr.' + classe)];
+            linhas.sort((x, y) => {
+                const ax = mapa.get(x.dataset.id), ay = mapa.get(y.dataset.id);
+                if (!ax || !ay) return 0;
+                const vx = valorColuna(ax, col), vy = valorColuna(ay, col);
+                let r;
+                if (col === 'frota') r = (Number(vx) || 0) - (Number(vy) || 0);
+                else if (col === 'data') r = String(vx).localeCompare(String(vy));
+                else r = String(vx).localeCompare(String(vy), 'pt-BR');
+                return dir === 'asc' ? r : -r;
+            });
+            linhas.forEach(l => tbody.appendChild(l));
+
+            const vazio = document.getElementById(escopo === 'pend' ? 'semResultadoPend' : 'semResultadoHist');
+            if (vazio) tbody.appendChild(vazio);
+            fecharFiltroColuna();
+        }
+
+        function atualizarIconesFiltro() {
+            document.querySelectorAll('.btn-filtro-col').forEach(btn => {
+                const partes = btn.id.split('_');
+                const sel = filtrosColuna[partes[1]] && filtrosColuna[partes[1]][partes[2]];
+                const ativo = !!(sel && sel.size);
+                btn.classList.toggle('filtro-ativo', ativo);
+                btn.querySelector('i').className = ativo ? 'bi bi-funnel-fill' : 'bi bi-funnel';
+            });
+        }
+
+        document.addEventListener('click', ev => {
+            const painel = document.getElementById('painelFiltroColuna');
+            if (painel.style.display !== 'block') return;
+            if (painel.contains(ev.target) || ev.target.closest('.btn-filtro-col')) return;
+            fecharFiltroColuna();
+        });
+        document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharFiltroColuna(); });
+
+        montarSeletoresDeData();
+        aplicarFiltrosTela();
+
         const modalUI = new bootstrap.Modal(document.getElementById('modalTratativa'));
 
-        // ABRE MODAL PARA TEXTO LONGO
+        function hojeISO() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        // ABRE MODAL PARA TEXTO LONGO (usado tanto por "Detalhar" quanto por "Concluir Rápido",
+        // já que escolher a data de resolução exige um <input type="date"> — algo que o prompt()
+        // nativo usado antes não suporta)
         function abrirModalTratativa(id, frota, comp, diag, tratativa) {
             document.getElementById('trId').value = id;
             document.getElementById('trFrota').innerText = frota;
             document.getElementById('trComp').innerText = comp;
             document.getElementById('trDiag').innerText = diag;
-            document.getElementById('trTexto').value = tratativa !== 'None' ? tratativa : '';
+            document.getElementById('trTexto').value = (tratativa && tratativa !== 'None') ? tratativa : '';
+            const inputData = document.getElementById('trData');
+            inputData.value = hojeISO();
+            inputData.max = hojeISO(); // não faz sentido registrar uma resolução no futuro
             modalUI.show();
         }
 
-        // CONCLUIR RÁPIDO (COM POPUP NATIVO)
+        // CONCLUIR RÁPIDO: abre o mesmo modal já com um texto padrão sugerido, permitindo
+        // ajustar a ação e principalmente escolher a data em que a tratativa foi feita.
         function concluirRapido(id) {
-            let texto = prompt("Ação Corretiva Rápida:\n(Digite o que foi feito ou deixe o padrão abaixo)", "Monitorizado / Sanado");
-            if (texto === null) return; // Se o usuário clicou em cancelar
-            if (texto.trim() === "") texto = "Sanado"; // Prevenção se deixar vazio
-
-            enviarTratativa(id, texto, 'CONCLUÍDO');
+            const item = analisesBase.find(a => String(a.id) === String(id));
+            if (!item) return;
+            abrirModalTratativa(id, item.id_frota, item.compartimento, item.diagnostico, '');
+            document.getElementById('trTexto').value = 'Monitorizado / Sanado';
         }
 
         // REABRIR DO HISTÓRICO
         function reabrirAnalise(id) {
             if(!confirm('Tem certeza que deseja devolver esta análise para a Fila de Pendências?')) return;
-            enviarTratativa(id, '', 'PENDENTE');
+            enviarTratativa(id, '', 'PENDENTE', '');
         }
 
         function salvarTratativa() {
             let texto = document.getElementById('trTexto').value;
             if(!texto) { alert('Escreva a ação corretiva antes de salvar!'); return; }
+            let data = document.getElementById('trData').value;
+            if(!data) { alert('Selecione a data de resolução!'); return; }
 
             let btn = document.getElementById('btnSalvarTr');
             btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>A Salvar...';
             btn.disabled = true;
 
-            enviarTratativa(document.getElementById('trId').value, texto, 'CONCLUÍDO');
+            enviarTratativa(document.getElementById('trId').value, texto, 'CONCLUÍDO', data);
         }
 
         // FUNÇÃO CENTRAL PARA CHAMAR O BACKEND
-        function enviarTratativa(id, texto, status) {
+        function enviarTratativa(id, texto, status, dataTratativa) {
             fetch('/api/salvar_tratativa', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     id_analise: id,
                     tratativa: texto,
-                    status: status
+                    status: status,
+                    data_tratativa: dataTratativa || ''
                 })
             }).then(r => r.json()).then(d => {
                 if(d.status === 'sucesso') window.location.reload();
@@ -583,10 +1087,16 @@
             tbody.innerHTML = '';
 
             let dt = new Date();
-            document.getElementById('pdfAnalisesSubtitle').innerText = `Gerado a ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`;
+            document.getElementById('pdfAnalisesSubtitle').innerText =
+                `${descricaoPeriodo()} • Gerado a ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`;
             let tituloBase = isApenasCriticas ? 'Relatório: Análises Críticas (Aguardando Ação)' : 'Relatório Completo de Análises Pendentes';
             if (responsavelFiltrado !== 'TODOS') tituloBase += ` — Responsável: ${responsavelFiltrado}`;
             document.getElementById('pdfAnalisesTitle').innerText = tituloBase;
+
+            // KPIs do PDF acompanham exatamente o que está filtrado na tela
+            document.getElementById('pdfKpiTotal').innerText = resumoFiltrado.total;
+            document.getElementById('pdfKpiCriticas').innerText = resumoFiltrado.criticas;
+            document.getElementById('pdfKpiConcluidas').innerText = resumoFiltrado.concluidas;
 
             let countRenderizados = 0;
 
@@ -594,11 +1104,8 @@
                 // PDF SÓ MOSTRA O QUE ESTÁ PENDENTE (O Histórico eles olham na tela)
                 if (a.status_tratativa === 'CONCLUÍDO') return;
 
-                // Se o botão de filtro de críticas estiver ligado, ignora as normais!
-                if (isApenasCriticas && !a.is_critica) return;
-
-                // Se um responsável específico estiver selecionado, ignora os demais
-                if (responsavelFiltrado !== 'TODOS' && a.responsavel !== responsavelFiltrado) return;
+                // Aplica os mesmos filtros da tela (tipo, responsável, período e colunas)
+                if (!passaFiltros(a)) return;
 
                 let corDiag = a.is_critica ? 'text-danger' : 'text-success';
                 let tratativaHtml = '<span class="text-warning fw-bold">Aguardando Ação</span>';
@@ -630,6 +1137,7 @@
             let container = document.getElementById('pdfAnalisesContent');
             let nomeFicheiro = isApenasCriticas ? 'Analises_Criticas_Acao' : 'Todas_Analises_Pendentes';
             if (responsavelFiltrado !== 'TODOS') nomeFicheiro += `_${responsavelFiltrado.replace(/\s+/g, '_')}`;
+            if (periodo.inicio || periodo.fim) nomeFicheiro += `_${periodo.inicio || 'inicio'}_a_${periodo.fim || 'fim'}`;
             nomeFicheiro += '.pdf';
 
             let opt = {

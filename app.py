@@ -634,8 +634,39 @@ def setup_db():
         descricao TEXT NOT NULL,
         quantidade REAL DEFAULT 1,
         valor_unitario REAL DEFAULT 0,
+        observacao TEXT DEFAULT '',
         FOREIGN KEY(caminhao_id) REFERENCES caminhao_oficina(id)
     )''')
+    try: cursor.execute("ALTER TABLE caminhao_oficina_itens ADD COLUMN observacao TEXT DEFAULT ''")
+    except: pass
+
+    # Conferências de estoque do caminhão oficina (auditoria física do que está faltando)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS caminhao_conferencias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        caminhao_id INTEGER NOT NULL,
+        data_conferencia TEXT NOT NULL,
+        usuario TEXT DEFAULT '',
+        observacao TEXT DEFAULT '',
+        total_itens INTEGER DEFAULT 0,
+        total_faltando INTEGER DEFAULT 0,
+        criado_em TEXT NOT NULL,
+        FOREIGN KEY(caminhao_id) REFERENCES caminhao_oficina(id)
+    )''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_caminhao_conferencias_caminhao ON caminhao_conferencias(caminhao_id)')
+
+    # Itens da conferência guardam uma cópia (código/descrição/qtd) do momento da checagem,
+    # assim o histórico não muda retroativamente se o estoque cadastrado do caminhão for editado depois.
+    cursor.execute('''CREATE TABLE IF NOT EXISTS caminhao_conferencia_itens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conferencia_id INTEGER NOT NULL,
+        codigo TEXT DEFAULT '',
+        descricao TEXT NOT NULL,
+        quantidade_esperada REAL DEFAULT 0,
+        presente INTEGER DEFAULT 1,
+        observacao TEXT DEFAULT '',
+        FOREIGN KEY(conferencia_id) REFERENCES caminhao_conferencias(id)
+    )''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_caminhao_conf_itens_conferencia ON caminhao_conferencia_itens(conferencia_id)')
 
     # Auto-importa planilha de agregados se a tabela estiver vazia
     _xlsx_agregados = os.path.join(os.path.expanduser('~'), 'Downloads', 'Saldos Peças-Consertados.xlsx')
@@ -3021,7 +3052,7 @@ def ferramentaria():
         pagina_ferramentas = 1
     por_pagina_ferramentas = 100
     active_tab = request.args.get('aba', '').strip()
-    if active_tab not in ['retirada', 'historico', 'base', 'estoque', 'analitico', 'filtros', 'agregados', 'caixas', 'caminhoes']:
+    if active_tab not in ['retirada', 'historico', 'base', 'estoque', 'analitico', 'filtros', 'agregados', 'caixas', 'caminhoes', 'conferencia']:
         active_tab = 'base' if busca_ferramenta else 'analitico'
 
     # Filtros do Histórico de Retiradas
@@ -3313,6 +3344,40 @@ def ferramentaria():
         ORDER BY c.identificacao
     ''').fetchall()]
 
+    # Conferência: ferramentas faltando na ÚLTIMA conferência registrada de cada caminhão
+    faltando_raw = conn.execute('''
+        SELECT co.id as conferencia_id, co.caminhao_id, co.data_conferencia,
+               c.identificacao, c.responsavel,
+               ci.codigo, ci.descricao, ci.quantidade_esperada, ci.observacao
+        FROM caminhao_conferencias co
+        JOIN caminhao_oficina c ON c.id = co.caminhao_id
+        JOIN caminhao_conferencia_itens ci ON ci.conferencia_id = co.id
+        WHERE co.id IN (SELECT MAX(id) FROM caminhao_conferencias GROUP BY caminhao_id)
+          AND ci.presente = 0
+        ORDER BY c.identificacao, ci.descricao
+    ''').fetchall()
+    conferencia_faltando_por_caminhao = _OD()
+    for r in faltando_raw:
+        chave = r['caminhao_id']
+        if chave not in conferencia_faltando_por_caminhao:
+            conferencia_faltando_por_caminhao[chave] = {
+                'identificacao': r['identificacao'],
+                'responsavel': r['responsavel'],
+                'data_conferencia': r['data_conferencia'],
+                'itens': []
+            }
+        conferencia_faltando_por_caminhao[chave]['itens'].append(dict(r))
+
+    # Histórico de conferências (mais recentes primeiro)
+    conferencias_historico = [dict(r) for r in conn.execute('''
+        SELECT co.id, co.caminhao_id, co.data_conferencia, co.usuario, co.observacao,
+               co.total_itens, co.total_faltando, c.identificacao
+        FROM caminhao_conferencias co
+        JOIN caminhao_oficina c ON c.id = co.caminhao_id
+        ORDER BY co.data_conferencia DESC, co.id DESC
+        LIMIT 100
+    ''').fetchall()]
+
     conn.close()
     return render_template(
         'ferramentaria.html',
@@ -3343,6 +3408,8 @@ def ferramentaria():
         agregados_modelo=agregados_modelo,
         caixas=caixas,
         caminhoes=caminhoes,
+        conferencia_faltando_por_caminhao=conferencia_faltando_por_caminhao,
+        conferencias_historico=conferencias_historico,
         hist_mecanico=hist_mecanico,
         hist_frota=hist_frota,
         hist_ferramenta=hist_ferramenta,
@@ -4061,6 +4128,89 @@ def termo_ferramentaria(id_retirada):
     total = sum(float(i.get('valor_total') or 0) for i in itens)
     return render_template('termo_ferramentaria.html', retirada=dict(retirada), itens=itens, total=total)
 
+
+@app.route('/ferramentaria/caminhoes/<int:caminhao_id>/ficha')
+def ficha_caminhao_oficina(caminhao_id):
+    if not session.get('logado'): return redirect(url_for('login'))
+    if not tem_acesso_modulo('ferramentaria'):
+        flash('Seu perfil não tem permissão para acessar Ferramentaria.', 'danger')
+        return redirect(url_for('admin'))
+
+    conn = get_db_connection()
+    caminhao = conn.execute('SELECT * FROM caminhao_oficina WHERE id = ?', (caminhao_id,)).fetchone()
+    if not caminhao:
+        conn.close()
+        flash('Caminhão oficina não encontrado.', 'danger')
+        return redirect(url_for('ferramentaria', aba='caminhoes'))
+    itens_raw = conn.execute('''
+        SELECT codigo, descricao, quantidade, valor_unitario,
+               quantidade * valor_unitario as valor_total
+        FROM caminhao_oficina_itens
+        WHERE caminhao_id = ?
+        ORDER BY id
+    ''', (caminhao_id,)).fetchall()
+    conn.close()
+
+    itens = []
+    for i in itens_raw:
+        item = dict(i)
+        item['quantidade_fmt'] = formatar_quantidade_ferramenta(item.get('quantidade'))
+        itens.append(item)
+    total = sum(float(i.get('valor_total') or 0) for i in itens)
+    return render_template('ficha_caminhao_oficina.html', caminhao=dict(caminhao), itens=itens, total=total,
+                            hoje=datetime.now().strftime('%d/%m/%Y'))
+
+
+@app.route('/ferramentaria/caminhoes/relatorio_geral')
+def relatorio_geral_caminhoes():
+    if not session.get('logado'): return redirect(url_for('login'))
+    if not tem_acesso_modulo('ferramentaria'):
+        flash('Seu perfil não tem permissão para acessar Ferramentaria.', 'danger')
+        return redirect(url_for('admin'))
+
+    conn = get_db_connection()
+
+    # Tabela 1: estoque geral — tudo que está cadastrado em cada caminhão
+    itens_raw = conn.execute('''
+        SELECT c.identificacao, c.responsavel,
+               i.codigo, i.descricao, i.quantidade, i.valor_unitario, i.observacao,
+               i.quantidade * i.valor_unitario as valor_total
+        FROM caminhao_oficina c
+        JOIN caminhao_oficina_itens i ON i.caminhao_id = c.id
+        ORDER BY c.identificacao, i.descricao
+    ''').fetchall()
+    itens_geral = []
+    for i in itens_raw:
+        item = dict(i)
+        item['quantidade_fmt'] = formatar_quantidade_ferramenta(item.get('quantidade'))
+        itens_geral.append(item)
+    valor_total_geral = sum(float(i.get('valor_total') or 0) for i in itens_geral)
+
+    # Tabela 2: itens com observação registrada (possíveis danificados/em atenção)
+    itens_observacao = [i for i in itens_geral if (i.get('observacao') or '').strip()]
+
+    # Tabela 3: ferramentas faltando na ÚLTIMA conferência registrada de cada caminhão
+    faltando_raw = conn.execute('''
+        SELECT co.data_conferencia, c.identificacao, c.responsavel,
+               ci.codigo, ci.descricao, ci.quantidade_esperada, ci.observacao
+        FROM caminhao_conferencias co
+        JOIN caminhao_oficina c ON c.id = co.caminhao_id
+        JOIN caminhao_conferencia_itens ci ON ci.conferencia_id = co.id
+        WHERE co.id IN (SELECT MAX(id) FROM caminhao_conferencias GROUP BY caminhao_id)
+          AND ci.presente = 0
+        ORDER BY c.identificacao, ci.descricao
+    ''').fetchall()
+    itens_faltando = [dict(r) for r in faltando_raw]
+
+    conn.close()
+    return render_template('relatorio_geral_caminhoes.html',
+                            itens_geral=itens_geral,
+                            valor_total_geral=valor_total_geral,
+                            itens_observacao=itens_observacao,
+                            itens_faltando=itens_faltando,
+                            hoje=datetime.now().strftime('%d/%m/%Y %H:%M'))
+
+
 @app.route('/api/upload_chb', methods=['POST'])
 def upload_chb():
     if not session.get('logado'): return {"status": "erro"}, 403
@@ -4438,8 +4588,10 @@ def analises():
 
         # CRITÉRIO REFINADO PARA ANÁLISE CRÍTICA
         if _eh_diagnostico_critico(item['diagnostico']):
-            stats['criticas'] += 1
             item['is_critica'] = True
+            # KPI conta só as ainda pendentes — uma vez tratada, ela sai daqui e entra em "concluidas"
+            if item['status_tratativa'] != 'CONCLUÍDO':
+                stats['criticas'] += 1
             qtd_reincidencia = contagem_critica_compartimento[(item['id_frota'], item['compartimento'])]
             item['reincidente'] = qtd_reincidencia > 1
             item['reincidencia_qtd'] = qtd_reincidencia
@@ -4617,6 +4769,11 @@ def upload_analises():
     # Usamos um SET (conjunto) para anotar as chaves lidas hoje sem correr risco de duplicá-las internamente
     chaves_processadas_agora = set()
 
+    # Guarda todas as datas de coleta válidas (YYYY-MM-DD) vistas no arquivo, para saber
+    # qual JANELA de tempo esse upload realmente cobre — o export do CHB às vezes traz só
+    # a última semana, às vezes um mês inteiro, então isso varia a cada envio.
+    datas_validas_arquivo = set()
+
     try:
         import unicodedata
 
@@ -4706,6 +4863,9 @@ def upload_analises():
                 else: parsed_date = data_val
             except: parsed_date = data_val
 
+            if re.match(r'^\d{4}-\d{2}-\d{2}$', parsed_date):
+                datas_validas_arquivo.add(parsed_date)
+
             # Normaliza maiúsculas/espaços para que "200 - Carter Motor" e "200 - CARTER MOTOR"
             # sejam sempre a MESMA chave — evita duplicatas escaparem da constraint UNIQUE
             # só por causa de uma formatação diferente entre exportações do CHB.
@@ -4743,18 +4903,32 @@ def upload_analises():
         # Se sumiu do Excel, não está 'CONCLUÍDO' E NÃO É CRÍTICA, a gente apaga.
         # Análises críticas/anômalas NUNCA são removidas automaticamente — só saem do
         # relatório quando alguém registra a tratativa (status_tratativa = 'CONCLUÍDO').
+        #
+        # IMPORTANTE: o export do CHB não tem uma janela de datas fixa (já vimos arquivos
+        # cobrindo só a última semana e outros cobrindo um mês inteiro). Por isso só
+        # "sana" um registro se a DATA DELE está dentro do período que ESTE arquivo
+        # realmente cobre — do contrário, um upload de janela curta apagaria em massa
+        # pendências antigas e válidas só porque elas não cabiam nesse recorte específico.
+        data_min_arquivo = min(datas_validas_arquivo) if datas_validas_arquivo else None
+        data_max_arquivo = max(datas_validas_arquivo) if datas_validas_arquivo else None
+
         removidos = 0
         for row_db in analises_no_banco:
             chave_db = f"{row_db['id_frota']}_{row_db['data_coleta']}_{row_db['compartimento']}"
             ja_lida_de_novo = chave_db in chaves_processadas_agora
             ja_concluida = row_db['status_tratativa'] == 'CONCLUÍDO'
             eh_critica = _eh_diagnostico_critico(row_db['diagnostico'])
-            if not ja_lida_de_novo and not ja_concluida and not eh_critica:
+            dentro_da_janela_do_arquivo = (
+                data_min_arquivo is not None
+                and data_min_arquivo <= (row_db['data_coleta'] or '') <= data_max_arquivo
+            )
+            if dentro_da_janela_do_arquivo and not ja_lida_de_novo and not ja_concluida and not eh_critica:
                 conn.execute("DELETE FROM analises_oleo WHERE id = ?", (row_db['id'],))
                 removidos += 1
 
         conn.commit()
-        flash(f'Sincronização OK! {count_novos} novas, {count_atualizados} atualizações/repetidas e {removidos} removidas (sanadas). Análises críticas nunca são removidas automaticamente.', 'success')
+        periodo_txt = f' (arquivo cobre {data_min_arquivo} a {data_max_arquivo})' if data_min_arquivo else ''
+        flash(f'Sincronização OK! {count_novos} novas, {count_atualizados} atualizações/repetidas e {removidos} removidas (sanadas){periodo_txt}. Análises críticas nunca são removidas automaticamente.', 'success')
 
     except Exception as e:
         conn.rollback() # Se der qualquer outro erro fatal, desfaz tudo para não quebrar o banco
@@ -4860,10 +5034,12 @@ def salvar_tratativa():
     id_analise = dados.get('id_analise')
     tratativa = dados.get('tratativa')
     status = dados.get('status')
-    data_hoje = datetime.now().strftime('%Y-%m-%d')
+    # Permite escolher a data em que a tratativa foi de fato realizada (ex: registrando um
+    # atraso), em vez de forçar sempre a data de hoje. Sem valor informado, cai no padrão de hoje.
+    data_tratativa = (dados.get('data_tratativa') or '').strip() or datetime.now().strftime('%Y-%m-%d')
 
     conn = get_db_connection()
-    conn.execute('UPDATE analises_oleo SET tratativa = ?, status_tratativa = ?, data_tratativa = ? WHERE id = ?', (tratativa, status, data_hoje, id_analise))
+    conn.execute('UPDATE analises_oleo SET tratativa = ?, status_tratativa = ?, data_tratativa = ? WHERE id = ?', (tratativa, status, data_tratativa, id_analise))
     conn.commit(); conn.close()
     return jsonify({"status": "sucesso"})
 
@@ -5642,10 +5818,11 @@ def caminhao_oficina_salvar():
     descricoes = request.form.getlist('descricao[]')
     quantidades = request.form.getlist('quantidade[]')
     valores = request.form.getlist('valor_unitario[]')
+    observacoes_item = request.form.getlist('observacao_item[]')
     if not identificacao:
         return jsonify({'status': 'erro', 'msg': 'Identificação do caminhão é obrigatória.'})
     itens = []
-    for cod, desc, qty, val in zip(codigos, descricoes, quantidades, valores):
+    for idx, (cod, desc, qty, val) in enumerate(zip(codigos, descricoes, quantidades, valores)):
         desc = desc.strip()
         if not desc:
             continue
@@ -5653,7 +5830,8 @@ def caminhao_oficina_salvar():
         except: qty_f = 1.0
         try: val_f = float(str(val).replace(',', '.'))
         except: val_f = 0.0
-        itens.append((cod.strip(), desc, qty_f, val_f))
+        obs_item = observacoes_item[idx].strip() if idx < len(observacoes_item) else ''
+        itens.append((cod.strip(), desc, qty_f, val_f, obs_item))
     conn = get_db_connection()
     try:
         agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -5668,8 +5846,8 @@ def caminhao_oficina_salvar():
                                (identificacao, responsavel, observacao, usuario, agora, agora))
             novo_id = cur.lastrowid
         if itens:
-            conn.executemany('INSERT INTO caminhao_oficina_itens (caminhao_id, codigo, descricao, quantidade, valor_unitario) VALUES (?,?,?,?,?)',
-                             [(novo_id, c, d, q, v) for c, d, q, v in itens])
+            conn.executemany('INSERT INTO caminhao_oficina_itens (caminhao_id, codigo, descricao, quantidade, valor_unitario, observacao) VALUES (?,?,?,?,?,?)',
+                             [(novo_id, c, d, q, v, o) for c, d, q, v, o in itens])
         conn.commit()
         conn.close()
         return jsonify({'status': 'ok', 'id': novo_id})
@@ -5839,6 +6017,112 @@ def caminhao_excluir_termo(caminhao_id):
             if os.path.exists(filepath):
                 os.remove(filepath)
         conn.execute("UPDATE caminhao_oficina SET termo_pdf='' WHERE id=?", (caminhao_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        conn.close()
+        return jsonify({'status': 'erro', 'msg': str(e)})
+
+
+# ── Conferência de estoque do Caminhão Oficina ────────────────────────────────
+@app.route('/api/ferramentaria/conferencia/salvar', methods=['POST'])
+def conferencia_caminhao_salvar():
+    if not session.get('logado'): return jsonify({'status': 'erro', 'msg': 'Não autenticado'}), 401
+    if not (is_admin_session() or tem_acesso_modulo('ferramentaria')):
+        return jsonify({'status': 'erro', 'msg': 'Sem permissão'}), 403
+
+    dados = request.get_json(silent=True) or {}
+    try:
+        caminhao_id = int(dados.get('caminhao_id'))
+    except (TypeError, ValueError):
+        return jsonify({'status': 'erro', 'msg': 'Caminhão inválido.'})
+    observacao = str(dados.get('observacao', '')).strip()
+    itens = dados.get('itens') or []
+    if not itens:
+        return jsonify({'status': 'erro', 'msg': 'Nenhum item para conferir.'})
+
+    conn = get_db_connection()
+    try:
+        caminhao = conn.execute('SELECT id FROM caminhao_oficina WHERE id=?', (caminhao_id,)).fetchone()
+        if not caminhao:
+            conn.close()
+            return jsonify({'status': 'erro', 'msg': 'Caminhão não encontrado.'})
+
+        agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        usuario = session.get('perfil_nome', '')
+        total_itens = len(itens)
+        total_faltando = sum(1 for i in itens if not i.get('presente', True))
+
+        cur = conn.execute('''
+            INSERT INTO caminhao_conferencias
+                (caminhao_id, data_conferencia, usuario, observacao, total_itens, total_faltando, criado_em)
+            VALUES (?,?,?,?,?,?,?)
+        ''', (caminhao_id, agora, usuario, observacao, total_itens, total_faltando, agora))
+        conferencia_id = cur.lastrowid
+
+        linhas = []
+        for i in itens:
+            desc = str(i.get('descricao', '')).strip()
+            if not desc:
+                continue
+            try: qtd = float(str(i.get('quantidade_esperada', 0)).replace(',', '.'))
+            except (TypeError, ValueError): qtd = 0.0
+            linhas.append((
+                conferencia_id,
+                str(i.get('codigo', '')).strip(),
+                desc,
+                qtd,
+                1 if i.get('presente', True) else 0,
+                str(i.get('observacao', '')).strip(),
+            ))
+        if linhas:
+            conn.executemany('''
+                INSERT INTO caminhao_conferencia_itens
+                    (conferencia_id, codigo, descricao, quantidade_esperada, presente, observacao)
+                VALUES (?,?,?,?,?,?)
+            ''', linhas)
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'ok', 'id': conferencia_id, 'total_faltando': total_faltando})
+    except Exception as e:
+        conn.close()
+        return jsonify({'status': 'erro', 'msg': str(e)})
+
+
+@app.route('/api/ferramentaria/conferencia/<int:conferencia_id>')
+def conferencia_caminhao_detalhe(conferencia_id):
+    if not session.get('logado'): return jsonify({'status': 'erro'}), 401
+    conn = get_db_connection()
+    conferencia = conn.execute('''
+        SELECT co.*, c.identificacao, c.responsavel
+        FROM caminhao_conferencias co
+        JOIN caminhao_oficina c ON c.id = co.caminhao_id
+        WHERE co.id = ?
+    ''', (conferencia_id,)).fetchone()
+    if not conferencia:
+        conn.close()
+        return jsonify({'status': 'erro', 'msg': 'Conferência não encontrada.'}), 404
+    itens = conn.execute('''
+        SELECT * FROM caminhao_conferencia_itens WHERE conferencia_id = ? ORDER BY presente ASC, descricao
+    ''', (conferencia_id,)).fetchall()
+    conn.close()
+    return jsonify({
+        'status': 'ok',
+        'conferencia': dict(conferencia),
+        'itens': [dict(i) for i in itens]
+    })
+
+
+@app.route('/api/ferramentaria/conferencia/excluir/<int:conferencia_id>', methods=['POST'])
+def conferencia_caminhao_excluir(conferencia_id):
+    if not session.get('logado'): return jsonify({'status': 'erro', 'msg': 'Não autenticado'}), 401
+    if not is_admin_session():
+        return jsonify({'status': 'erro', 'msg': 'Apenas administradores podem excluir.'}), 403
+    conn = get_db_connection()
+    try:
+        conn.execute('DELETE FROM caminhao_conferencia_itens WHERE conferencia_id=?', (conferencia_id,))
+        conn.execute('DELETE FROM caminhao_conferencias WHERE id=?', (conferencia_id,))
         conn.commit()
         conn.close()
         return jsonify({'status': 'ok'})
