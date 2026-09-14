@@ -4614,6 +4614,122 @@ def analises():
                             active_tab=active_tab)
 
 
+def _extrair_linhas_planilha_analises_oleo(file, filename):
+    """Lê um upload de análises de óleo (CHB, .xlsx ou .csv) e devolve uma lista de dicts
+    normalizados: id_frota, data_coleta (YYYY-MM-DD quando possível), compartimento,
+    diagnostico, parecer. Puramente leitura/parsing — não toca no banco. Reaproveitado
+    tanto pela sincronização (upload_analises, que faz o upsert) quanto pelo Relatório
+    Diário avulso (que só gera um PDF a partir do arquivo, sem persistir nada)."""
+    import unicodedata
+
+    def norm_txt(valor):
+        txt = str(valor or '').strip().upper()
+        txt = unicodedata.normalize('NFKD', txt)
+        txt = ''.join(ch for ch in txt if not unicodedata.combining(ch))
+        txt = ' '.join(txt.split())
+        return txt
+
+    lines_data = []
+    if filename.endswith('.xlsx'):
+        import pandas as pd
+        df = pd.read_excel(file, header=None)
+        for _, row in df.iterrows():
+            row_vals = [str(cell).strip() if not pd.isna(cell) else '' for cell in row.values]
+            lines_data.append(row_vals)
+    else:
+        content_bytes = file.read()
+        try: content_str = content_bytes.decode('utf-8-sig')
+        except: content_str = content_bytes.decode('latin1', errors='ignore')
+        lines = content_str.splitlines()
+        reader = csv.reader(lines, delimiter=';' if lines and ';' in lines[0] and ',' not in lines[0] else ',')
+        for row in reader: lines_data.append([c.strip() for c in row])
+
+    header_map = None
+    linhas = []
+    for row in lines_data:
+        if not row: continue
+        row_norm = [norm_txt(c) for c in row]
+
+        if header_map is None:
+            tem_frota = any(v in ['VEICULO', 'FROTA'] for v in row_norm)
+            tem_comp = any('COMPARTIMENTO' in v for v in row_norm)
+            if tem_frota and tem_comp:
+                def idx_exato(opcoes, prefer_last=False):
+                    indices = [i for i, v in enumerate(row_norm) if v in opcoes]
+                    if not indices:
+                        return None
+                    return indices[-1] if prefer_last else indices[0]
+
+                def idx_contem(texto):
+                    for i, v in enumerate(row_norm):
+                        if texto in v:
+                            return i
+                    return None
+
+                idx_frota = idx_exato(['VEICULO', 'FROTA'])
+                idx_comp = idx_exato(['COMPARTIMENTO'])
+                idx_data = idx_exato(['DATA DA COLETA', 'DATA COLETA'])
+                if idx_data is None:
+                    idx_data = idx_contem('DATA COLETA')
+                if idx_data is None:
+                    idx_data = idx_exato(['DATA'])
+                if idx_data is None:
+                    idx_data = idx_contem('DATA')
+
+                idx_parecer = idx_exato(['OBSERVACAO', 'PARECER', 'RECOMENDACAO'])
+                idx_diag = idx_exato(['DIAGNOSTICO', 'RESULTADO', 'CLASSIFICACAO'])
+                if idx_diag is None:
+                    # Em layouts novos, o diagnóstico costuma vir na última coluna "Descrição"
+                    idx_diag = idx_exato(['DESCRICAO'], prefer_last=True)
+
+                if idx_frota is None or idx_comp is None or idx_data is None:
+                    continue
+
+                header_map = {
+                    'frota': idx_frota,
+                    'data': idx_data,
+                    'comp': idx_comp,
+                    'parecer': idx_parecer,
+                    'diag': idx_diag
+                }
+            continue
+
+        # Extração de dados (Limpando espaços extras para evitar erros)
+        if len(row) <= header_map['frota'] or len(row) <= header_map['data'] or len(row) <= header_map['comp']:
+            continue
+
+        frota = str(row[header_map['frota']]).upper().replace('.0', '').strip()
+        data_val = str(row[header_map['data']]).strip()
+
+        try:
+            if len(data_val) >= 10:
+                if '/' in data_val: parsed_date = datetime.strptime(data_val[:10], '%d/%m/%Y').strftime('%Y-%m-%d')
+                elif '-' in data_val: parsed_date = datetime.strptime(data_val[:10], '%Y-%m-%d').strftime('%Y-%m-%d')
+                else: parsed_date = data_val
+            else: parsed_date = data_val
+        except: parsed_date = data_val
+
+        # Normaliza maiúsculas/espaços para que "200 - Carter Motor" e "200 - CARTER MOTOR"
+        # sejam sempre a MESMA chave — evita duplicatas escaparem da constraint UNIQUE
+        # só por causa de uma formatação diferente entre exportações do CHB.
+        comp_base = ' '.join(str(row[header_map['comp']]).strip().upper().split())
+        comp_desc = ' '.join(str(row[header_map['comp'] + 1]).strip().upper().split()) if len(row) > header_map['comp'] + 1 else ''
+        comp = f"{comp_base} - {comp_desc}" if comp_desc else comp_base
+
+        diag = str(row[header_map['diag']]).strip() if header_map.get('diag') is not None and len(row) > header_map['diag'] else ""
+        parecer = str(row[header_map['parecer']]).strip() if header_map.get('parecer') is not None and len(row) > header_map['parecer'] else ''
+
+        linhas.append({
+            'id_frota': frota,
+            'data_coleta': parsed_date,
+            'compartimento': comp,
+            'diagnostico': diag,
+            'parecer': parecer,
+        })
+
+    return linhas
+
+
 def _classificar_analise_oleo(diagnostico):
     """Replica a classificação usada no dashboard de referência (analise-oleo-frotas):
     CRÍTICO se o diagnóstico contém 'critic'/'crític', NORMAL se vazio ou 'NORMAL',
@@ -4626,25 +4742,14 @@ def _classificar_analise_oleo(diagnostico):
     return 'Anomalia'
 
 
-@app.route('/analises/dashboard_pdf')
-def analises_dashboard_pdf():
-    if not session.get('logado'): return redirect(url_for('login'))
-    if not tem_acesso_modulo('analises'):
-        flash('Seu perfil não tem permissão para acessar Análises.', 'danger')
-        return redirect(url_for('admin'))
-
-    conn = get_db_connection()
-    rows = conn.execute('SELECT id_frota, data_coleta, compartimento, diagnostico, parecer FROM analises_oleo ORDER BY data_coleta').fetchall()
-    conn.close()
-
-    todas = [dict(r) for r in rows]
-    for item in todas:
-        item['classificacao'] = _classificar_analise_oleo(item['diagnostico'])
-
+def _montar_dashboard_oleo_contexto(todas, data_inicio='', data_fim=''):
+    """Recebe uma lista de análises já classificadas (dicts com id_frota, data_coleta,
+    compartimento, diagnostico, parecer, classificacao) e monta todo o contexto de
+    métricas/gráficos usado pelo template analises_dashboard_pdf.html. Reaproveitado
+    tanto pelo Dashboard (dados vindos do banco, com filtro de período) quanto pelo
+    Relatório Diário avulso (dados vindos direto de um upload, sem filtro)."""
     datas_validas = sorted({item['data_coleta'] for item in todas if item['data_coleta']})
 
-    data_inicio = request.args.get('data_inicio', '').strip()
-    data_fim = request.args.get('data_fim', '').strip()
     if not data_inicio and datas_validas: data_inicio = datas_validas[0]
     if not data_fim and datas_validas: data_fim = datas_validas[-1]
 
@@ -4739,15 +4844,74 @@ def analises_dashboard_pdf():
         'taxa_atencao': taxa_atencao, 'taxa_critica': taxa_critica
     }
 
-    return render_template(
-        'analises_dashboard_pdf.html',
-        metrics=metrics, periodo=periodo_label, gerado_em=datetime.now().strftime('%d/%m/%Y %H:%M'),
-        risco_por_componente=risco_por_componente, distribuicao_resultado=distribuicao_resultado,
-        pizza_compartimento=pizza_compartimento, pizza_tipo=pizza_tipo,
-        frotas_com_anomalia=frotas_com_anomalia, prioridades=prioridades,
-        data_inicio=data_inicio, data_fim=data_fim,
-        datas_min=datas_validas[0] if datas_validas else '', datas_max=datas_validas[-1] if datas_validas else ''
-    )
+    return {
+        'metrics': metrics, 'periodo': periodo_label, 'gerado_em': datetime.now().strftime('%d/%m/%Y %H:%M'),
+        'risco_por_componente': risco_por_componente, 'distribuicao_resultado': distribuicao_resultado,
+        'pizza_compartimento': pizza_compartimento, 'pizza_tipo': pizza_tipo,
+        'frotas_com_anomalia': frotas_com_anomalia, 'prioridades': prioridades,
+        'data_inicio': data_inicio, 'data_fim': data_fim,
+        'datas_min': datas_validas[0] if datas_validas else '', 'datas_max': datas_validas[-1] if datas_validas else ''
+    }
+
+
+@app.route('/analises/dashboard_pdf')
+def analises_dashboard_pdf():
+    if not session.get('logado'): return redirect(url_for('login'))
+    if not tem_acesso_modulo('analises'):
+        flash('Seu perfil não tem permissão para acessar Análises.', 'danger')
+        return redirect(url_for('admin'))
+
+    conn = get_db_connection()
+    rows = conn.execute('SELECT id_frota, data_coleta, compartimento, diagnostico, parecer FROM analises_oleo ORDER BY data_coleta').fetchall()
+    conn.close()
+
+    todas = [dict(r) for r in rows]
+    for item in todas:
+        item['classificacao'] = _classificar_analise_oleo(item['diagnostico'])
+
+    data_inicio = request.args.get('data_inicio', '').strip()
+    data_fim = request.args.get('data_fim', '').strip()
+    contexto = _montar_dashboard_oleo_contexto(todas, data_inicio, data_fim)
+    return render_template('analises_dashboard_pdf.html', **contexto)
+
+
+@app.route('/analises/relatorio_diario', methods=['GET', 'POST'])
+def relatorio_diario_oleo():
+    if not session.get('logado'): return redirect(url_for('login'))
+    if not tem_acesso_modulo('analises'):
+        flash('Seu perfil não tem permissão para acessar Análises.', 'danger')
+        return redirect(url_for('admin'))
+
+    if request.method == 'GET':
+        return redirect(url_for('analises'))
+
+    if 'file' not in request.files or request.files['file'].filename == '':
+        flash('Nenhum ficheiro selecionado.', 'danger')
+        return redirect(url_for('analises'))
+
+    file = request.files['file']
+    filename = file.filename.lower()
+
+    try:
+        linhas = _extrair_linhas_planilha_analises_oleo(file, filename)
+    except Exception as e:
+        flash(f'Erro ao processar o arquivo: {e}', 'danger')
+        return redirect(url_for('analises'))
+
+    if not linhas:
+        flash('Nenhuma análise válida encontrada no arquivo. Confira se é uma exportação do CHB com as colunas de Veículo/Compartimento.', 'danger')
+        return redirect(url_for('analises'))
+
+    for item in linhas:
+        item['classificacao'] = _classificar_analise_oleo(item['diagnostico'])
+
+    # Sem filtro de data: o relatório diário usa exatamente o que veio no arquivo enviado,
+    # sem tocar no banco — é um retrato pontual daquele upload, não a base acumulada.
+    contexto = _montar_dashboard_oleo_contexto(linhas)
+    contexto['titulo'] = 'Relatório Diário de Análises de Óleo'
+    contexto['base_label'] = f'Arquivo enviado: {file.filename}'
+    contexto['mostrar_filtro_data'] = False
+    return render_template('analises_dashboard_pdf.html', **contexto)
 
 
 @app.route('/api/upload_analises', methods=['POST'])
@@ -4775,106 +4939,16 @@ def upload_analises():
     datas_validas_arquivo = set()
 
     try:
-        import unicodedata
-
-        def norm_txt(valor):
-            txt = str(valor or '').strip().upper()
-            txt = unicodedata.normalize('NFKD', txt)
-            txt = ''.join(ch for ch in txt if not unicodedata.combining(ch))
-            txt = ' '.join(txt.split())
-            return txt
-
-        lines_data = []
-        if filename.endswith('.xlsx'):
-            import pandas as pd
-            df = pd.read_excel(file, header=None)
-            for _, row in df.iterrows():
-                row_vals = [str(cell).strip() if not pd.isna(cell) else '' for cell in row.values]
-                lines_data.append(row_vals)
-        else:
-            content_bytes = file.read()
-            try: content_str = content_bytes.decode('utf-8-sig')
-            except: content_str = content_bytes.decode('latin1', errors='ignore')
-            lines = content_str.splitlines()
-            reader = csv.reader(lines, delimiter=';' if lines and ';' in lines[0] and ',' not in lines[0] else ',')
-            for row in reader: lines_data.append([c.strip() for c in row])
-
-        header_map = None
-        for row in lines_data:
-            if not row: continue
-            row_norm = [norm_txt(c) for c in row]
-
-            if header_map is None:
-                tem_frota = any(v in ['VEICULO', 'FROTA'] for v in row_norm)
-                tem_comp = any('COMPARTIMENTO' in v for v in row_norm)
-                if tem_frota and tem_comp:
-                    def idx_exato(opcoes, prefer_last=False):
-                        indices = [i for i, v in enumerate(row_norm) if v in opcoes]
-                        if not indices:
-                            return None
-                        return indices[-1] if prefer_last else indices[0]
-
-                    def idx_contem(texto):
-                        for i, v in enumerate(row_norm):
-                            if texto in v:
-                                return i
-                        return None
-
-                    idx_frota = idx_exato(['VEICULO', 'FROTA'])
-                    idx_comp = idx_exato(['COMPARTIMENTO'])
-                    idx_data = idx_exato(['DATA DA COLETA', 'DATA COLETA'])
-                    if idx_data is None:
-                        idx_data = idx_contem('DATA COLETA')
-                    if idx_data is None:
-                        idx_data = idx_exato(['DATA'])
-                    if idx_data is None:
-                        idx_data = idx_contem('DATA')
-
-                    idx_parecer = idx_exato(['OBSERVACAO', 'PARECER', 'RECOMENDACAO'])
-                    idx_diag = idx_exato(['DIAGNOSTICO', 'RESULTADO', 'CLASSIFICACAO'])
-                    if idx_diag is None:
-                        # Em layouts novos, o diagnóstico costuma vir na última coluna "Descrição"
-                        idx_diag = idx_exato(['DESCRICAO'], prefer_last=True)
-
-                    if idx_frota is None or idx_comp is None or idx_data is None:
-                        continue
-
-                    header_map = {
-                        'frota': idx_frota,
-                        'data': idx_data,
-                        'comp': idx_comp,
-                        'parecer': idx_parecer,
-                        'diag': idx_diag
-                    }
-                continue
-
-            # Extração de dados (Limpando espaços extras para evitar erros)
-            if len(row) <= header_map['frota'] or len(row) <= header_map['data'] or len(row) <= header_map['comp']:
-                continue
-
-            frota = str(row[header_map['frota']]).upper().replace('.0', '').strip()
-            data_val = str(row[header_map['data']]).strip()
-
-            try:
-                if len(data_val) >= 10:
-                    if '/' in data_val: parsed_date = datetime.strptime(data_val[:10], '%d/%m/%Y').strftime('%Y-%m-%d')
-                    elif '-' in data_val: parsed_date = datetime.strptime(data_val[:10], '%Y-%m-%d').strftime('%Y-%m-%d')
-                    else: parsed_date = data_val
-                else: parsed_date = data_val
-            except: parsed_date = data_val
+        linhas = _extrair_linhas_planilha_analises_oleo(file, filename)
+        for linha in linhas:
+            frota = linha['id_frota']
+            parsed_date = linha['data_coleta']
+            comp = linha['compartimento']
+            diag = linha['diagnostico']
+            parecer = linha['parecer']
 
             if re.match(r'^\d{4}-\d{2}-\d{2}$', parsed_date):
                 datas_validas_arquivo.add(parsed_date)
-
-            # Normaliza maiúsculas/espaços para que "200 - Carter Motor" e "200 - CARTER MOTOR"
-            # sejam sempre a MESMA chave — evita duplicatas escaparem da constraint UNIQUE
-            # só por causa de uma formatação diferente entre exportações do CHB.
-            comp_base = ' '.join(str(row[header_map['comp']]).strip().upper().split())
-            comp_desc = ' '.join(str(row[header_map['comp'] + 1]).strip().upper().split()) if len(row) > header_map['comp'] + 1 else ''
-            comp = f"{comp_base} - {comp_desc}" if comp_desc else comp_base
-
-            diag = str(row[header_map['diag']]).strip() if header_map.get('diag') is not None and len(row) > header_map['diag'] else ""
-            parecer = str(row[header_map['parecer']]).strip() if header_map.get('parecer') is not None and len(row) > header_map['parecer'] else ''
 
             chave_atual = f"{frota}_{parsed_date}_{comp}"
             chaves_processadas_agora.add(chave_atual)

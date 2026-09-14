@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard de Análise de Óleo</title>
+  <title>{{ titulo|default('Dashboard de Análise de Óleo') }}</title>
   <style>
     body { margin: 0; padding: 12px; background: #eef2f6; color: #111827; font-family: Arial, Calibri, sans-serif; }
     .no-print { max-width: 794px; margin: 0 auto 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #fff; border: 1px solid #d9e1ea; border-radius: 8px; padding: 14px 18px; box-shadow: 0 4px 12px rgba(15,23,42,0.08); }
@@ -59,7 +59,8 @@
 </head>
 <body>
   <div class="no-print">
-    <p style="margin:0"><strong>Dashboard pronto para compartilhar.</strong><br><span style="font-size:12px;color:#475467">Use o botão para imprimir ou salvar em PDF. Formato sugerido: A4 retrato.</span></p>
+    <p style="margin:0"><strong>{{ 'Relatório pronto para compartilhar.' if not mostrar_filtro_data|default(true) else 'Dashboard pronto para compartilhar.' }}</strong><br><span style="font-size:12px;color:#475467">Use o botão para imprimir ou salvar em PDF. Formato sugerido: A4 retrato.</span></p>
+    {% if mostrar_filtro_data|default(true) %}
     <form method="GET" action="{{ url_for('analises_dashboard_pdf') }}">
       <div>
         <label>De</label>
@@ -71,6 +72,7 @@
       </div>
       <button type="submit" class="btn-filtrar">Filtrar</button>
     </form>
+    {% endif %}
     <div style="display:flex; gap:8px;">
       <a class="btn-voltar" href="{{ url_for('analises') }}">← Voltar</a>
       <button class="btn-print" onclick="window.print()">Imprimir PDF</button>
@@ -79,9 +81,9 @@
   <main class="sheet">
     <header class="header">
       <div>
-        <h1>Dashboard de Análise de Óleo</h1>
+        <h1>{{ titulo|default('Dashboard de Análise de Óleo') }}</h1>
         <p>Gestão PCM | Período: {{ periodo }}</p>
-        <p>Base: Análises de Óleo (CHB)</p>
+        <p>Base: {{ base_label|default('Análises de Óleo (CHB)') }}</p>
       </div>
       <div class="meta">
         <p>Gerado em: {{ gerado_em }}</p>

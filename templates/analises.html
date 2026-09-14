@@ -216,6 +216,9 @@
                                 <a href="{{ url_for('analises_dashboard_pdf') }}" id="linkDashboardPdf" data-base="{{ url_for('analises_dashboard_pdf') }}" target="_blank" class="btn btn-dark btn-sm fw-bold shadow-sm">
                                     <i class="bi bi-graph-up me-1"></i>Dashboard (PDF)
                                 </a>
+                                <button type="button" class="btn btn-outline-dark btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalRelatorioDiario">
+                                    <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatório Diário (PDF)
+                                </button>
 
                                 <form action="/api/excluir_todas_analises" method="POST" class="m-0" onsubmit="return confirm('ALERTA MÁXIMO:\n\nTem certeza absoluta que deseja EXCLUIR TODAS as análises do painel?\n\nEsta ação apagará todo o histórico e não poderá ser desfeita!');">
                                     <button type="submit" class="btn btn-danger btn-sm fw-bold shadow-sm" title="Limpar todo o painel">
@@ -477,6 +480,34 @@
                     <button type="button" class="btn btn-secondary fw-bold shadow-sm" data-bs-dismiss="modal">Cancelar</button>
                     <button type="button" class="btn btn-success fw-bold shadow-sm text-white" id="btnSalvarTr" onclick="salvarTratativa()"><i class="bi bi-check-all me-1"></i>Marcar como Tratado / Salvar</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade no-print" id="modalRelatorioDiario" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-dark border-2 shadow-lg">
+                <div class="modal-header bg-dark text-white border-bottom-0">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-file-earmark-bar-graph me-2"></i>Relatório Diário de Análises de Óleo</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="{{ url_for('relatorio_diario_oleo') }}" method="POST" enctype="multipart/form-data" target="_blank">
+                    <div class="modal-body bg-light">
+                        <p class="text-secondary small">
+                            Envie a planilha do CHB com as análises do dia (ou do período que quiser resumir).
+                            O sistema gera um PDF com informações e gráficos <strong>só daquele arquivo</strong> —
+                            sem mexer na base de pendências.
+                        </p>
+                        <label class="form-label fw-bold text-secondary small">Planilha (.xlsx ou .csv)</label>
+                        <input type="file" name="file" class="form-control border-dark fw-bold" accept=".csv, .xlsx" required>
+                    </div>
+                    <div class="modal-footer d-flex justify-content-between bg-white border-top-0">
+                        <button type="button" class="btn btn-secondary fw-bold shadow-sm" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-dark fw-bold shadow-sm" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split me-2\'></i>Gerando...'; this.disabled=true;">
+                            <i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar Relatório
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
