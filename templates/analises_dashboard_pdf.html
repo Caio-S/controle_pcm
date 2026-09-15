@@ -91,7 +91,11 @@
     </header>
     <section class="metric-grid">
       <article class="metric"><span>Análises no período</span><strong>{{ metrics.total }}</strong><span>Base filtrada</span></article>
+      {% if mostrar_filtro_data|default(true) %}
       <article class="metric"><span>Média por dia</span><strong>{{ metrics.media_dia }}</strong><span>Com base nas datas de coleta</span></article>
+      {% else %}
+      <article class="metric"><span>Frotas Analisadas</span><strong>{{ metrics.frotas_distintas }}</strong><span>Veículos distintos no dia</span></article>
+      {% endif %}
       <article class="metric warning"><span>Anomalias</span><strong>{{ metrics.atencao }}</strong><span>{{ metrics.taxa_atencao }}% da amostragem</span></article>
       <article class="metric danger"><span>Críticas abertas</span><strong>{{ metrics.criticas }}</strong><span>{{ metrics.taxa_critica }}% da amostragem</span></article>
     </section>

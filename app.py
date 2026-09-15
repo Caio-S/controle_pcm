@@ -4773,6 +4773,7 @@ def _montar_dashboard_oleo_contexto(todas, data_inicio='', data_fim=''):
     anomalias = [i for i in filtradas if i['classificacao'] == 'Anomalia']
     datas_unicas = {i['data_coleta'] for i in filtradas if i['data_coleta']}
     media_dia = round(total / len(datas_unicas), 1) if datas_unicas else 0
+    frotas_distintas = len({i['id_frota'] for i in filtradas if i['id_frota']})
     taxa_atencao = round((len(anomalias) / total) * 100) if total else 0
     taxa_critica = round((len(criticas) / total) * 100) if total else 0
 
@@ -4848,7 +4849,8 @@ def _montar_dashboard_oleo_contexto(todas, data_inicio='', data_fim=''):
             pass
 
     metrics = {
-        'total': total, 'media_dia': media_dia, 'atencao': len(anomalias), 'criticas': len(criticas),
+        'total': total, 'media_dia': media_dia, 'frotas_distintas': frotas_distintas,
+        'atencao': len(anomalias), 'criticas': len(criticas),
         'taxa_atencao': taxa_atencao, 'taxa_critica': taxa_critica
     }
 
