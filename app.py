@@ -4668,7 +4668,15 @@ def _extrair_linhas_planilha_analises_oleo(file, filename):
 
                 idx_frota = idx_exato(['VEICULO', 'FROTA'])
                 idx_comp = idx_exato(['COMPARTIMENTO'])
-                idx_data = idx_exato(['DATA DA COLETA', 'DATA COLETA'])
+                # Usa a Data de Digitação (coluna M) como data de referência, não a Data da
+                # Coleta (coluna N) — a coleta às vezes traz resquícios do dia anterior
+                # misturados no mesmo export do CHB, enquanto a digitação reflete melhor
+                # o dia em que a análise realmente entrou no sistema.
+                idx_data = idx_exato(['DATA DIGITACAO', 'DATA DE DIGITACAO'])
+                if idx_data is None:
+                    idx_data = idx_contem('DIGITACAO')
+                if idx_data is None:
+                    idx_data = idx_exato(['DATA DA COLETA', 'DATA COLETA'])
                 if idx_data is None:
                     idx_data = idx_contem('DATA COLETA')
                 if idx_data is None:
