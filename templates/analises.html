@@ -216,7 +216,7 @@
                                 <a href="{{ url_for('analises_dashboard_pdf') }}" id="linkDashboardPdf" data-base="{{ url_for('analises_dashboard_pdf') }}" target="_blank" class="btn btn-dark btn-sm fw-bold shadow-sm">
                                     <i class="bi bi-graph-up me-1"></i>Dashboard (PDF)
                                 </a>
-                                <button type="button" class="btn btn-outline-dark btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalRelatorioDiario">
+                                <button type="button" class="btn btn-outline-light btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalRelatorioDiario">
                                     <i class="bi bi-file-earmark-bar-graph me-1"></i>Relatório Diário (PDF)
                                 </button>
 
@@ -491,7 +491,7 @@
                     <h5 class="modal-title fw-bold"><i class="bi bi-file-earmark-bar-graph me-2"></i>Relatório Diário de Análises de Óleo</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <form action="{{ url_for('relatorio_diario_oleo') }}" method="POST" enctype="multipart/form-data" target="_blank">
+                <form id="formRelatorioDiario" action="{{ url_for('relatorio_diario_oleo') }}" method="POST" enctype="multipart/form-data" onsubmit="return enviarRelatorioDiario(event, this);">
                     <div class="modal-body bg-light">
                         <p class="text-secondary small">
                             Envie a planilha do CHB com as análises do dia (ou do período que quiser resumir).
@@ -500,10 +500,11 @@
                         </p>
                         <label class="form-label fw-bold text-secondary small">Planilha (.xlsx ou .csv)</label>
                         <input type="file" name="file" class="form-control border-dark fw-bold" accept=".csv, .xlsx" required>
+                        <div id="erroRelatorioDiario" class="alert alert-danger mt-3 d-none"></div>
                     </div>
                     <div class="modal-footer d-flex justify-content-between bg-white border-top-0">
                         <button type="button" class="btn btn-secondary fw-bold shadow-sm" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-dark fw-bold shadow-sm" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split me-2\'></i>Gerando...'; this.disabled=true;">
+                        <button type="submit" id="btnGerarRelatorioDiario" class="btn btn-dark fw-bold shadow-sm">
                             <i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar Relatório
                         </button>
                     </div>
@@ -1036,6 +1037,66 @@
 
         montarSeletoresDeData();
         aplicarFiltrosTela();
+
+        // O Relatório Diário abre o PDF numa aba nova. Um <form target="_blank"> só cria essa aba
+        // QUANDO A RESPOSTA CHEGA — como o servidor demora um pouco pra ler a planilha e montar os
+        // gráficos, alguns navegadores tratam isso como pop-up não solicitado e bloqueiam
+        // silenciosamente, deixando o botão preso em "Gerando..." pra sempre. Por isso: abrimos a
+        // aba em branco JÁ no clique (gesto síncrono do usuário, nunca bloqueado), enviamos o
+        // arquivo via fetch, e escrevemos a resposta manualmente dentro dessa aba já aberta.
+        function enviarRelatorioDiario(ev, form) {
+            ev.preventDefault();
+
+            const inputFile = form.querySelector('input[type=file]');
+            if (!inputFile.files.length) { inputFile.reportValidity(); return false; }
+
+            const erroDiv = document.getElementById('erroRelatorioDiario');
+            erroDiv.classList.add('d-none');
+
+            const btn = document.getElementById('btnGerarRelatorioDiario');
+            const novaAba = window.open('', '_blank');
+            if (novaAba) {
+                novaAba.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Gerando relatório...</title></head><body style="font-family:Arial,sans-serif;padding:60px;text-align:center;color:#475467;"><p>Gerando relatório, aguarde...</p></body></html>');
+            }
+
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Gerando...';
+            btn.disabled = true;
+
+            const fd = new FormData(form);
+            fetch(form.action, { method: 'POST', body: fd })
+                .then(resp => resp.text().then(html => ({ ok: resp.ok, html })))
+                .then(({ ok, html }) => {
+                    if (novaAba && !novaAba.closed) {
+                        novaAba.document.open();
+                        novaAba.document.write(html);
+                        novaAba.document.close();
+                    }
+                    if (ok) {
+                        bootstrap.Modal.getInstance(document.getElementById('modalRelatorioDiario'))?.hide();
+                    }
+                })
+                .catch(e => {
+                    if (novaAba && !novaAba.closed) novaAba.close();
+                    erroDiv.textContent = 'Erro de conexão ao gerar o relatório: ' + e.message;
+                    erroDiv.classList.remove('d-none');
+                })
+                .finally(() => {
+                    btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar Relatório';
+                    btn.disabled = false;
+                });
+
+            return false;
+        }
+
+        const modalRelatorioDiarioEl = document.getElementById('modalRelatorioDiario');
+        if (modalRelatorioDiarioEl) {
+            modalRelatorioDiarioEl.addEventListener('show.bs.modal', () => {
+                const btn = document.getElementById('btnGerarRelatorioDiario');
+                if (btn) { btn.innerHTML = '<i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar Relatório'; btn.disabled = false; }
+                document.getElementById('erroRelatorioDiario').classList.add('d-none');
+                modalRelatorioDiarioEl.querySelector('form').reset();
+            });
+        }
 
         const modalUI = new bootstrap.Modal(document.getElementById('modalTratativa'));
 
