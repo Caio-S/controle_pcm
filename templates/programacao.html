@@ -75,7 +75,10 @@
         body.modo-lote-ativo .chk-lote { display: flex; }
         .card-tarefa.lote-selecionado { outline: 3px solid #0d6efd; outline-offset: 1px; }
         .card-tarefa.lote-selecionado .chk-lote { color: #0d6efd; }
-        #barraSelecaoLote { position: fixed; bottom: 0; left: 0; right: 0; z-index: 1080; }
+        /* Abaixo do z-index padrão do Bootstrap pra modal (1055) e backdrop (1050), senão essa
+           barra fixa no rodapé fica por cima do modal "Alterar Status em Lote" e bloqueia cliques
+           no botão Confirmar quando o modal aparece na mesma região da tela. */
+        #barraSelecaoLote { position: fixed; bottom: 0; left: 0; right: 0; z-index: 1040; }
 
         [data-bs-theme="dark"] body { background-color: #212529; }
         [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; border-color: #495057 !important; }
@@ -925,7 +928,15 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-3" id="loteResumoTexto"></p>
+                    <p class="small text-muted mb-2" id="loteResumoTexto"></p>
+
+                    <div class="mb-3 p-2 border rounded bg-light" style="max-height: 180px; overflow-y: auto;">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-bold text-secondary">Serviços a atualizar</span>
+                            <button type="button" class="btn btn-link btn-sm p-0" style="font-size: 0.75rem;" onclick="_marcarTodosServicosLote(this)">Desmarcar todos</button>
+                        </div>
+                        <div id="loteListaServicos"></div>
+                    </div>
 
                     <label class="form-label fw-bold small mb-1">Novo Status</label>
                     <select id="loteNovoStatus" class="form-select fw-bold mb-3" onchange="_atualizarCamposLote()">
@@ -1426,11 +1437,43 @@
         }
 
         function prepararModalConclusaoLote() {
-            document.getElementById('loteResumoTexto').innerText = `${cardsSelecionadosLote.size} frota(s) selecionada(s) — todos os serviços do card serão atualizados.`;
             document.getElementById('loteDataExecucao').value = new Date().toISOString().split('T')[0];
             document.getElementById('loteNovoStatus').value = 'REALIZADA';
             document.getElementById('loteInserirBloqueio').checked = true;
+            document.querySelector('#modalConcluirLote button[onclick="_marcarTodosServicosLote(this)"]').innerText = 'Desmarcar todos';
             _atualizarCamposLote();
+
+            // Lista cada serviço individual das frotas selecionadas — um card pode ter mais de
+            // um serviço agrupado (ex: troca de óleo + troca de câmbio), e nem sempre todos foram
+            // realmente concluídos juntos. Por padrão vem tudo marcado, mas dá pra desmarcar o que
+            // não deve mudar de status.
+            let totalServicos = 0;
+            let partesLista = [];
+            Array.from(cardsSelecionadosLote).forEach(idsStr => {
+                let item = PROGRAMACAO_ATUAL.find(p => p.ids === idsStr);
+                if (!item) return;
+                (item.servicos || []).forEach(s => {
+                    totalServicos++;
+                    partesLista.push(`
+                        <div class="form-check mb-1">
+                            <input class="form-check-input lote-servico-check" type="checkbox" checked
+                                   id="loteSrv_${s.id}" data-servico-id="${s.id}">
+                            <label class="form-check-label small" for="loteSrv_${s.id}">
+                                <strong>${item.id_frota}</strong> — ${s.tipo}
+                            </label>
+                        </div>`);
+                });
+            });
+            document.getElementById('loteListaServicos').innerHTML = partesLista.join('');
+            document.getElementById('loteResumoTexto').innerText =
+                `${cardsSelecionadosLote.size} frota(s) selecionada(s), ${totalServicos} serviço(s) no total.`;
+        }
+
+        function _marcarTodosServicosLote(btn) {
+            let checks = document.querySelectorAll('.lote-servico-check');
+            let marcarTudo = btn.innerText.trim() === 'Marcar todos';
+            checks.forEach(c => c.checked = marcarTudo);
+            btn.innerText = marcarTudo ? 'Desmarcar todos' : 'Marcar todos';
         }
 
         function confirmarConclusaoLote() {
@@ -1441,16 +1484,24 @@
             let inserirBloqueio = document.getElementById('loteInserirBloqueio').checked;
             if (novoStatus === 'REALIZADA' && !dataExec) { alert('Selecione a data de conclusão.'); return; }
 
+            let idsServicosMarcados = new Set(
+                Array.from(document.querySelectorAll('.lote-servico-check:checked')).map(el => String(el.dataset.servicoId))
+            );
+            if (idsServicosMarcados.size === 0) { alert('Marque ao menos um serviço para atualizar.'); return; }
+
             let btn = document.getElementById('btnConfirmarConclusaoLote');
             btn.disabled = true; btn.innerText = 'A guardar...';
 
             let requisicoes = Array.from(cardsSelecionadosLote).map(idsStr => {
                 let item = PROGRAMACAO_ATUAL.find(p => p.ids === idsStr);
                 if (!item) return Promise.resolve({status: 'sucesso'});
-                let atualizacoes = (item.servicos || []).map(s => ({
-                    id: s.id, tipo_servico: s.tipo, status: novoStatus,
-                    resultado: s.resultado || '', observacao: s.observacao || ''
-                }));
+                let atualizacoes = (item.servicos || [])
+                    .filter(s => idsServicosMarcados.has(String(s.id)))
+                    .map(s => ({
+                        id: s.id, tipo_servico: s.tipo, status: novoStatus,
+                        resultado: s.resultado || '', observacao: s.observacao || ''
+                    }));
+                if (atualizacoes.length === 0) return Promise.resolve({status: 'sucesso'});
                 return fetch('/api/atualizar_servico_lote', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
