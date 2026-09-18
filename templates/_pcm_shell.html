@@ -1,0 +1,137 @@
+{# ===========================================================================
+   Shell de navegacao compartilhado (sidebar + backdrop).
+
+   Uso na pagina:
+     <body class="pcm-app">
+       {% include '_pcm_shell.html' %}
+       <div class="pcm-shell"> ... topbar + main ... </div>
+
+   O item ativo e detectado por request.path, entao nenhuma rota precisa
+   passar variavel extra. As permissoes vem do context_processor global
+   (usuario_admin, perm_programacao, ...).
+   =========================================================================== #}
+{% set _p = request.path %}
+
+<div class="pcm-backdrop" id="pcmBackdrop" onclick="PCM.alternarSidebar(false)"></div>
+
+<aside class="pcm-sidebar" id="pcmSidebar">
+    <div class="pcm-sb-brand">
+        <img src="{{ url_for('static', filename='logo-crv.svg') }}" alt="CRV Industrial" class="pcm-sb-logo">
+        <div class="pcm-sb-brand-txt">
+            <strong>GESTÃO PCM</strong>
+            <span>{{ 'Administrador' if usuario_admin else usuario_perfil_nome }}</span>
+        </div>
+    </div>
+
+    <nav class="pcm-sb-nav" id="v-pills-tab" role="tablist">
+        {# Abas internas da propria pagina, quando ela define pcm_nav_extra. #}
+        {{ pcm_nav_extra if pcm_nav_extra }}
+
+        {# Oficina fica fixa no menu compartilhado (não só quando o Painel de
+           Controle está selecionado): de qualquer aba dá pra ir direto para
+           uma sub-aba específica de lá. Em /admin, o próprio admin.html troca
+           de aba sem recarregar; nas outras páginas, o link abre /admin já
+           na aba certa. #}
+        {% set _aba_atual = request.args.get('aba', 'bloqueados') %}
+        <div class="pcm-sb-section">Oficina</div>
+        <a href="/admin?aba=bloqueados" class="pcm-sb-link {{ 'active' if _p == '/admin' and _aba_atual == 'bloqueados' }}">
+            <i class="bi bi-tools"></i>Frotas Bloqueadas
+        </a>
+        <a href="/admin?aba=novo" class="pcm-sb-link {{ 'active' if _p == '/admin' and _aba_atual == 'novo' }}">
+            <i class="bi bi-lock"></i>Novo Bloqueio
+        </a>
+        {% if usuario_admin or perm_bloqueios %}
+        <a href="/admin?aba=historico" class="pcm-sb-link {{ 'active' if _p == '/admin' and _aba_atual == 'historico' }}">
+            <i class="bi bi-clock-history"></i>Consultar Histórico
+        </a>
+        {% endif %}
+        <a href="/admin?aba=gestao-frota" class="pcm-sb-link {{ 'active' if _p == '/admin' and _aba_atual == 'gestao-frota' }}">
+            <i class="bi bi-truck"></i>Gestão de Frotas
+        </a>
+        {% if usuario_admin %}
+        <a href="/admin?aba=gestao-perfis" class="pcm-sb-link {{ 'active' if _p == '/admin' and _aba_atual == 'gestao-perfis' }}">
+            <i class="bi bi-person-badge"></i>Perfis de Acesso
+        </a>
+        {% endif %}
+
+        <div class="pcm-sb-section">Gestão</div>
+        <a href="/dash_operacional" class="pcm-sb-link {{ 'active' if _p == '/dash_operacional' }}">
+            <i class="bi bi-grid-1x2"></i>Dashboard Operacional
+        </a>
+        <a href="/admin" class="pcm-sb-link {{ 'active' if _p == '/admin' and _aba_atual == 'bloqueados' }}">
+            <i class="bi bi-speedometer2"></i>Painel de Controle
+        </a>
+        <a href="/" class="pcm-sb-link {{ 'active' if _p == '/' }}">
+            <i class="bi bi-display"></i>Transparência
+        </a>
+
+        <div class="pcm-sb-section">Manutenção</div>
+        {% if usuario_admin or perm_programacao %}
+        <a href="/programacao" class="pcm-sb-link {{ 'active' if _p == '/programacao' }}">
+            <i class="bi bi-calendar-week"></i>Programação Semanal
+        </a>
+        {% endif %}
+        {% if usuario_admin or perm_externos %}
+        <a href="/externos" class="pcm-sb-link {{ 'active' if _p == '/externos' }}">
+            <i class="bi bi-cone-striped"></i>Serviços Externos
+        </a>
+        {% endif %}
+        {% if usuario_admin %}
+        <a href="/reforma" class="pcm-sb-link {{ 'active' if _p == '/reforma' }}">
+            <i class="bi bi-wrench-adjustable"></i>Reforma de Máquinas
+        </a>
+        {% endif %}
+
+        <div class="pcm-sb-section">PCM</div>
+        {% if usuario_admin or perm_ferramentaria %}
+        <a href="/ferramentaria" class="pcm-sb-link {{ 'active' if _p.startswith('/ferramentaria') }}">
+            <i class="bi bi-hammer"></i>Ferramentaria
+        </a>
+        {% endif %}
+        {% if usuario_admin or perm_compras %}
+        <a href="/compras" class="pcm-sb-link {{ 'active' if _p == '/compras' }}">
+            <i class="bi bi-cart"></i>Compras &amp; Pedidos
+        </a>
+        {% endif %}
+
+        <div class="pcm-sb-section">Análises</div>
+        {% if usuario_admin or perm_externos %}
+        <a href="/dash_turno" class="pcm-sb-link {{ 'active' if _p == '/dash_turno' }}">
+            <i class="bi bi-bar-chart"></i>Dashboard por Turno
+        </a>
+        <a href="/dash_os" class="pcm-sb-link {{ 'active' if _p == '/dash_os' }}">
+            <i class="bi bi-clipboard2-data"></i>Dashboard de OS
+        </a>
+        <a href="/dash_frentes" class="pcm-sb-link {{ 'active' if _p == '/dash_frentes' }}">
+            <i class="bi bi-diagram-3"></i>Frentes de Serviço
+        </a>
+        {% endif %}
+        {% if usuario_admin or perm_abastecimentos %}
+        <a href="/abastecimentos" class="pcm-sb-link {{ 'active' if _p == '/abastecimentos' }}">
+            <i class="bi bi-fuel-pump"></i>Abastecimentos
+        </a>
+        {% endif %}
+        {% if usuario_admin or perm_analises %}
+        <a href="/analises" class="pcm-sb-link {{ 'active' if _p == '/analises' }}">
+            <i class="bi bi-eyedropper"></i>Análises Críticas
+        </a>
+        {% endif %}
+    </nav>
+
+    <div class="pcm-sb-user">
+        <div class="pcm-sb-avatar">{{ ('A' if usuario_admin else (usuario_perfil_nome or 'U')[:1]|upper) }}</div>
+        <div class="pcm-sb-user-txt">
+            <strong>{{ 'Administrador' if usuario_admin else usuario_perfil_nome }}</strong>
+            <span>{{ 'Admin' if usuario_admin else 'Perfil' }}</span>
+        </div>
+        <a href="/logout" class="pcm-btn-icon" title="Sair"
+           style="border-color:rgba(255,255,255,.12);color:#94a3b8;">
+            <i class="bi bi-box-arrow-right"></i>
+        </a>
+    </div>
+</aside>
+
+<button type="button" class="pcm-sb-collapse" id="pcmSbCollapse"
+        onclick="PCM.alternarSidebarDesktop()" title="Esconder/mostrar menu">
+    <i class="bi bi-chevron-left"></i>
+</button>

@@ -1,0 +1,933 @@
+/* ==========================================================================
+   PCM UI - Design System compartilhado
+   Carregado por todas as telas do sistema. Define tokens, o shell de
+   navegacao (sidebar + topbar), componentes (KPI, cards, tabelas, badges,
+   filtros) e as animacoes padrao.
+
+   Regra de ouro: o significado das cores de status e o mesmo de sempre -
+   verde=realizada, cinza=pendente, vermelho=bloqueada, amarelo=quebrada.
+   ========================================================================== */
+
+:root {
+    /* Marca */
+    --pcm-brand:      #1E4B9A;
+    --pcm-brand-hi:   #3D77D6;
+    --pcm-brand-lo:   #173a78;
+    --pcm-brand-soft: #6ea8fe;
+
+    /* Superficies */
+    --pcm-shell-bg: #f5f7fa;
+    --pcm-surface:  #ffffff;
+    --pcm-surface-2:#f8fafc;
+    --pcm-border:   #e6ebf2;
+    --pcm-text:     #1f2937;
+    --pcm-text-mute:#7c8898;
+
+    /* Sidebar */
+    --pcm-sb-w:       248px;
+    --pcm-sb-bg:      #0f172a;
+    --pcm-sb-bg-soft: #1e293b;
+    --pcm-sb-text:    #94a3b8;
+    --pcm-sb-text-hi: #f1f5f9;
+
+    /* Status operacional - cores originais do sistema, mantidas por decisao do
+       usuario: verde=realizada, cinza=pendente, vermelho=bloqueada,
+       amarelo=quebrada, laranja=atrasada. Onde o amarelo aparece como fundo de
+       texto, o texto vai escuro (#664d03) porque #ffc107 tem contraste 1,63
+       sobre branco - so o texto compensa, a cor da identidade fica. */
+    --pcm-realizada: #198754;
+    --pcm-pendente:  #6c757d;
+    --pcm-bloqueada: #dc3545;
+    --pcm-quebrada:  #ffc107;
+    --pcm-atrasada:  #fd7e14;
+    --pcm-info:      #0dcaf0;
+
+    /* Forma */
+    --pcm-r-sm: 8px;
+    --pcm-r:    12px;
+    --pcm-r-lg: 16px;
+    --pcm-shadow-1: 0 1px 2px rgba(16,24,40,.05);
+    --pcm-shadow-2: 0 4px 14px rgba(16,24,40,.08);
+    --pcm-shadow-3: 0 12px 30px rgba(16,24,40,.12);
+
+    /* Movimento */
+    --pcm-ease: cubic-bezier(.16,.84,.44,1);
+    --pcm-fast: .18s;
+    --pcm-med:  .28s;
+}
+
+[data-bs-theme="dark"] {
+    --pcm-shell-bg: #14181d;
+    --pcm-surface:  #2b3035;
+    --pcm-surface-2:#22262b;
+    --pcm-border:   #3a424b;
+    --pcm-text:     #f1f5f9;
+    --pcm-text-mute:#9aa6b4;
+
+    /* Marca: o azul do claro (#1E4B9A) fica abafado sobre #14181d - um passo
+       mais claro pra continuar parecendo "a cor da marca" e nao um azul sujo. */
+    --pcm-brand:      #3D77D6;
+    --pcm-brand-hi:   #5b93e6;
+    --pcm-brand-lo:   #2c5bb0;
+    --pcm-brand-soft: #8fb8ff;
+
+    /* Sombra: rgba(16,24,40,x) foi calibrada pra elevar um card branco sobre
+       fundo claro - sobre #14181d ela some. Preto mais forte + blur maior
+       devolve a profundidade sem virar um contorno duro. */
+    --pcm-shadow-1: 0 1px 2px rgba(0,0,0,.35);
+    --pcm-shadow-2: 0 6px 18px rgba(0,0,0,.45);
+    --pcm-shadow-3: 0 16px 38px rgba(0,0,0,.55);
+
+    /* O escuro tem passo proprio, validado contra o card #2b3035 - nao e o
+       claro "invertido". Mesmos significados, tons clareados o suficiente. */
+    --pcm-realizada: #20c997;
+    --pcm-pendente:  #adb5bd;
+    --pcm-bloqueada: #ff6b7a;
+    --pcm-quebrada:  #ffc107;
+    --pcm-atrasada:  #fd7e14;
+    --pcm-info:      #22d3ee;
+}
+
+/* ==========================================================================
+   0. Escala do sistema
+   O sistema parecia "ampliado" porque tudo herdava o rem padrao de 16px. Como
+   os componentes sao dimensionados em rem, baixar a raiz encolhe layout inteiro
+   de forma proporcional - e o mesmo efeito de usar o navegador a 75%, porem
+   real: nada de zoom artificial, e o texto continua legivel porque a escala
+   acompanha a largura da tela em vez de ser fixa.
+   ========================================================================== */
+
+:root { font-size: 14px; }
+
+@media (min-width: 1600px) { :root { font-size: 15px; } }
+@media (max-width: 1439.98px) { :root { font-size: 13.5px; } }
+@media (max-width: 1023.98px) { :root { font-size: 13.5px; } }
+@media (max-width: 767.98px)  { :root { font-size: 13px; } }
+@media (max-width: 480px)     { :root { font-size: 12.5px; } }
+
+/* Nada pode passar da largura da tela: a raiz do problema de scroll horizontal
+   no celular quase sempre e um filho com largura fixa dentro de um pai 100%. */
+html, body { max-width: 100%; overflow-x: hidden; }
+body.pcm-app *, body.pcm-app *::before, body.pcm-app *::after { box-sizing: border-box; }
+body.pcm-app img, body.pcm-app canvas, body.pcm-app svg, body.pcm-app video { max-width: 100%; }
+
+/* ==========================================================================
+   1. Shell de navegacao (sidebar + topbar + conteudo)
+   ========================================================================== */
+
+body.pcm-app {
+    font-family: 'Segoe UI', 'Calibri', Arial, sans-serif;
+    background-color: var(--pcm-shell-bg);
+    color: var(--pcm-text);
+    margin: 0;
+}
+
+/* Conteudo respira: area util mais larga em telas grandes, com um teto pra
+   nao esticar linha de texto ate ficar cansativo de ler. */
+.pcm-main > .pcm-conteudo,
+.pcm-main { max-width: 1760px; margin-inline: auto; width: 100%; }
+
+.pcm-sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; width: var(--pcm-sb-w);
+    height: 100dvh; /* dvh acompanha a barra do navegador no celular */
+    background: var(--pcm-sb-bg);
+    display: flex; flex-direction: column;
+    z-index: 1040;
+    transition: transform var(--pcm-med) var(--pcm-ease);
+}
+
+.pcm-sb-brand {
+    display: flex; flex-direction: column; gap: 11px;
+    padding: 16px 14px 14px;
+    flex: 0 0 auto;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.pcm-sb-logo {
+    width: 100%; height: auto; display: block;
+    background: #fff; border-radius: 9px; padding: 7px 9px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.28);
+}
+.pcm-sb-brand-txt strong {
+    color: var(--pcm-sb-text-hi); font-size: .82rem; display: block;
+    letter-spacing: 1.6px; font-weight: 600; text-transform: uppercase;
+}
+.pcm-sb-brand-txt span { color: #64748b; font-size: .71rem; }
+
+/* min-height:0 é o que faz a rolagem funcionar: num flex column, o item tem
+   min-height:auto por padrão e se recusa a encolher abaixo do próprio conteúdo -
+   o overflow nunca entra em ação e o rodapé do menu é empurrado pra fora da
+   tela. Com 0, o nav encolhe até o espaço disponível e passa a rolar. */
+.pcm-sb-nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px 10px 10px;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+.pcm-sb-nav::-webkit-scrollbar { width: 6px; }
+.pcm-sb-nav::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.pcm-sb-nav::-webkit-scrollbar-thumb:hover { background: #475569; }
+.pcm-sb-nav::-webkit-scrollbar-track { background: transparent; }
+
+.pcm-sb-section {
+    color: #64748b; font-size: .64rem; font-weight: 700;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    padding: 16px 12px 7px;
+}
+
+.pcm-sb-link {
+    display: flex; align-items: center; gap: 11px;
+    width: 100%; text-align: left;
+    padding: 9px 12px; margin-bottom: 2px;
+    border: 0; border-radius: 9px;
+    background: transparent;
+    color: var(--pcm-sb-text);
+    font-size: .845rem; font-weight: 500; text-decoration: none;
+    position: relative; overflow: hidden;
+    transition: color var(--pcm-fast), background-color var(--pcm-fast), transform var(--pcm-fast) var(--pcm-ease);
+}
+.pcm-sb-link i {
+    font-size: 1.02rem; width: 20px; flex-shrink: 0;
+    text-align: center; line-height: 1; opacity: .72;
+    transition: opacity var(--pcm-fast);
+}
+.pcm-sb-link:hover:not(.disabled) {
+    background: rgba(255,255,255,.055);
+    color: var(--pcm-sb-text-hi);
+    transform: translateX(3px);
+}
+.pcm-sb-link:hover i, .pcm-sb-link.active i { opacity: 1; }
+.pcm-sb-link.active {
+    background: linear-gradient(90deg, rgba(61,119,214,.28), rgba(61,119,214,.06));
+    color: #fff; font-weight: 600;
+}
+.pcm-sb-link.active::before {
+    content: ''; position: absolute; left: 0; top: 18%; bottom: 18%;
+    width: 3px; border-radius: 0 3px 3px 0; background: var(--pcm-brand-hi);
+    animation: pcmBarIn .3s var(--pcm-ease);
+}
+@keyframes pcmBarIn { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.pcm-sb-link.disabled { opacity: .34; cursor: not-allowed; pointer-events: none; }
+.pcm-sb-link .pcm-sb-badge {
+    margin-left: auto; font-size: .62rem; font-weight: 700;
+    background: var(--pcm-bloqueada); color: #fff;
+    border-radius: 20px; padding: 1px 7px; min-width: 20px; text-align: center;
+}
+
+.pcm-sb-user {
+    flex: 0 0 auto; padding: 12px; border-top: 1px solid rgba(255,255,255,.07);
+    display: flex; align-items: center; gap: 10px;
+    background: var(--pcm-sb-bg); /* fica opaco sobre o nav que rola atrás */
+}
+.pcm-sb-avatar {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    background: var(--pcm-sb-bg-soft); color: var(--pcm-brand-hi);
+    display: grid; place-items: center; font-weight: 700; font-size: .85rem;
+}
+.pcm-sb-user-txt { line-height: 1.2; min-width: 0; flex: 1; }
+.pcm-sb-user-txt strong {
+    color: var(--pcm-sb-text-hi); font-size: .8rem; display: block;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pcm-sb-user-txt span { color: #64748b; font-size: .68rem; text-transform: uppercase; letter-spacing: .5px; }
+
+.pcm-backdrop {
+    position: fixed; inset: 0; background: rgba(15,23,42,.5);
+    z-index: 1035; opacity: 0; pointer-events: none; transition: opacity var(--pcm-med);
+}
+.pcm-backdrop.show { opacity: 1; pointer-events: auto; }
+
+.pcm-shell { margin-left: var(--pcm-sb-w); min-height: 100vh; transition: margin-left var(--pcm-med) var(--pcm-ease); }
+
+.pcm-topbar {
+    position: sticky; top: 0; z-index: 1030;
+    background: var(--pcm-surface);
+    border-bottom: 1px solid var(--pcm-border);
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 14px;
+    flex-wrap: wrap;
+}
+.pcm-tb-crumb {
+    color: var(--pcm-text-mute); font-size: .63rem; font-weight: 700;
+    letter-spacing: 1.3px; text-transform: uppercase;
+}
+.pcm-tb-title { font-size: 1.12rem; font-weight: 600; margin: 0; line-height: 1.25; }
+.pcm-tb-spacer { flex: 1; }
+.pcm-tb-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Espacamento acompanha a largura da tela em vez de ser fixo: mais respiro no
+   monitor grande, sem desperdicar area no notebook. */
+.pcm-main { padding: clamp(14px, 1.4vw, 30px) clamp(12px, 1.7vw, 36px) 44px; }
+
+.pcm-btn-icon {
+    width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
+    border: 1px solid var(--pcm-border); background: transparent;
+    display: grid; place-items: center; color: var(--pcm-text-mute);
+    text-decoration: none;
+    transition: all var(--pcm-fast) var(--pcm-ease);
+}
+.pcm-btn-icon:hover { background: var(--pcm-shell-bg); color: var(--pcm-brand); transform: translateY(-1px); }
+
+.pcm-sb-toggle { display: none; }
+
+/* Botão fixo na borda da barra lateral pra esconder/mostrar no desktop - a
+   preferência é lembrada (localStorage) e aplicada na <html> ainda em
+   <head>, antes do corpo existir, pra não "piscar" a barra aberta e fechar
+   na sequência (ver pcm-ui.js). */
+.pcm-sb-collapse {
+    position: fixed; top: 76px; left: calc(var(--pcm-sb-w) - 14px);
+    width: 28px; height: 28px; border-radius: 50%; padding: 0;
+    background: var(--pcm-sb-bg); border: 2px solid var(--pcm-shell-bg);
+    color: #94a3b8; display: grid; place-items: center;
+    z-index: 1045; cursor: pointer;
+    transition: left var(--pcm-med) var(--pcm-ease), background var(--pcm-fast), color var(--pcm-fast);
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+}
+.pcm-sb-collapse:hover { background: var(--pcm-brand); color: #fff; }
+.pcm-sb-collapse i { font-size: .78rem; transition: transform var(--pcm-med) var(--pcm-ease); }
+
+html.pcm-sb-hidden .pcm-sidebar { transform: translateX(-100%); }
+html.pcm-sb-hidden .pcm-shell { margin-left: 0; }
+html.pcm-sb-hidden .pcm-sb-collapse { left: 14px; }
+html.pcm-sb-hidden .pcm-sb-collapse i { transform: rotate(180deg); }
+
+@media (max-width: 991.98px) {
+    /* No celular a barra já é um drawer com o próprio hamburguer (.pcm-sb-toggle). */
+    .pcm-sb-collapse { display: none; }
+}
+
+/* ==========================================================================
+   2. Cards, KPIs e paineis
+   ========================================================================== */
+
+.pcm-card {
+    background: var(--pcm-surface);
+    border: 1px solid var(--pcm-border);
+    border-radius: var(--pcm-r-lg);
+    box-shadow: var(--pcm-shadow-1);
+}
+.pcm-card-h {
+    padding: 14px 18px; border-bottom: 1px solid var(--pcm-border);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.pcm-card-h h6 {
+    margin: 0; font-size: .74rem; font-weight: 700;
+    letter-spacing: .8px; text-transform: uppercase; color: var(--pcm-text-mute);
+}
+.pcm-card-b { padding: 16px 18px; }
+
+.pcm-kpi-grid {
+    display: grid;
+    /* auto-fit + minmax deixa a propria grade decidir quantas colunas cabem,
+       entao a mesma marcacao serve de 1920px ao celular sem breakpoint manual. */
+    grid-template-columns: repeat(auto-fit, minmax(clamp(150px, 12vw, 190px), 1fr));
+    gap: clamp(9px, .8vw, 16px);
+}
+.pcm-kpi {
+    background: var(--pcm-surface);
+    border: 1px solid var(--pcm-border);
+    border-radius: var(--pcm-r);
+    padding: 15px 17px;
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 94px;
+    box-shadow: var(--pcm-shadow-1);
+    transition: transform var(--pcm-med) var(--pcm-ease), box-shadow var(--pcm-med) var(--pcm-ease);
+    animation: pcmCardIn .42s var(--pcm-ease) both;
+}
+.pcm-kpi::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--pcm-kpi-color, var(--pcm-brand));
+}
+.pcm-kpi:hover { transform: translateY(-3px); box-shadow: var(--pcm-shadow-2); }
+.pcm-kpi-label {
+    color: var(--pcm-text-mute); font-size: .655rem; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase; line-height: 1.35;
+    display: flex; align-items: center; gap: 6px;
+}
+.pcm-kpi-value {
+    font-size: 1.85rem; font-weight: 700; line-height: 1;
+    letter-spacing: -1px; color: var(--pcm-kpi-color, var(--pcm-text));
+}
+.pcm-kpi-value small { font-size: .95rem; font-weight: 600; letter-spacing: 0; }
+.pcm-kpi-foot { font-size: .7rem; color: var(--pcm-text-mute); margin-top: auto; }
+.pcm-kpi.is-clickable { cursor: pointer; }
+.pcm-kpi.is-active { border-color: var(--pcm-brand-hi); box-shadow: 0 0 0 3px rgba(61,119,214,.13); }
+
+/* ── KPI com tendência (sparkline de fundo) ─────────────────────────────
+   Ideia trazida da biblioteca bklit-ui (stat-card-line): o card carrega uma
+   mini-serie no fundo, quase apagada, e passar o mouse por cima faz o valor
+   grande no canto trocar para o ponto daquele dia - "flui" com o hover em
+   vez de precisar abrir um gráfico à parte. Implementado aqui em Chart.js
+   puro (o pacote original é React); ver PCM.iniciarKpiSparklines. */
+.pcm-kpi--flow { padding-bottom: 34px; min-height: 122px; }
+.pcm-kpi-spark {
+    position: absolute; left:0; right:0; bottom:0; height: 46px;
+    opacity: .55; pointer-events: none; z-index: 0;
+}
+.pcm-kpi--flow .pcm-kpi-label,
+.pcm-kpi--flow .pcm-kpi-value,
+.pcm-kpi--flow .pcm-kpi-foot { position: relative; z-index: 1; }
+.pcm-kpi-tendencia {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: .68rem; font-weight: 700; padding: 1px 7px; border-radius: 99px;
+    position: relative; z-index: 1;
+}
+.pcm-kpi-tendencia--alta  { color: var(--pcm-realizada); background: rgba(25,135,84,.12); }
+.pcm-kpi-tendencia--baixa { color: var(--pcm-bloqueada); background: rgba(220,53,69,.12); }
+.pcm-kpi-tendencia--igual { color: var(--pcm-text-mute); background: var(--pcm-surface-2); }
+
+/* Cor por status: <div class="pcm-kpi pcm-kpi--realizada"> */
+.pcm-kpi--brand     { --pcm-kpi-color: var(--pcm-brand); }
+.pcm-kpi--realizada { --pcm-kpi-color: var(--pcm-realizada); }
+.pcm-kpi--pendente  { --pcm-kpi-color: var(--pcm-pendente); }
+.pcm-kpi--bloqueada { --pcm-kpi-color: var(--pcm-bloqueada); }
+.pcm-kpi--quebrada  { --pcm-kpi-color: var(--pcm-quebrada); }
+.pcm-kpi--atrasada  { --pcm-kpi-color: var(--pcm-atrasada); }
+.pcm-kpi--info      { --pcm-kpi-color: var(--pcm-info); }
+
+@keyframes pcmCardIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* Entrada escalonada: aplicar .pcm-stagger no container */
+.pcm-stagger > * { animation: pcmCardIn .45s var(--pcm-ease) both; }
+.pcm-stagger > *:nth-child(1) { animation-delay: .02s; }
+.pcm-stagger > *:nth-child(2) { animation-delay: .06s; }
+.pcm-stagger > *:nth-child(3) { animation-delay: .10s; }
+.pcm-stagger > *:nth-child(4) { animation-delay: .14s; }
+.pcm-stagger > *:nth-child(5) { animation-delay: .18s; }
+.pcm-stagger > *:nth-child(6) { animation-delay: .22s; }
+.pcm-stagger > *:nth-child(7) { animation-delay: .26s; }
+.pcm-stagger > *:nth-child(8) { animation-delay: .30s; }
+.pcm-stagger > *:nth-child(n+9) { animation-delay: .34s; }
+
+/* ==========================================================================
+   3. Status: badges, pontos e barras
+   ========================================================================== */
+
+.pcm-status {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: .68rem; font-weight: 700; letter-spacing: .4px;
+    padding: 3px 9px; border-radius: 20px; white-space: nowrap;
+    text-transform: uppercase;
+}
+.pcm-status::before {
+    content: ''; width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor; flex-shrink: 0;
+}
+.pcm-status--realizada { color: var(--pcm-realizada); background: rgba(25,135,84,.12); }
+.pcm-status--pendente  { color: #55606b;             background: rgba(108,117,125,.14); }
+.pcm-status--bloqueada { color: var(--pcm-bloqueada); background: rgba(220,53,69,.12); }
+.pcm-status--quebrada  { color: #9a7400;             background: rgba(255,193,7,.20); }
+.pcm-status--atrasada  { color: var(--pcm-atrasada); background: rgba(253,126,20,.14); }
+
+.pcm-progress {
+    height: 8px; border-radius: 20px; overflow: hidden;
+    background: rgba(125,135,150,.17);
+}
+
+/* Leitura do indicador: o número diz "quanto", esta linha diz se é bom ou ruim.
+   Sempre ícone + palavra + frase - nunca só a cor. */
+.pcm-leitura {
+    display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+    margin-top: 10px; font-size: .8rem; line-height: 1.45;
+    color: var(--pcm-text-mute);
+    animation: pcmCardIn .5s var(--pcm-ease) both; animation-delay: .25s;
+}
+.pcm-leitura i { font-size: .95rem; color: var(--pcm-leitura-cor); align-self: center; }
+.pcm-leitura strong { color: var(--pcm-leitura-cor); font-weight: 700; }
+.pcm-leitura--bom     { --pcm-leitura-cor: var(--pcm-realizada); }
+.pcm-leitura--atencao { --pcm-leitura-cor: var(--pcm-quebrada); }
+.pcm-leitura--critico { --pcm-leitura-cor: var(--pcm-bloqueada); }
+.pcm-leitura--neutro  { --pcm-leitura-cor: var(--pcm-pendente); }
+.pcm-progress > span {
+    display: block; height: 100%; border-radius: 20px;
+    background: var(--pcm-bar-color, var(--pcm-brand));
+    width: 0; transition: width 1.1s var(--pcm-ease);
+}
+
+/* ==========================================================================
+   3b. Alertas (lista de pontos de atenção clicáveis)
+   ========================================================================== */
+
+.pcm-alertas { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 10px; }
+.pcm-alerta {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; border-radius: var(--pcm-r);
+    background: var(--pcm-surface);
+    border: 1px solid var(--pcm-border);
+    border-left: 4px solid var(--pcm-alerta-cor, var(--pcm-pendente));
+    text-decoration: none; color: inherit;
+    box-shadow: var(--pcm-shadow-1);
+    transition: transform var(--pcm-fast) var(--pcm-ease), box-shadow var(--pcm-fast) var(--pcm-ease);
+    animation: pcmCardIn .4s var(--pcm-ease) both;
+}
+.pcm-alerta:hover { transform: translateX(3px); box-shadow: var(--pcm-shadow-2); color: inherit; }
+.pcm-alerta-icone {
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 1.05rem;
+    background: color-mix(in srgb, var(--pcm-alerta-cor) 14%, transparent);
+    color: var(--pcm-alerta-cor);
+}
+.pcm-alerta-qtd { font-size: 1.25rem; font-weight: 700; line-height: 1; color: var(--pcm-alerta-cor); }
+.pcm-alerta-txt { min-width: 0; line-height: 1.3; }
+.pcm-alerta-txt strong { display: block; font-size: .82rem; font-weight: 600; }
+.pcm-alerta-txt span { font-size: .71rem; color: var(--pcm-text-mute); }
+
+.pcm-alerta--bloqueada { --pcm-alerta-cor: var(--pcm-bloqueada); }
+.pcm-alerta--quebrada  { --pcm-alerta-cor: #b58500; }
+.pcm-alerta--pendente  { --pcm-alerta-cor: var(--pcm-pendente); }
+.pcm-alerta--atrasada  { --pcm-alerta-cor: var(--pcm-atrasada); }
+.pcm-alerta--realizada { --pcm-alerta-cor: var(--pcm-realizada); }
+
+/* ==========================================================================
+   4. Barra de filtros inteligentes
+   ========================================================================== */
+
+.pcm-filterbar {
+    background: var(--pcm-surface);
+    border: 1px solid var(--pcm-border);
+    border-radius: var(--pcm-r);
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    box-shadow: var(--pcm-shadow-1);
+}
+.pcm-filterbar .pcm-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pcm-filterbar .pcm-field > label {
+    font-size: .6rem; font-weight: 700; letter-spacing: .9px;
+    text-transform: uppercase; color: var(--pcm-text-mute);
+}
+.pcm-search {
+    position: relative; display: flex; align-items: center; flex: 1 1 210px; min-width: 0;
+}
+.pcm-search > i {
+    position: absolute; left: 11px; color: var(--pcm-text-mute); font-size: .9rem; pointer-events: none;
+}
+.pcm-search > input {
+    width: 100%; padding: 7px 12px 7px 32px;
+    border: 1px solid var(--pcm-border); border-radius: 9px;
+    background: var(--pcm-surface); color: var(--pcm-text); font-size: .85rem;
+    transition: border-color var(--pcm-fast), box-shadow var(--pcm-fast);
+}
+.pcm-search > input:focus {
+    outline: none; border-color: var(--pcm-brand-hi);
+    box-shadow: 0 0 0 3px rgba(61,119,214,.15);
+}
+.pcm-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 20px; cursor: pointer;
+    border: 1px solid var(--pcm-border); background: var(--pcm-surface);
+    color: var(--pcm-text-mute); font-size: .76rem; font-weight: 600;
+    transition: all var(--pcm-fast) var(--pcm-ease);
+    user-select: none;
+}
+.pcm-chip:hover { border-color: var(--pcm-brand-hi); color: var(--pcm-brand); transform: translateY(-1px); }
+.pcm-chip.active {
+    background: var(--pcm-brand); border-color: var(--pcm-brand);
+    color: #fff; box-shadow: 0 3px 10px rgba(30,75,154,.28);
+}
+.pcm-chip .pcm-chip-count {
+    background: rgba(255,255,255,.25); border-radius: 20px;
+    padding: 0 6px; font-size: .68rem;
+}
+.pcm-chip:not(.active) .pcm-chip-count { background: rgba(125,135,150,.16); }
+
+.pcm-filter-count {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: .73rem; font-weight: 700; color: var(--pcm-brand);
+    background: rgba(61,119,214,.11); border-radius: 20px; padding: 4px 11px;
+}
+
+/* ==========================================================================
+   5. Tabelas inteligentes
+   ========================================================================== */
+
+.pcm-table-wrap {
+    border: 1px solid var(--pcm-border); border-radius: var(--pcm-r);
+    overflow: auto; background: var(--pcm-surface);
+    max-height: var(--pcm-table-h, none);
+}
+.pcm-table { width: 100%; margin: 0; border-collapse: separate; border-spacing: 0; font-size: .855rem; }
+.pcm-table thead th {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--pcm-surface-2);
+    border-bottom: 1px solid var(--pcm-border);
+    color: var(--pcm-text-mute); font-size: .66rem; font-weight: 700;
+    letter-spacing: .9px; text-transform: uppercase;
+    padding: 10px 13px; white-space: nowrap; user-select: none;
+}
+.pcm-table thead th[data-sort] { cursor: pointer; }
+.pcm-table thead th[data-sort]:hover { color: var(--pcm-brand); }
+.pcm-table thead th[data-sort]::after {
+    content: '\F0DC'; font-family: 'bootstrap-icons'; font-size: .62rem;
+    margin-left: 5px; opacity: .35;
+}
+.pcm-table thead th[data-sort][data-dir="asc"]::after  { content: '\F235'; opacity: 1; }
+.pcm-table thead th[data-sort][data-dir="desc"]::after { content: '\F229'; opacity: 1; }
+.pcm-table tbody td {
+    padding: 9px 13px; border-bottom: 1px solid var(--pcm-border);
+    color: var(--pcm-text); vertical-align: middle;
+}
+.pcm-table tbody tr { transition: background-color var(--pcm-fast); }
+.pcm-table tbody tr:hover { background: rgba(61,119,214,.055); }
+.pcm-table tbody tr.is-hit { animation: pcmHit .9s var(--pcm-ease); }
+@keyframes pcmHit {
+    0%   { background: rgba(61,119,214,.22); }
+    100% { background: transparent; }
+}
+.pcm-table tbody tr:last-child td { border-bottom: 0; }
+.pcm-table-empty {
+    padding: 30px 18px; text-align: center; color: var(--pcm-text-mute); font-size: .86rem;
+}
+
+/* Tabelas antigas que só querem a ordenação: mantêm o visual próprio e ganham
+   o cabeçalho clicável com a setinha de direção. */
+table[data-pcm-sort] th[data-sort] { cursor: pointer; user-select: none; }
+table[data-pcm-sort] th[data-sort]::after {
+    content: '\F0DC'; font-family: 'bootstrap-icons'; font-size: .62rem;
+    margin-left: 5px; opacity: .35;
+}
+table[data-pcm-sort] th[data-sort][data-dir="asc"]::after  { content: '\F235'; opacity: 1; }
+table[data-pcm-sort] th[data-sort][data-dir="desc"]::after { content: '\F229'; opacity: 1; }
+
+/* ==========================================================================
+   6. Microinteracoes: toast, skeleton, transicao de pagina
+   ========================================================================== */
+
+.pcm-toast-wrap {
+    position: fixed; right: 18px; bottom: 18px; z-index: 2000;
+    display: flex; flex-direction: column; gap: 9px; pointer-events: none;
+}
+.pcm-toast {
+    display: flex; align-items: center; gap: 9px;
+    background: var(--pcm-surface); color: var(--pcm-text);
+    border: 1px solid var(--pcm-border); border-left: 4px solid var(--pcm-brand);
+    border-radius: var(--pcm-r-sm); padding: 11px 15px;
+    box-shadow: var(--pcm-shadow-3); font-size: .85rem; font-weight: 500;
+    animation: pcmToastIn .32s var(--pcm-ease);
+    pointer-events: auto; max-width: 340px;
+}
+.pcm-toast.out { animation: pcmToastOut .28s var(--pcm-ease) forwards; }
+.pcm-toast--ok   { border-left-color: var(--pcm-realizada); }
+.pcm-toast--erro { border-left-color: var(--pcm-bloqueada); }
+.pcm-toast--alerta { border-left-color: var(--pcm-quebrada); }
+.pcm-toast i { font-size: 1.05rem; }
+.pcm-toast--ok i   { color: var(--pcm-realizada); }
+.pcm-toast--erro i { color: var(--pcm-bloqueada); }
+.pcm-toast--alerta i { color: #9a7400; }
+@keyframes pcmToastIn  { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes pcmToastOut { to { opacity: 0; transform: translateY(8px) scale(.97); } }
+
+.pcm-skeleton {
+    background: linear-gradient(90deg, rgba(125,135,150,.10) 25%, rgba(125,135,150,.20) 37%, rgba(125,135,150,.10) 63%);
+    background-size: 400% 100%;
+    animation: pcmShimmer 1.3s ease-in-out infinite;
+    border-radius: var(--pcm-r-sm);
+}
+@keyframes pcmShimmer { from { background-position: 100% 50%; } to { background-position: 0 50%; } }
+
+.pcm-main > * { animation: pcmPageIn .34s var(--pcm-ease) both; }
+@keyframes pcmPageIn { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+
+/* ── Loading global ─────────────────────────────────────────────────────
+   Uma tela por cima de tudo, com o texto do que está acontecendo - troca
+   o "vai travar?" por "sei o que está rolando". PCM.loading.show/hide. */
+.pcm-loading-overlay {
+    position: fixed; inset: 0; z-index: 3000;
+    background: rgba(15,23,42,.42); backdrop-filter: blur(1.5px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .18s var(--pcm-ease);
+}
+.pcm-loading-overlay.show { opacity: 1; pointer-events: auto; }
+.pcm-loading-caixa {
+    background: var(--pcm-surface); color: var(--pcm-text);
+    border-radius: var(--pcm-r-lg); padding: 26px 34px;
+    box-shadow: var(--pcm-shadow-3); display: flex; flex-direction: column;
+    align-items: center; gap: 14px; min-width: 220px;
+}
+.pcm-loading-spin {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 3.5px solid var(--pcm-border); border-top-color: var(--pcm-brand);
+    animation: pcmSpin .8s linear infinite;
+}
+.pcm-loading-spin--sm { width: 22px; height: 22px; border-width: 2.5px; }
+@keyframes pcmSpin { to { transform: rotate(360deg); } }
+.pcm-loading-msg { font-size: .88rem; font-weight: 600; text-align: center; }
+@media (prefers-reduced-motion: reduce) {
+    .pcm-loading-spin { animation-duration: 1.6s; }
+}
+
+/* ── Drill-down genérico ───────────────────────────────────────────────── */
+.pcm-drill-corpo { max-height: 62vh; }
+.pcm-drill-lista { list-style: none; margin: 0; padding: 6px; }
+.pcm-drill-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: var(--pcm-r-sm);
+    transition: background var(--pcm-fast) var(--pcm-ease);
+}
+.pcm-drill-item:hover { background: var(--pcm-surface-2); }
+.pcm-drill-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.pcm-drill-dot--realizada { background: var(--pcm-realizada); }
+.pcm-drill-dot--pendente  { background: var(--pcm-pendente); }
+.pcm-drill-dot--bloqueada { background: var(--pcm-bloqueada); }
+.pcm-drill-dot--quebrada  { background: var(--pcm-quebrada); }
+.pcm-drill-dot--atrasada  { background: var(--pcm-atrasada); }
+.pcm-drill-txt { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.3; }
+.pcm-drill-txt strong { font-size: .86rem; }
+.pcm-drill-txt span { font-size: .74rem; color: var(--pcm-text-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcm-drill-item > .pcm-status { flex: 0 0 auto; white-space: nowrap; }
+.pcm-drill-vazio {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 46px 20px; color: var(--pcm-text-mute); font-size: .85rem; text-align: center;
+}
+.pcm-drill-vazio i { font-size: 1.6rem; opacity: .6; }
+
+/* Quando o GSAP está na página, ele assume as entradas: as animações CSS
+   equivalentes saem de cena pra não animar o mesmo elemento duas vezes. */
+.pcm-gsap .pcm-main > *,
+.pcm-gsap .pcm-kpi,
+.pcm-gsap .pcm-stagger > *,
+.pcm-gsap .pcm-alerta { animation: none; }
+
+.pcm-fade-swap { animation: pcmFade .3s var(--pcm-ease); }
+@keyframes pcmFade { from { opacity: .25; } to { opacity: 1; } }
+
+/* ==========================================================================
+   6b. Abertura de listas e painéis
+   O menu suspenso de um <select> nativo é desenhado pelo sistema operacional e
+   não aceita animação. O que dá pra animar - e é o que transmite a sensação de
+   "abrindo" - é a setinha girando, o campo ganhando foco e, nos painéis de
+   verdade (accordion/collapse), o conteúdo descendo.
+   ========================================================================== */
+
+/* Setinha própria no lugar da nativa, pra poder girar ao abrir. */
+select.form-select,
+.pcm-app select.form-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%237c8898' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .6rem center;
+    background-size: 15px;
+    transition: border-color var(--pcm-fast), box-shadow var(--pcm-fast),
+                background-position var(--pcm-med) var(--pcm-ease);
+}
+select.form-select:focus {
+    border-color: var(--pcm-brand-hi);
+    box-shadow: 0 0 0 3px rgba(61,119,214,.15);
+    /* A seta "afunda" enquanto a lista está aberta. */
+    background-position: right .6rem 60%;
+}
+
+/* Lista suspensa animada: o <select> continua no DOM cuidando do valor, e esta
+   camada por cima e o que o usuário vê - por ser HTML de verdade, abre animada. */
+.pcm-lista { position: relative; display: block; width: 100%; }
+.pcm-lista > select {
+    position: absolute; opacity: 0; pointer-events: none;
+    width: 100%; height: 100%; left: 0; top: 0; margin: 0;
+}
+.pcm-lista-botao {
+    width: 100%; text-align: left; cursor: pointer;
+    display: flex; align-items: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    /* o botao desenha a propria seta no ::after, entao a do Bootstrap sai */
+    background-image: none !important;
+    padding-right: .7rem;
+}
+.pcm-lista-botao::after {
+    content: ''; margin-left: auto; flex-shrink: 0;
+    width: 15px; height: 15px;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") center/contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E") center/contain no-repeat;
+    opacity: .55;
+    transition: transform var(--pcm-med) var(--pcm-ease), opacity var(--pcm-fast);
+}
+.pcm-lista.aberta .pcm-lista-botao { border-color: var(--pcm-brand-hi); box-shadow: 0 0 0 3px rgba(61,119,214,.15); }
+.pcm-lista.aberta .pcm-lista-botao::after { transform: rotate(180deg); opacity: 1; }
+/* O select nativo dentro da caixa não desenha sua própria seta. */
+.pcm-lista > select.form-select { background-image: none; }
+
+.pcm-lista-painel {
+    position: absolute; z-index: 1060; left: 0; right: 0; top: calc(100% + 5px);
+    background: var(--pcm-surface);
+    border: 1px solid var(--pcm-border);
+    border-radius: var(--pcm-r);
+    box-shadow: var(--pcm-shadow-3);
+    padding: 5px;
+    max-height: 264px; overflow-y: auto;
+    /* fechado: some pra cima e encolhido, como se a caixa estivesse recolhida */
+    opacity: 0; visibility: hidden;
+    transform: translateY(-8px) scaleY(.92);
+    transform-origin: top center;
+    transition: opacity .2s var(--pcm-ease), transform .24s var(--pcm-ease), visibility .24s;
+}
+.pcm-lista.aberta .pcm-lista-painel {
+    opacity: 1; visibility: visible;
+    transform: translateY(0) scaleY(1);
+}
+.pcm-lista-item {
+    padding: 8px 11px; border-radius: var(--pcm-r-sm);
+    font-size: .88rem; color: var(--pcm-text); cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: background-color var(--pcm-fast), color var(--pcm-fast), transform var(--pcm-fast);
+    /* cada linha entra escalonada: a lista "desdobra" em vez de piscar */
+    opacity: 0; animation: pcmItemLista .26s var(--pcm-ease) forwards;
+}
+.pcm-lista.aberta .pcm-lista-item:nth-child(1) { animation-delay: .02s; }
+.pcm-lista.aberta .pcm-lista-item:nth-child(2) { animation-delay: .045s; }
+.pcm-lista.aberta .pcm-lista-item:nth-child(3) { animation-delay: .07s; }
+.pcm-lista.aberta .pcm-lista-item:nth-child(4) { animation-delay: .095s; }
+.pcm-lista.aberta .pcm-lista-item:nth-child(5) { animation-delay: .12s; }
+.pcm-lista.aberta .pcm-lista-item:nth-child(n+6) { animation-delay: .145s; }
+@keyframes pcmItemLista {
+    from { opacity: 0; transform: translateY(-5px); }
+    to   { opacity: 1; transform: none; }
+}
+.pcm-lista-item:hover { background: rgba(61,119,214,.10); color: var(--pcm-brand); transform: translateX(2px); }
+.pcm-lista-item.ativo { background: var(--pcm-brand); color: #fff; font-weight: 600; }
+.pcm-lista-item.desabilitado { opacity: .4; cursor: not-allowed; }
+
+/* Accordion / collapse do Bootstrap: o conteúdo desce e aparece em vez de
+   simplesmente surgir, e o chevron gira. */
+.pcm-app .accordion-button::after,
+.pcm-app [data-bs-toggle="collapse"] .bi-chevron-down,
+.pcm-app [data-bs-toggle="collapse"] .bi-chevron-up {
+    transition: transform var(--pcm-med) var(--pcm-ease);
+}
+.pcm-app .accordion-button:not(.collapsed)::after { transform: rotate(-180deg); }
+.pcm-app .accordion-collapse.collapsing { transition: height var(--pcm-med) var(--pcm-ease); }
+.pcm-app .accordion-collapse.show > .accordion-body,
+.pcm-app .collapse.show > .pcm-abre { animation: pcmAbrirLista .34s var(--pcm-ease) both; }
+
+@keyframes pcmAbrirLista {
+    from { opacity: 0; transform: translateY(-7px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* Linhas de uma lista que acabou de abrir entram em cascata curta. */
+.pcm-app .accordion-collapse.show tbody tr { animation: pcmLinhaEntra .26s var(--pcm-ease) both; }
+.pcm-app .accordion-collapse.show tbody tr:nth-child(1) { animation-delay: .01s; }
+.pcm-app .accordion-collapse.show tbody tr:nth-child(2) { animation-delay: .03s; }
+.pcm-app .accordion-collapse.show tbody tr:nth-child(3) { animation-delay: .05s; }
+.pcm-app .accordion-collapse.show tbody tr:nth-child(4) { animation-delay: .07s; }
+.pcm-app .accordion-collapse.show tbody tr:nth-child(5) { animation-delay: .09s; }
+.pcm-app .accordion-collapse.show tbody tr:nth-child(n+6) { animation-delay: .11s; }
+@keyframes pcmLinhaEntra { from { opacity: 0; } to { opacity: 1; } }
+
+/* Dropdown do Bootstrap (menus, não selects) abre descendo. */
+.pcm-app .dropdown-menu.show { animation: pcmAbrirLista .22s var(--pcm-ease) both; }
+
+/* ==========================================================================
+   7. Responsivo
+   ========================================================================== */
+
+@media (max-width: 991.98px) {
+    .pcm-sidebar { transform: translateX(-100%); box-shadow: 0 0 40px rgba(0,0,0,.4); }
+    .pcm-sidebar.open { transform: none; }
+    .pcm-shell { margin-left: 0; }
+    .pcm-sb-toggle { display: grid; }
+    .pcm-main { padding: 14px 13px 34px; }
+    /* Topbar cabe numa linha so: menu + titulo (truncado) + acoes. */
+    .pcm-topbar { padding: 10px 13px; flex-wrap: nowrap; gap: 10px; }
+    .pcm-topbar > div:not(.pcm-tb-spacer):not(.pcm-tb-actions) { min-width: 0; }
+    .pcm-tb-title { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pcm-tb-crumb { white-space: nowrap; }
+    .pcm-tb-actions { flex-wrap: nowrap; }
+    .pcm-kpi-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .pcm-kpi { padding: 13px 14px; min-height: 84px; }
+    .pcm-kpi-value { font-size: 1.55rem; }
+    .pcm-card-b { padding: 13px; }
+    .pcm-toast-wrap { right: 10px; left: 10px; bottom: 10px; }
+    .pcm-toast { max-width: none; }
+}
+
+/* Abas: no celular viram uma faixa deslizante numa linha so, em vez de
+   quebrar em varias linhas e comer metade da tela. */
+@media (max-width: 991.98px) {
+    .pcm-main .nav-tabs,
+    .pcm-main .nav-pills {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        padding-bottom: 2px;
+    }
+    .pcm-main .nav-tabs::-webkit-scrollbar,
+    .pcm-main .nav-pills::-webkit-scrollbar { height: 3px; }
+    .pcm-main .nav-tabs::-webkit-scrollbar-thumb,
+    .pcm-main .nav-pills::-webkit-scrollbar-thumb { background: rgba(125,135,150,.4); border-radius: 3px; }
+    .pcm-main .nav-tabs .nav-item,
+    .pcm-main .nav-pills .nav-item { flex: 0 0 auto; }
+    .pcm-main .nav-tabs .nav-link,
+    .pcm-main .nav-pills .nav-link { white-space: nowrap; }
+
+    /* Tabelas largas rolam dentro do proprio card, sem empurrar a pagina. */
+    .pcm-main .table-responsive { -webkit-overflow-scrolling: touch; }
+    .pcm-main > .container, .pcm-main > .container-fluid { padding-left: 0; padding-right: 0; }
+
+}
+
+/* Tabela com table-layout:fixed + larguras em % espreme cada coluna a poucos
+   pixels quando a tela encolhe - o cabecalho chega a quebrar uma letra por
+   linha. Em vez disso ela mantem uma largura minima legivel e rola na
+   horizontal dentro do proprio card. Duas faixas: celular e telas medias. */
+@media (max-width: 1199.98px) {
+    .pcm-main table.table {
+        table-layout: auto !important;
+        min-width: 900px;
+    }
+    .pcm-main table.table th,
+    .pcm-main table.table td { white-space: normal; word-break: normal; }
+    .pcm-main .table-responsive > table.table { margin-bottom: 0; }
+    /* Tabelas curtas nao precisam de rolagem. */
+    .pcm-main table.table.pcm-table-simples { min-width: 0; }
+}
+@media (max-width: 767.98px) {
+    .pcm-main table.table { min-width: 720px; }
+}
+
+/* Celular: KPIs em 2 colunas, filtros empilhados, tabela rolavel com
+   cabecalho fixo - nada de "encolher tudo ate nao dar pra ler". */
+@media (max-width: 575.98px) {
+    .pcm-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .pcm-kpi-value { font-size: 1.4rem; }
+    .pcm-kpi-label { font-size: .6rem; letter-spacing: .6px; }
+    .pcm-filterbar { padding: 10px; gap: 8px; }
+    .pcm-filterbar .pcm-field, .pcm-search { flex: 1 1 100%; }
+    .pcm-tb-actions { width: 100%; }
+    .pcm-tb-actions > .btn { flex: 1; }
+    .pcm-table { font-size: .8rem; }
+    .pcm-table thead th, .pcm-table tbody td { padding: 8px 10px; }
+}
+
+/* Telas largas: aproveita o espaco horizontal de verdade */
+@media (min-width: 1600px) {
+    .pcm-main { padding: 26px 34px 46px; }
+    .pcm-kpi-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+}
+
+@media print {
+    .pcm-sidebar, .pcm-topbar, .pcm-backdrop, .pcm-toast-wrap, .pcm-sb-collapse { display: none !important; }
+    .pcm-shell { margin-left: 0 !important; }
+    .pcm-main { padding: 0 !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-delay: 0s !important;
+        transition-duration: .01ms !important;
+    }
+    /* Animações de entrada usam fill:both partindo de opacity:0. Se elas não
+       chegarem a rodar (aba em segundo plano, página sem pintar), o fill segura
+       o estado inicial e o conteúdo some. Aqui elas saem de cena de vez, e o
+       conteúdo nasce visível. */
+    .pcm-main > *, .pcm-kpi, .pcm-stagger > *, .pcm-alerta, .pcm-leitura,
+    .pcm-toast, .pcm-lista-item, .accordion-collapse.show > .accordion-body {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+    }
+}

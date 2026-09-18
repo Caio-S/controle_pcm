@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Programação</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <style>
+        /* Ajuste geral de fontes para um design mais compacto (cabem mais frotas) */
+        body { font-family: 'Calibri', Arial, sans-serif; font-size: 11px; color: #333; margin: 0; padding: 20px; background-color: #f4f6f9; }
+        
+        .no-print { 
+            display: flex; justify-content: space-between; align-items: center; 
+            background-color: #fff; padding: 15px 20px; border-radius: 8px; 
+            margin-bottom: 25px; border: 1px solid #dee2e6; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            max-width: 794px; /* Mantém o painel alinhado com a folha A4 */
+            margin-left: auto; margin-right: auto;
+        }
+        .btn-print { 
+            background-color: #0d6efd; color: white; border: none; padding: 10px 20px; 
+            font-weight: bold; border-radius: 5px; cursor: pointer; font-size: 14px; 
+            transition: 0.2s; box-shadow: 0 2px 4px rgba(13,110,253,0.3);
+        }
+        .btn-print:hover { background-color: #0b5ed7; transform: translateY(-1px); }
+        
+        /* Simula a folha A4 Retrato no ecrã para visualização prévia */
+        .folha-a4 { 
+            background-color: #fff; padding: 25px; box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+            border-radius: 5px; max-width: 794px; margin: 0 auto; min-height: 1123px; 
+        }
+        
+        .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 8px; }
+        .header h2 { margin: 0; font-size: 16px; text-transform: uppercase; }
+        .header p { margin: 2px 0; font-size: 10px; color: #555; }
+        
+        /* Tabela travada para o texto longo descer de linha em vez de estourar a página */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; word-wrap: break-word; }
+        th, td { border: 1px solid #000; padding: 4px 5px; text-align: left; vertical-align: middle; font-size: 10px; line-height: 1.2; }
+        th { background-color: #f0f0f0; font-weight: bold; text-transform: uppercase; font-size: 9.5px; text-align: center; }
+        
+        .macro-row { background-color: #343a40; color: #fff; font-weight: bold; text-transform: uppercase; font-size: 12px; padding: 5px 8px !important; }
+        .micro-row { background-color: #e9ecef; color: #000; font-weight: bold; font-style: italic; font-size: 11px; padding: 4px 8px !important; }
+        .text-center { text-align: center; }
+        
+        /* Retirado o min-width para não espremer colunas em modo Retrato */
+        .col-blank { padding: 4px 5px !important; }
+        .input-local { 
+            width: 100%; border: 1px dashed #adb5bd; background-color: #fdfdfd; 
+            padding: 4px; box-sizing: border-box; font-family: inherit; 
+            font-size: 10px; border-radius: 3px; color: #00509E; font-weight: bold;
+        }
+        .input-local:focus { outline: none; border: 1px solid #0d6efd; background-color: #fff; }
+        
+        .card-tarefa { border: 1px solid #000; padding: 3px; margin-bottom: 3px; font-size: 9px; line-height: 1.1; }
+        .status-REALIZADA { border-left: 4px solid #198754; }
+        .status-PENDENTE { border-left: 4px solid #6c757d; }
+        .status-BLOQUEADA { border-left: 4px solid #dc3545; }
+        .status-QUEBRADA { border-left: 4px solid #ffc107; }
+
+        @media print {
+            body { padding: 0; background-color: #fff; }
+            .no-print { display: none !important; }
+            .folha-a4 { padding: 0; box-shadow: none; border-radius: 0; min-height: auto; max-width: 100%; }
+            .macro-row { background-color: #000 !important; color: #fff !important; -webkit-print-color-adjust: exact; }
+            .micro-row { background-color: #ccc !important; color: #000 !important; -webkit-print-color-adjust: exact; }
+            th { background-color: #eee !important; -webkit-print-color-adjust: exact; }
+            .input-local { border: none !important; background: transparent !important; padding: 0 !important; color: #000 !important; }
+            .input-local::placeholder { color: transparent !important; }
+            
+            /* A MAGIA PARA FORÇAR RETRATO (PORTRAIT) */
+            @page { size: A4 portrait; margin: 1cm; }
+        }
+    
+        /* Folha A4 tem largura fixa por natureza. No celular ela e reduzida
+           proporcionalmente pra caber na tela (a escala vem do script abaixo,
+           porque scale(calc()) nao e aceito por todos os motores). A impressao
+           continua em 794px. */
+        @media screen and (max-width: 820px) {
+            body { padding: 8px !important; display: block !important; overflow-x: hidden; }
+            #page, #relatorioCompleto { transform-origin: top left; }
+        }
+        @media print {
+            #page, #relatorioCompleto { transform: none !important; margin-bottom: 0 !important; }
+        }
+    </style>
+</head>
+<body>
+    
+    <div class="no-print">
+        <p style="margin: 0; font-size: 13px; color: #555;">
+            <strong>O seu relatório está pronto.</strong><br>
+            <span style="font-size: 11px;">Se escolheu a "Lista Agrupada", pode digitar na coluna Tracejada antes de imprimir. (Modo: A4 Retrato)</span>
+        </p>
+        <button class="btn-print" onclick="window.print()">🖨️ Imprimir PDF</button>
+    </div>
+
+    <div class="folha-a4">
+        <div class="header">
+            <h2>{{ titulo }}</h2>
+            <p>CRV INDUSTRIAL | Período: {{ periodo }}</p>
+            <p>Gerado em: {{ data_geracao }}</p>
+        </div>
+
+        {% if layout == 'agrupada' %}
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 9%;">Frota</th>
+                        <th style="width: 22%;">Descrição da Máquina</th>
+                        <th style="width: 16%;">Serviço(s)</th>
+                        <th style="width: 14%;">Compartimento / Obs</th>
+                        <th style="width: 8%;">Data</th>
+                        <th style="width: 19%;">Local da Frota (Físico)</th>
+                        <th style="width: 12%;">Status Atual</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if agrupado_pdf %}
+                        {% for setor, frotas in agrupado_pdf.items() %}
+                            <tr><td colspan="7" class="macro-row">&#128204; {{ setor }} <span style="font-weight: normal; font-size: 10px;">({{ frotas|length }} equipamento{{ 's' if frotas|length != 1 else '' }})</span></td></tr>
+                            {% for f in frotas %}
+                                <tr>
+                                    <td class="text-center" style="font-weight: bold; font-size: 11px;">{{ f.id_frota }}</td>
+                                    <td>{{ f.descricao }}</td>
+                                    <td style="font-weight: bold;">{{ f.tipo_servico }}</td>
+                                    <td class="text-center" style="font-weight: bold; font-style: italic;">{{ f.observacao_exibicao if f.observacao_exibicao else '-' }}</td>
+                                    <td class="text-center">{{ f.data_planejada[-2:] }}/{{ f.data_planejada[5:7] }}</td>
+                                    <td class="col-blank"><input type="text" class="input-local" placeholder="Onde está a frota?"></td>
+                                    <td class="text-center">
+                                        {{ f.status }}
+                                        {% if f.resultado_analise_exibicao %}<br><span style="font-size: 9px; color: #555; font-weight: bold;">(Res: {{ f.resultado_analise_exibicao }})</span>{% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="7" class="text-center" style="padding: 30px; font-weight: bold;">Nenhum serviço agendado.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+
+        {% elif layout == 'lista' %}
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 10%;">Frota</th>
+                        <th style="width: 24%;">Descrição da Máquina</th>
+                        <th style="width: 15%;">Especialidade</th>
+                        <th style="width: 16%;">Serviço(s)</th>
+                        <th style="width: 15%;">Obs</th>
+                        <th style="width: 10%;">Data</th>
+                        <th style="width: 10%;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in programacao %}
+                    <tr>
+                        <td class="text-center" style="font-weight: bold;">{{ p.id_frota }}</td>
+                        <td>{{ p.descricao }}</td>
+                        <td>{{ p.especialidade }}</td>
+                        <td>{{ p.tipo_servico }}</td>
+                        <td>{{ p.observacao_exibicao }}</td>
+                        <td class="text-center">{{ p.data_planejada[-2:] }}/{{ p.data_planejada[5:7] }}</td>
+                        <td class="text-center">{{ p.status }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+        {% elif layout == 'calendario' %}
+            <table>
+                <thead>
+                    <tr>
+                        {% for dia in dias_semana %}
+                        <th style="width: 14.28%;">{{ dia.nome_dia }}<br>{{ dia.data_br }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        {% for dia in dias_semana %}
+                        <td style="vertical-align: top;">
+                            {% for p in programacao %}
+                                {% if p.data_planejada == dia.data_db %}
+                                    <div class="card-tarefa status-{{ p.status }}">
+                                        <b>{{ p.id_frota }}</b> <span style="float:right;">{{ p.status }}</span><br>
+                                        {{ p.tipo_servico }}<br>
+                                        <i style="color: #555;">{{ p.observacao_exibicao }}</i>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+
+        {% elif layout == 'matriz' %}
+            {# Um bloco por SETOR; dentro dele, uma mini-tabela semanal por semana do MES
+               INTEIRO (nao so a semana aberta na tela) - assim o setor ve tudo de uma vez. #}
+            {% for setor in setores %}
+                {% set total_setor = programacao | selectattr('setor', 'equalto', setor) | list | length %}
+                <div class="macro-row" style="padding: 4px 8px; margin-bottom: 4px; font-size: 11px;">
+                    &#128204; {{ setor }} <span style="font-weight: normal; font-size: 10px;">({{ total_setor }} equipamento{{ 's' if total_setor != 1 else '' }} no mês)</span>
+                </div>
+                {% for semana in semanas_mes %}
+                    {% set total_semana = programacao | selectattr('setor', 'equalto', setor) | selectattr('data_planejada', 'in', semana | map(attribute='data_db') | list) | list | length %}
+                    {% if total_semana > 0 %}
+                    <table style="margin-bottom: 8px;">
+                        <thead>
+                            <tr>
+                                {% for dia in semana %}
+                                <th style="width: 14.28%; {% if not dia.no_mes %}color: #bbb;{% endif %}">
+                                    {{ dia.nome_dia }} {{ dia.data_br }}
+                                    {% set total_dia = programacao | selectattr('setor', 'equalto', setor) | selectattr('data_planejada', 'equalto', dia.data_db) | list | length %}
+                                    {% if total_dia > 0 %}<br><span style="font-size: 12px;">({{ total_dia }})</span>{% endif %}
+                                </th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                {% for dia in semana %}
+                                <td style="vertical-align: top;">
+                                    {% for p in programacao %}
+                                        {% if p.data_planejada == dia.data_db and p.setor == setor %}
+                                            <div class="card-tarefa status-{{ p.status }}">
+                                                <b>{{ p.id_frota }}</b> <span style="float:right;">{{ p.status }}</span><br>
+                                                {{ p.tipo_servico }}<br>
+                                                <i style="color: #555;">{{ p.observacao_exibicao }}</i>
+                                            </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                        </tbody>
+                    </table>
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+            {% if not setores %}
+                <p style="text-align: center; font-weight: bold; padding: 30px;">Nenhum serviço agendado.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+<script>
+// A4 tem 794px fixos. Em tela estreita a folha inteira e reduzida pra caber,
+// em vez de obrigar a arrastar pro lado. Nao afeta a impressao nem o PDF.
+(function () {
+  function ajustarFolha() {
+    var folha = document.getElementById('page') || document.getElementById('relatorioCompleto');
+    if (!folha) return;
+    var largura = document.documentElement.clientWidth;
+    if (largura > 820) { folha.style.transform = ''; folha.style.marginBottom = ''; return; }
+    var escala = (largura - 16) / 794;
+    folha.style.transform = 'scale(' + escala + ')';
+    // O transform nao encolhe o espaco ocupado no fluxo: sem isso sobraria uma
+    // area vazia enorme abaixo da folha.
+    folha.style.marginBottom = -(folha.offsetHeight * (1 - escala)) + 'px';
+  }
+  window.addEventListener('resize', ajustarFolha);
+  window.addEventListener('load', ajustarFolha);
+  document.addEventListener('DOMContentLoaded', ajustarFolha);
+})();
+</script>
+</body>
+</html>

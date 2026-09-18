@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard de Análise de Óleo</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <style>
+    body { margin: 0; padding: 12px; background: #eef2f6; color: #111827; font-family: Arial, Calibri, sans-serif; }
+    .no-print { max-width: 794px; margin: 0 auto 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #fff; border: 1px solid #d9e1ea; border-radius: 8px; padding: 14px 18px; box-shadow: 0 4px 12px rgba(15,23,42,0.08); }
+    .no-print form { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .no-print label { display: block; font-size: 10px; font-weight: 700; color: #475467; margin-bottom: 3px; }
+    .no-print input[type=date] { border: 1px solid #d9e1ea; border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+    .btn-print, .btn-filtrar, .btn-voltar { border: 0; border-radius: 6px; padding: 10px 16px; font-weight: 800; cursor: pointer; text-decoration: none; display: inline-block; }
+    .btn-print { background: #0d6efd; color: #fff; }
+    .btn-filtrar { background: #111827; color: #fff; }
+    .btn-voltar { background: #eef2f6; color: #111827; border: 1px solid #d9e1ea; }
+    .sheet { max-width: 794px; min-height: 1123px; margin: 0 auto; background: #fff; border-radius: 8px; padding: 14px; box-shadow: 0 0 12px rgba(15,23,42,0.12); }
+    .header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 9px; }
+    .header h1 { margin: 0 0 4px; font-size: 18px; text-transform: uppercase; }
+    .header p { margin: 1px 0; font-size: 10px; color: #475467; }
+    .meta { text-align: right; }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-bottom: 8px; }
+    .metric { border: 1px solid #d9e1ea; border-left: 4px solid #1976d2; border-radius: 6px; padding: 8px; }
+    .metric.warning { border-left-color: #d97706; }
+    .metric.danger { border-left-color: #dc2626; }
+    .metric span { display: block; color: #475467; font-size: 9.5px; }
+    .metric strong { display: block; font-size: 20px; margin: 3px 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .panel { border: 1px solid #d9e1ea; border-radius: 6px; padding: 8px; break-inside: avoid; }
+    .panel h2 { margin: 0 0 6px; font-size: 12px; }
+    .print-track-row { display: grid; gap: 3px; margin-bottom: 6px; }
+    .print-track-row div:first-child { display: flex; justify-content: space-between; gap: 8px; font-size: 9.5px; }
+    .print-track { height: 7px; background: #eef2f6; border-radius: 999px; overflow: hidden; }
+    .print-track div { height: 100%; background: #dc2626; border-radius: inherit; }
+    .print-track div.atencao, .print-track div.anomalia { background: #d97706; }
+    .print-track div.normal { background: #16a34a; }
+    .print-track div.critico { background: #dc2626; }
+    .print-pie-panel { display: grid; grid-template-columns: 104px 1fr; gap: 9px; align-items: center; }
+    .print-pie { width: 104px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; position: relative; box-shadow: inset 0 0 0 1px rgba(15,23,42,0.1); }
+    .print-pie::after { content: ""; position: absolute; width: 48px; aspect-ratio: 1; border-radius: 50%; background: #fff; }
+    .print-pie span { position: relative; z-index: 1; font-size: 16px; font-weight: 900; }
+    .print-pie-legend { display: grid; gap: 4px; }
+    .print-pie-legend div { display: grid; grid-template-columns: 8px 1fr auto; gap: 5px; align-items: center; font-size: 8.8px; color: #475467; }
+    .print-pie-legend i { width: 8px; height: 8px; border-radius: 999px; }
+    .print-pie-legend strong { color: #111827; overflow-wrap: anywhere; }
+    table { width: 100%; border-collapse: collapse; font-size: 8.8px; }
+    th, td { border: 1px solid #d9e1ea; padding: 3px 4px; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; text-transform: uppercase; font-size: 8px; }
+    .wide { grid-column: 1 / -1; }
+    .empty { color: #667085; font-size: 10px; padding: 7px; border: 1px dashed #cbd5e1; border-radius: 6px; }
+    @media print {
+      body { padding: 0; background: #fff; }
+      .no-print { display: none !important; }
+      .sheet { box-shadow: none; border-radius: 0; max-width: 100%; min-height: auto; padding: 0; }
+      @page { size: A4 portrait; margin: 1cm; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <p style="margin:0"><strong>Dashboard pronto para compartilhar.</strong><br><span style="font-size:12px;color:#475467">Use o botão para imprimir ou salvar em PDF. Formato sugerido: A4 retrato.</span></p>
+    <form method="GET" action="{{ url_for('analises_dashboard_pdf') }}">
+      <div>
+        <label>De</label>
+        <input type="date" name="data_inicio" value="{{ data_inicio }}" min="{{ datas_min }}" max="{{ datas_max }}">
+      </div>
+      <div>
+        <label>Até</label>
+        <input type="date" name="data_fim" value="{{ data_fim }}" min="{{ datas_min }}" max="{{ datas_max }}">
+      </div>
+      <button type="submit" class="btn-filtrar">Filtrar</button>
+    </form>
+    <div style="display:flex; gap:8px;">
+      <a class="btn-voltar" href="{{ url_for('analises') }}">← Voltar</a>
+      <button class="btn-print" onclick="window.print()">Imprimir PDF</button>
+    </div>
+  </div>
+  <main class="sheet">
+    <header class="header">
+      <div>
+        <h1>Dashboard de Análise de Óleo</h1>
+        <p>Gestão PCM | Período: {{ periodo }}</p>
+        <p>Base: Análises de Óleo (CHB)</p>
+      </div>
+      <div class="meta">
+        <p>Gerado em: {{ gerado_em }}</p>
+      </div>
+    </header>
+    <section class="metric-grid">
+      <article class="metric"><span>Análises no período</span><strong>{{ metrics.total }}</strong><span>Base filtrada</span></article>
+      <article class="metric"><span>Média por dia</span><strong>{{ metrics.media_dia }}</strong><span>Com base nas datas de coleta</span></article>
+      <article class="metric warning"><span>Anomalias</span><strong>{{ metrics.atencao }}</strong><span>{{ metrics.taxa_atencao }}% da amostragem</span></article>
+      <article class="metric danger"><span>Críticas abertas</span><strong>{{ metrics.criticas }}</strong><span>{{ metrics.taxa_critica }}% da amostragem</span></article>
+    </section>
+    <section class="grid">
+      <article class="panel">
+        <h2>Incidência crítica por compartimento</h2>
+        {% if risco_por_componente %}
+          {% for item in risco_por_componente %}
+          <div class="print-track-row">
+            <div><strong>{{ item.nome }}</strong><span>{{ item.qtd }}</span></div>
+            <div class="print-track"><div style="width:{{ item.largura }}%"></div></div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty">Sem análises críticas no período.</div>
+        {% endif %}
+      </article>
+      <article class="panel">
+        <h2>Distribuição dos resultados</h2>
+        {% if distribuicao_resultado %}
+          {% for item in distribuicao_resultado %}
+          <div class="print-track-row">
+            <div><strong>{{ item.nome }}</strong><span>{{ item.qtd }}</span></div>
+            <div class="print-track"><div class="{{ item.classe }}" style="width:{{ item.largura }}%"></div></div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty">Sem resultados no período.</div>
+        {% endif %}
+      </article>
+      <article class="panel">
+        <h2>Anomalias por compartimento</h2>
+        {% if pizza_compartimento.itens %}
+          <div class="print-pie-panel">
+            <div class="print-pie" style="background: conic-gradient({{ pizza_compartimento.gradiente }})"><span>{{ pizza_compartimento.total }}</span></div>
+            <div class="print-pie-legend">
+              {% for item in pizza_compartimento.itens %}
+              <div>
+                <i style="background:{{ item.cor }}"></i>
+                <strong>{{ item.nome }}</strong>
+                <span>{{ item.qtd }} ({{ item.percentual }}%)</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% else %}
+          <div class="empty">Sem anomalias por compartimento no período.</div>
+        {% endif %}
+      </article>
+      <article class="panel">
+        <h2>Tipos de anomalia</h2>
+        {% if pizza_tipo.itens %}
+          <div class="print-pie-panel">
+            <div class="print-pie" style="background: conic-gradient({{ pizza_tipo.gradiente }})"><span>{{ pizza_tipo.total }}</span></div>
+            <div class="print-pie-legend">
+              {% for item in pizza_tipo.itens %}
+              <div>
+                <i style="background:{{ item.cor }}"></i>
+                <strong>{{ item.nome }}</strong>
+                <span>{{ item.qtd }} ({{ item.percentual }}%)</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% else %}
+          <div class="empty">Sem tipos de anomalia no período.</div>
+        {% endif %}
+      </article>
+      <article class="panel wide">
+        <h2>Prioridades da manutenção</h2>
+        <table>
+          <thead><tr><th>Frota</th><th>Componente</th><th>O que foi encontrado</th><th>Coleta</th><th>Classificação</th></tr></thead>
+          <tbody>
+            {% if prioridades %}
+              {% for row in prioridades %}
+              <tr>
+                <td style="font-weight:bold">{{ row.id_frota }}</td>
+                <td>{{ row.compartimento }}</td>
+                <td style="max-width:220px;white-space:normal;line-height:1.4">{{ row.parecer or '-' }}</td>
+                <td>{{ row.data_coleta_br }}</td>
+                <td>{{ row.classificacao }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="5">Sem análises críticas no período.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </article>
+      <article class="panel wide">
+        <h2>Frotas com anomalia</h2>
+        <table>
+          <thead><tr><th>Anomalia</th><th>Qtd.</th><th>Frotas afetadas</th></tr></thead>
+          <tbody>
+            {% if frotas_com_anomalia %}
+              {% for item in frotas_com_anomalia %}
+              <tr>
+                <td><strong>{{ item.anomalia }}</strong></td>
+                <td>{{ item.qtd }}</td>
+                <td>{% for f in item.frotas %}{{ f.codigo }} ({{ f.compartimentos | join(', ') }}){% if not loop.last %}; {% endif %}{% endfor %}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="3">Sem anomalias no período.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

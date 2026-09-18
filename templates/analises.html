@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análises Críticas de Óleo - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #f4f6f9; }
+        .card-upload { border: 2px dashed #0dcaf0; background-color: #f8f9fa; transition: 0.3s; }
+        .card-upload:hover { background-color: #e9ecef; }
+        .table-custom th { padding: 0.5rem; }
+        .table-custom td { padding: 0.5rem; vertical-align: middle; }
+        .badge-critica { background-color: #dc3545; }
+        .badge-normal { background-color: #198754; }
+        .badge-pendente { background-color: #ffc107; color: #000; }
+        .linha-critica { background-color: rgba(220, 53, 69, 0.05); }
+
+        .kpi-card {
+            border: none !important; border-radius: 13px !important; border-top: 3px solid; cursor: default;
+            transition: transform 0.2s, box-shadow 0.2s; animation: kpiIn .4s cubic-bezier(.16,.84,.44,1) both;
+        }
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+        @keyframes kpiIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+        .nav-tabs .nav-link { color: #6c757d; font-size: 1.1rem; border: none; padding: 12px 20px; transition: 0.2s; }
+        .nav-tabs .nav-link:hover { color: #0dcaf0; background-color: rgba(13, 202, 240, 0.05); border-radius: 8px 8px 0 0; }
+        .nav-tabs .nav-link.active { color: #0dcaf0 !important; font-weight: 800; border-bottom: 3px solid #0dcaf0; background-color: transparent; }
+
+        /* Estilos Fantasma para o PDF */
+        .pdf-mode .table-custom th { font-size: 0.70rem; padding: 0.4rem; background-color: #212529 !important; color: white !important; -webkit-print-color-adjust: exact; }
+        .pdf-mode .table-custom td { font-size: 0.65rem; padding: 0.3rem 0.4rem; border-bottom: 1px solid #dee2e6; }
+        .pdf-mode .table-custom tr { page-break-inside: avoid; }
+
+        /* ---------- Filtros por coluna (estilo Excel) ---------- */
+        .th-filtro { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+        .th-titulo { flex: 1 1 auto; }
+        .btn-filtro-col {
+            flex: 0 0 auto; border: none; background: transparent; color: #6c757d;
+            padding: 0 3px; line-height: 1; border-radius: 4px; cursor: pointer; font-size: 0.85rem;
+        }
+        .btn-filtro-col:hover { background-color: rgba(13, 110, 253, 0.15); color: #0d6efd; }
+        .btn-filtro-col.filtro-ativo { color: #0d6efd; background-color: rgba(13, 110, 253, 0.15); }
+
+        .painel-filtro-coluna {
+            position: absolute; z-index: 1080; width: 265px; background: #fff;
+            border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 .5rem 1rem rgba(0,0,0,.20);
+            font-size: 0.8rem; display: none;
+        }
+        .painel-filtro-coluna .pfc-head { padding: 8px; border-bottom: 1px solid #e9ecef; }
+        .painel-filtro-coluna .pfc-ordenar { display: flex; gap: 4px; margin-bottom: 6px; }
+        .painel-filtro-coluna .pfc-lista { max-height: 230px; overflow-y: auto; padding: 6px 8px; }
+        .painel-filtro-coluna .pfc-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+        .painel-filtro-coluna .pfc-item label { margin: 0; cursor: pointer; flex: 1; word-break: break-word; }
+        .painel-filtro-coluna .pfc-foot { padding: 8px; border-top: 1px solid #e9ecef; display: flex; gap: 6px; }
+
+        /* Modo escuro: tokens do design system, nao mais os cinzas padrao do
+           Bootstrap (#212529/#495057) que cada pagina tinha os proprios. */
+        [data-bs-theme="dark"] .painel-filtro-coluna { background: var(--pcm-surface); border-color: var(--pcm-border); color: var(--pcm-text); }
+        [data-bs-theme="dark"] .painel-filtro-coluna .pfc-head,
+        [data-bs-theme="dark"] .painel-filtro-coluna .pfc-foot { border-color: var(--pcm-border); }
+        [data-bs-theme="dark"] .btn-filtro-col { color: var(--pcm-text-mute); }
+
+        [data-bs-theme="dark"] body { background-color: var(--pcm-shell-bg); }
+        [data-bs-theme="dark"] .bg-white { background-color: var(--pcm-surface) !important; color: var(--pcm-text) !important; border-color: var(--pcm-border) !important; }
+        [data-bs-theme="dark"] .table { color: var(--pcm-text); border-color: var(--pcm-border); }
+        [data-bs-theme="dark"] .card-upload { border-color: var(--pcm-info); background-color: var(--pcm-surface); }
+        [data-bs-theme="dark"] .nav-tabs .nav-link:hover { color: var(--pcm-info); background-color: rgba(255, 255, 255, 0.05); }
+        [data-bs-theme="dark"] .linha-critica { background-color: rgba(255, 107, 122, .15) !important; }
+    </style>
+</head>
+<body class="pcm-app">
+
+    {%- macro th_filtro(escopo, col, titulo) -%}
+    <div class="th-filtro">
+        <span class="th-titulo">{{ titulo }}</span>
+        <button type="button" class="btn-filtro-col" id="btnFiltro_{{ escopo }}_{{ col }}"
+                onclick="abrirFiltroColuna(event, '{{ escopo }}', '{{ col }}', '{{ titulo }}')"
+                title="Filtrar / ordenar por {{ titulo }}"><i class="bi bi-funnel"></i></button>
+    </div>
+    {%- endmacro -%}
+
+    {% include '_pcm_shell.html' %}
+
+    <div class="pcm-shell">
+    <header class="pcm-topbar no-print">
+        <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+        <div>
+            <div class="pcm-tb-crumb">Análises</div>
+            <h1 class="pcm-tb-title">Análises Críticas de Óleo</h1>
+        </div>
+        <div class="pcm-tb-spacer"></div>
+        <div class="pcm-tb-actions">
+            <button id="btnDarkMode" class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+        </div>
+    </header>
+
+    <div class="pcm-main">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm no-print">
+                <i class="bi bi-info-circle-fill me-2"></i> {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="row row-cols-2 row-cols-md-3 g-3 mb-3 no-print">
+            <div class="col">
+                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-top-color: #0dcaf0;">
+                    <div class="card-body text-center py-2 px-1">
+                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.75rem;">TOTAL DE ANÁLISES <span class="text-info" id="kpiSufixoPeriodo"></span></h6>
+                        <h2 class="fw-bold text-info mb-0" id="kpiTotal" data-contador="{{ stats.total }}">0</h2>
+                        <div class="small text-muted fw-bold" id="kpiPeriodoLabel" style="font-size: 0.65rem;">&nbsp;</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-top-color: #dc3545;">
+                    <div class="card-body text-center py-2 px-1">
+                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.75rem;">ANOMALIAS CRÍTICAS</h6>
+                        <h2 class="fw-bold text-danger mb-0" id="kpiCriticas" data-contador="{{ stats.criticas }}">0</h2>
+                        <div class="small text-muted fw-bold" style="font-size: 0.65rem;">&nbsp;</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-top-color: #198754;">
+                    <div class="card-body text-center py-2 px-1">
+                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.75rem;">TRATATIVAS CONCLUÍDAS</h6>
+                        <h2 class="fw-bold text-success mb-0" id="kpiConcluidas" data-contador="{{ stats.concluidas }}">0</h2>
+                        <div class="small text-muted fw-bold" style="font-size: 0.65rem;">&nbsp;</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-white mb-4 no-print" id="barraPeriodo">
+            <div class="card-body py-2 px-3 d-flex flex-wrap align-items-end gap-3">
+                <div>
+                    <label class="form-label fw-bold text-secondary mb-1" style="font-size: 0.7rem;"><i class="bi bi-calendar-range me-1"></i>PERÍODO DA COLETA</label>
+                    <div class="d-flex align-items-center gap-1">
+                        <input type="date" id="fDataInicio" class="form-control form-control-sm border-info fw-bold text-dark" style="width: 155px;" onchange="onMudouPeriodo()">
+                        <span class="fw-bold text-muted small">até</span>
+                        <input type="date" id="fDataFim" class="form-control form-control-sm border-info fw-bold text-dark" style="width: 155px;" onchange="onMudouPeriodo()">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label fw-bold text-secondary mb-1" style="font-size: 0.7rem;"><i class="bi bi-calendar-week me-1"></i>SEMANAS DISPONÍVEIS</label>
+                    <select id="fSemanaRapida" class="form-select form-select-sm fw-bold border-info text-dark" style="min-width: 230px;" onchange="aplicarSemanaRapida(this.value)">
+                        <option value="">Todo o período carregado</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="form-label fw-bold text-secondary mb-1" style="font-size: 0.7rem;">&nbsp;</label>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-outline-secondary btn-sm fw-bold" onclick="limparPeriodo()" title="Voltar a mostrar todas as datas"><i class="bi bi-x-circle me-1"></i>Limpar período</button>
+                        <button class="btn btn-outline-danger btn-sm fw-bold" onclick="limparTodosFiltros()" title="Limpar período e todos os filtros de coluna"><i class="bi bi-funnel me-1"></i>Limpar filtros</button>
+                    </div>
+                </div>
+
+                <div class="ms-auto text-end">
+                    <div class="fw-bold text-secondary" style="font-size: 0.7rem;" id="labelDisponivel"></div>
+                    <div class="fw-bold text-info" style="font-size: 0.8rem;" id="labelContagem"></div>
+                </div>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-4 border-bottom-0 shadow-sm bg-white rounded-top px-3 pt-3 no-print" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'lista' %}active{% endif %} text-danger" id="lista-tab" data-bs-toggle="tab" data-bs-target="#lista-pane" type="button" role="tab"><i class="bi bi-exclamation-octagon-fill me-2"></i>Fila de Pendências</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'historico' %}active{% endif %} text-success" id="historico-tab" data-bs-toggle="tab" data-bs-target="#historico-pane" type="button" role="tab"><i class="bi bi-clock-history me-2"></i>Histórico (Concluídas)</button>
+            </li>
+            <li class="nav-item ms-auto" role="presentation">
+                <button class="nav-link {% if active_tab == 'responsaveis' %}active{% endif %} text-secondary" id="responsaveis-tab" data-bs-toggle="tab" data-bs-target="#responsaveis-pane" type="button" role="tab"><i class="bi bi-person-badge-fill me-2"></i>Gestão de Responsáveis</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+
+            <div class="tab-pane fade {% if active_tab == 'lista' %}show active{% endif %}" id="lista-pane" role="tabpanel" tabindex="0">
+
+                <div class="card card-upload shadow-sm mb-4 no-print">
+                    <div class="card-body text-center p-3 d-flex flex-column justify-content-center">
+                        <h6 class="fw-bold text-info mb-2"><i class="bi bi-filetype-xlsx me-2"></i>Atualizar Base de Análises (Export CHB)</h6>
+                        <form action="/api/upload_analises" method="POST" enctype="multipart/form-data" class="d-flex justify-content-center align-items-center gap-2">
+                            <input type="file" name="file" class="form-control form-control-sm w-50 border-info fw-bold text-dark" accept=".csv, .xlsx" required>
+                            <button type="submit" class="btn btn-info btn-sm fw-bold px-3 text-white shadow-sm" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split me-2\'></i>Processando...';"><i class="bi bi-cloud-arrow-up-fill me-1"></i>Sincronizar Relatório</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0 bg-white mb-5 mx-auto">
+                    <div class="card-body p-0 table-responsive bg-white rounded">
+                        <div class="p-3 bg-dark text-white border-bottom mb-0 d-flex justify-content-between align-items-center rounded-top flex-wrap gap-2 no-print">
+                            <h5 class="fw-bold mb-0 m-0"><i class="bi bi-clipboard2-pulse-fill me-2 text-danger"></i>Aguardando Tratativa</h5>
+
+                            <div class="d-flex gap-2 align-items-center">
+                                <div class="bg-white rounded p-1 shadow-sm d-flex">
+                                    <button id="btnFiltroTodas" class="btn btn-primary btn-sm fw-bold border-0 active text-white" onclick="filtrarAnalises('todas')">Ver Todas (Normais)</button>
+                                    <button id="btnFiltroCriticas" class="btn btn-outline-danger btn-sm fw-bold border-0 ms-1" onclick="filtrarAnalises('criticas')"><i class="bi bi-exclamation-triangle-fill me-1"></i>Apenas Críticas</button>
+                                </div>
+                                <select id="filtroResponsavel" class="form-select form-select-sm fw-bold border-info text-dark" style="width: auto;" onchange="filtrarPorResponsavel(this.value)" title="Filtrar / gerar relatório de um único responsável">
+                                    <option value="TODOS">Todos os Responsáveis</option>
+                                    {% for n in nomes_responsaveis %}
+                                        <option value="{{ n }}">{{ n }}</option>
+                                    {% endfor %}
+                                    <option value="Não Atribuído">Não Atribuído</option>
+                                </select>
+                                <button id="btnPdfAnalises" class="btn btn-warning btn-sm fw-bold text-dark shadow-sm" onclick="baixarAnalisesPDF()">
+                                    <i class="bi bi-printer-fill me-1"></i>Exportar PDF (A4)
+                                </button>
+                                <a href="{{ url_for('analises_dashboard_pdf') }}" id="linkDashboardPdf" data-base="{{ url_for('analises_dashboard_pdf') }}" target="_blank" class="btn btn-dark btn-sm fw-bold shadow-sm">
+                                    <i class="bi bi-graph-up me-1"></i>Dashboard (PDF)
+                                </a>
+
+                                <form action="/api/excluir_todas_analises" method="POST" class="m-0" onsubmit="return confirm('ALERTA MÁXIMO:\n\nTem certeza absoluta que deseja EXCLUIR TODAS as análises do painel?\n\nEsta ação apagará todo o histórico e não poderá ser desfeita!');">
+                                    <button type="submit" class="btn btn-danger btn-sm fw-bold shadow-sm" title="Limpar todo o painel">
+                                        <i class="bi bi-trash3-fill me-1"></i>Excluir Tudo
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <table class="table table-hover table-custom align-middle mb-0 bg-white no-print" id="tabelaPendentes">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width: 10%;">{{ th_filtro('pend', 'frota', 'Frota') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('pend', 'setor', 'Setor / Especialidade') }}</th>
+                                    <th class="text-center" style="width: 10%;">{{ th_filtro('pend', 'data', 'Data Coleta') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('pend', 'comp', 'Compartimento') }}</th>
+                                    <th style="width: 17%;">{{ th_filtro('pend', 'diag', 'Diagnóstico / Parecer') }}</th>
+                                    <th class="text-center" style="width: 13%;">{{ th_filtro('pend', 'resp', 'Responsável') }}</th>
+                                    <th class="text-center" style="width: 20%;">Ação / Tratativa</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set ns_pend = namespace(count=0) %}
+                                {% if analises %}
+                                    {% for a in analises %}
+                                        {% if a.status_tratativa != 'CONCLUÍDO' %}
+                                        {% set ns_pend.count = ns_pend.count + 1 %}
+                                        <tr class="linha-analise {% if a.is_critica %}linha-critica is-critica{% else %}is-normal{% endif %}" data-id="{{ a.id }}" data-responsavel="{{ a.responsavel }}">
+                                            <td class="text-center fw-bold fs-6 border-end text-primary">{{ a.id_frota }}</td>
+                                            <td>
+                                                <span class="fw-bold d-block text-dark">{{ a.agrupamento }}</span>
+                                                <small class="text-muted fw-bold"><i class="bi bi-arrow-return-right me-1"></i>{{ a.especialidade }}</small>
+                                            </td>
+                                            <td class="text-center fw-bold text-secondary">{{ a.data_coleta_br }}</td>
+                                            <td><span class="badge bg-secondary shadow-sm text-wrap text-start lh-sm" style="max-width: 150px; font-size:0.65rem;">{{ a.compartimento }}</span></td>
+                                            <td>
+                                                {% if a.is_critica %}
+                                                    <span class="badge badge-critica shadow-sm mb-1 d-inline-block text-white">{{ a.diagnostico }}</span>
+                                                {% else %}
+                                                    <span class="badge badge-normal shadow-sm mb-1 d-inline-block text-white">{{ a.diagnostico }}</span>
+                                                {% endif %}
+                                                {% if a.reincidente %}
+                                                    <span class="badge shadow-sm mb-1 d-inline-block text-white" style="background-color: #6f42c1;" title="Este compartimento já teve {{ a.reincidencia_qtd }} análises críticas/anômalas no histórico desta frota">
+                                                        <i class="bi bi-arrow-repeat me-1"></i>Reincidência ({{ a.reincidencia_qtd }}x)
+                                                    </span>
+                                                {% endif %}
+                                                <div class="small fw-bold text-muted lh-sm mt-1" style="font-size: 0.70rem;">{{ a.parecer }}</div>
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="fw-bold fs-6 text-dark"><i class="bi bi-person-fill text-info me-1"></i>{{ a.responsavel }}</div>
+                                            </td>
+                                            <td class="text-center p-2 border-start">
+                                                {% if a.is_critica %}
+                                                    <span class="badge badge-pendente d-block mb-2 shadow-sm py-1 text-dark"><i class="bi bi-clock me-1"></i>Aguardando Ação</span>
+                                                    <div class="d-flex gap-1">
+                                                        <button class="btn btn-success btn-sm fw-bold w-50 shadow-sm text-white" onclick="concluirRapido({{ a.id }})" title="Resolver Rapidamente"><i class="bi bi-check-lg"></i> Concluir</button>
+                                                        <button class="btn btn-primary btn-sm fw-bold w-50 shadow-sm text-white" onclick='abrirModalTratativa({{ a.id }}, "{{ a.id_frota }}", "{{ a.compartimento }}", "{{ a.diagnostico }}", "{{ a.tratativa }}")' title="Detalhar Ação"><i class="bi bi-pencil-square"></i> Detalhar</button>
+                                                    </div>
+                                                {% else %}
+                                                    <span class="badge bg-light text-muted border border-secondary shadow-sm"><i class="bi bi-info-circle me-1"></i>Apenas Monitorização</span>
+                                                {% endif %}
+
+                                                <a href="/api/excluir_analise/{{ a.id }}" class="btn btn-outline-danger btn-sm fw-bold w-100 shadow-sm mt-2" style="font-size: 0.7rem;" onclick="return confirm('Excluir esta análise do painel?');">
+                                                    <i class="bi bi-trash-fill me-1"></i>Excluir
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    {% endfor %}
+
+                                    {% if ns_pend.count == 0 %}
+                                    <tr><td colspan="7" class="text-center py-5 text-muted fw-bold"><i class="bi bi-emoji-smile fs-1 d-block mb-3 text-success opacity-75"></i>Nenhuma análise pendente. O painel está limpo!</td></tr>
+                                    {% endif %}
+                                    <tr id="semResultadoPend" style="display: none;"><td colspan="7" class="text-center py-5 text-muted fw-bold"><i class="bi bi-funnel fs-1 d-block mb-3 opacity-50"></i>Nenhuma análise pendente para os filtros selecionados.</td></tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-5 text-muted fw-bold">
+                                            <i class="bi bi-inbox fs-1 d-block mb-3 text-info opacity-75"></i>Nenhuma análise na base de dados. Sincronize o ficheiro CHB!
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {% if active_tab == 'historico' %}show active{% endif %}" id="historico-pane" role="tabpanel" tabindex="0">
+                <div class="card shadow-sm border-0 bg-white mb-5 mx-auto">
+                    <div class="card-body p-0 table-responsive bg-white rounded">
+                        <div class="p-3 bg-success text-white border-bottom mb-0 d-flex justify-content-between align-items-center rounded-top flex-wrap gap-2 no-print">
+                            <h5 class="fw-bold mb-0 m-0"><i class="bi bi-archive-fill me-2 text-white"></i>Histórico de Frotas Tratadas</h5>
+                        </div>
+
+                        <table class="table table-hover table-custom align-middle mb-0 bg-white no-print" id="tabelaHistorico">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width: 10%;">{{ th_filtro('hist', 'frota', 'Frota') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('hist', 'setor', 'Setor / Especialidade') }}</th>
+                                    <th class="text-center" style="width: 10%;">{{ th_filtro('hist', 'data', 'Data Coleta') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('hist', 'comp', 'Compartimento') }}</th>
+                                    <th style="width: 15%;">{{ th_filtro('hist', 'diag', 'Diagnóstico Original') }}</th>
+                                    <th style="width: 25%;">Tratativa Aplicada</th>
+                                    <th class="text-center" style="width: 10%;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set ns_hist = namespace(count=0) %}
+                                {% if analises %}
+                                    {% for a in analises %}
+                                        {% if a.status_tratativa == 'CONCLUÍDO' %}
+                                        {% set ns_hist.count = ns_hist.count + 1 %}
+                                        <tr class="linha-historico" data-id="{{ a.id }}">
+                                            <td class="text-center fw-bold fs-6 border-end text-success">{{ a.id_frota }}</td>
+                                            <td>
+                                                <span class="fw-bold d-block text-dark">{{ a.agrupamento }}</span>
+                                                <small class="text-muted fw-bold">{{ a.especialidade }}</small>
+                                            </td>
+                                            <td class="text-center fw-bold text-secondary">{{ a.data_coleta_br }}</td>
+                                            <td><span class="badge bg-secondary shadow-sm text-wrap text-start lh-sm" style="max-width: 150px; font-size:0.65rem;">{{ a.compartimento }}</span></td>
+                                            <td><span class="badge badge-critica shadow-sm text-white">{{ a.diagnostico }}</span></td>
+                                            <td>
+                                                <div class="small fw-bold text-success mb-1"><i class="bi bi-check-all me-1"></i>Resolvido em {{ a.data_tratativa }}</div>
+                                                <div class="small text-muted fw-bold bg-light p-2 rounded border text-start">{{ a.tratativa }}</div>
+                                            </td>
+                                            <td class="text-center p-2 border-start">
+                                                <button class="btn btn-outline-warning text-dark btn-sm fw-bold w-100 shadow-sm" style="font-size: 0.75rem;" onclick="reabrirAnalise({{ a.id }})">
+                                                    <i class="bi bi-arrow-counterclockwise me-1"></i>Reabrir
+                                                </button>
+                                                <a href="/api/excluir_analise/{{ a.id }}" class="btn btn-outline-danger btn-sm fw-bold w-100 shadow-sm mt-2" style="font-size: 0.7rem;" onclick="return confirm('Deseja excluir permanentemente este histórico?');">
+                                                    <i class="bi bi-trash-fill"></i> Apagar
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% if ns_hist.count == 0 %}
+                                    <tr><td colspan="7" class="text-center py-5 text-muted fw-bold"><i class="bi bi-journal-x fs-1 d-block mb-3 opacity-50"></i>O histórico está vazio. Nenhuma análise tratada ainda.</td></tr>
+                                    {% endif %}
+                                    <tr id="semResultadoHist" style="display: none;"><td colspan="7" class="text-center py-5 text-muted fw-bold"><i class="bi bi-funnel fs-1 d-block mb-3 opacity-50"></i>Nenhum histórico para os filtros selecionados.</td></tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {% if active_tab == 'responsaveis' %}show active{% endif %} no-print" id="responsaveis-pane" role="tabpanel" tabindex="0">
+
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-dark text-white fw-bold"><i class="bi bi-plus-circle-fill me-2"></i>Criar Novo Grupo de Responsabilidade</div>
+                    <div class="card-body bg-white">
+                        <form action="/api/salvar_grupo_responsavel" method="POST" class="row g-3 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold text-secondary small">Nome do Grupo</label>
+                                <input type="text" class="form-control border-secondary fw-bold text-dark" name="nome_grupo" placeholder="Ex: Frente 1, Caminhões..." required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold text-secondary small">Responsável</label>
+                                <input type="text" class="form-control border-secondary fw-bold text-dark" name="responsavel" list="listaNomesResponsaveis" placeholder="Ex: Antônio" autocomplete="off" required>
+                                <datalist id="listaNomesResponsaveis">
+                                    {% for n in nomes_responsaveis %}
+                                        <option value="{{ n }}">
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold text-secondary small">Frotas (opcional, pode adicionar depois)</label>
+                                <input type="text" class="form-control border-secondary fw-bold text-primary font-monospace" name="frotas" placeholder="Ex: 60817, 62200, 63001...">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-success fw-bold w-100 shadow-sm text-white"><i class="bi bi-save me-2"></i>Criar Grupo</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+                    {% if grupos %}
+                        {% for grupo in grupos %}
+                        <div class="col">
+                            <div class="card shadow-sm border-0 h-100">
+                                <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
+                                    <span><i class="bi bi-diagram-3-fill me-2"></i>{{ grupo.nome_grupo }}</span>
+                                    <a href="/api/excluir_grupo_responsavel/{{ grupo.id }}" class="btn btn-outline-light btn-sm" onclick="return confirm('Excluir o grupo \'{{ grupo.nome_grupo }}\' e todas as suas atribuições de frota?');" title="Excluir grupo">
+                                        <i class="bi bi-trash-fill"></i>
+                                    </a>
+                                </div>
+                                <div class="card-body bg-white d-flex flex-column">
+                                    <div class="mb-2">
+                                        <span class="badge bg-success shadow-sm"><i class="bi bi-person-badge-fill me-1"></i>{{ grupo.responsavel_nome }}</span>
+                                        <span class="badge bg-secondary shadow-sm ms-1">{{ grupo.frotas|length }} frota{{ 's' if grupo.frotas|length != 1 else '' }}</span>
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-1 mb-3 flex-grow-1" style="max-height: 160px; overflow-y: auto;">
+                                        {% if grupo.frotas %}
+                                            {% for fr in grupo.frotas %}
+                                            <span class="badge bg-light text-dark border shadow-sm fw-bold">
+                                                {{ fr.id_frota }}
+                                                <a href="/api/remover_frota_grupo/{{ fr.id }}" onclick="return confirm('Remover a frota {{ fr.id_frota }} deste grupo?');" class="text-danger ms-1 text-decoration-none" title="Remover do grupo">
+                                                    <i class="bi bi-x-circle-fill"></i>
+                                                </a>
+                                            </span>
+                                            {% endfor %}
+                                        {% else %}
+                                            <span class="text-muted small fst-italic">Nenhuma frota neste grupo ainda.</span>
+                                        {% endif %}
+                                    </div>
+                                    <form action="/api/adicionar_frotas_grupo" method="POST" class="d-flex gap-1 mt-auto">
+                                        <input type="hidden" name="grupo_id" value="{{ grupo.id }}">
+                                        <input type="text" name="frotas" class="form-control form-control-sm" placeholder="Adicionar frota(s)..." required>
+                                        <button type="submit" class="btn btn-outline-success btn-sm fw-bold" title="Adicionar"><i class="bi bi-plus-lg"></i></button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="col-12">
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-diagram-3 display-4 opacity-50"></i>
+                                <div class="mt-3 fw-bold">Nenhum grupo criado ainda. Crie o primeiro acima!</div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="modal fade no-print" id="modalTratativa" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-primary border-2 shadow-lg">
+                <div class="modal-header bg-dark text-white border-bottom-0">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-journal-medical me-2"></i>Registar Tratativa Detalhada</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body bg-light">
+                    <div class="text-center mb-4 border-bottom pb-3">
+                        <span class="text-muted d-block small fw-bold">FROTA</span>
+                        <h3 class="fw-bold text-primary m-0" id="trFrota">0000</h3>
+                        <span class="badge bg-secondary mt-1 shadow-sm text-wrap lh-sm" id="trComp" style="max-width: 250px;">COMPARTIMENTO</span>
+                        <div class="mt-2"><span class="badge badge-critica text-white shadow-sm px-3 py-2" id="trDiag">DIAGNÓSTICO</span></div>
+                    </div>
+
+                    <input type="hidden" id="trId">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-secondary small">Ação Corretiva Realizada (O que foi feito?)</label>
+                        <textarea id="trTexto" class="form-control border-primary fw-bold text-dark shadow-sm" rows="4" placeholder="Descreva o plano de ação, limpeza, troca de filtro, etc..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-secondary small">Data de Resolução (quando a ação foi realizada)</label>
+                        <input type="date" id="trData" class="form-control border-primary fw-bold text-dark shadow-sm">
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between bg-white border-top-0">
+                    <button type="button" class="btn btn-secondary fw-bold shadow-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success fw-bold shadow-sm text-white" id="btnSalvarTr" onclick="salvarTratativa()"><i class="bi bi-check-all me-1"></i>Marcar como Tratado / Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="pdfAnalisesContainer" style="position: absolute; left: -9999px; top: 0; width: 760px;" class="no-print">
+        <div id="pdfAnalisesContent" class="bg-white p-0 pdf-mode" style="width: 760px; max-width: 760px; margin: 0; border: none; box-shadow: none;">
+
+            <div class="p-3 text-center border-bottom mb-3">
+                <h5 class="fw-bold mb-0" id="pdfAnalisesTitle">Relatório de Análises de Óleo</h5>
+                <span class="small text-muted" id="pdfAnalisesSubtitle"></span>
+            </div>
+
+            <div class="d-flex justify-content-between text-center gap-2 mb-3 px-3">
+                <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #0dcaf0 !important; background-color: #f8f9fa;">
+                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">TOTAL DE ANÁLISES</div>
+                    <div style="font-size: 1.1rem;" class="fw-bold text-info lh-1" id="pdfKpiTotal">{{ stats.total }}</div>
+                </div>
+                <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #dc3545 !important; background-color: #f8f9fa;">
+                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">ANOMALIAS CRÍTICAS</div>
+                    <div style="font-size: 1.1rem;" class="fw-bold text-danger lh-1" id="pdfKpiCriticas">{{ stats.criticas }}</div>
+                </div>
+                <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #198754 !important; background-color: #f8f9fa;">
+                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">TRATATIVAS CONCLUÍDAS</div>
+                    <div style="font-size: 1.1rem;" class="fw-bold text-success lh-1" id="pdfKpiConcluidas">{{ stats.concluidas }}</div>
+                </div>
+            </div>
+
+            <table class="table table-custom align-middle mb-0 bg-white mx-3" style="width: calc(100% - 2rem); table-layout: fixed; word-wrap: break-word;">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="text-center" style="width: 10%;">Frota</th>
+                        <th style="width: 15%;">Compartimento</th>
+                        <th class="text-center" style="width: 10%;">Data</th>
+                        <th style="width: 25%;">Diagnóstico / Parecer</th>
+                        <th class="text-center" style="width: 15%;">Responsável</th>
+                        <th class="text-center" style="width: 25%;">Status / Tratativa</th>
+                    </tr>
+                </thead>
+                <tbody id="pdfAnalisesTbody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="painelFiltroColuna" class="painel-filtro-coluna no-print">
+        <div class="pfc-head">
+            <div class="fw-bold text-secondary mb-2" style="font-size: 0.7rem;">
+                FILTRAR: <span id="pfcTitulo" class="text-dark"></span>
+            </div>
+            <div class="pfc-ordenar">
+                <button class="btn btn-outline-secondary btn-sm py-0 px-2 flex-fill" style="font-size: 0.7rem;" onclick="pfcOrdenar('asc')"><i class="bi bi-sort-down-alt me-1"></i>Crescente</button>
+                <button class="btn btn-outline-secondary btn-sm py-0 px-2 flex-fill" style="font-size: 0.7rem;" onclick="pfcOrdenar('desc')"><i class="bi bi-sort-up me-1"></i>Decrescente</button>
+            </div>
+            <input type="text" id="pfcBusca" class="form-control form-control-sm" placeholder="Buscar valor..." oninput="pfcFiltrarBusca(this.value)">
+            <div class="pfc-item mt-2 border-top pt-2">
+                <input class="form-check-input mt-0" type="checkbox" id="pfcTodos" onchange="pfcMarcarTodos(this.checked)">
+                <label for="pfcTodos" class="fw-bold">(Selecionar tudo)</label>
+            </div>
+        </div>
+        <div class="pfc-lista" id="pfcLista"></div>
+        <div class="pfc-foot">
+            <button class="btn btn-outline-danger btn-sm flex-fill py-0" style="font-size: 0.75rem;" onclick="pfcLimpar()">Limpar</button>
+            <button class="btn btn-primary btn-sm flex-fill py-0 text-white fw-bold" style="font-size: 0.75rem;" onclick="pfcAplicar()">Aplicar</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            PCM.iniciarContadores(document);
+        });
+    </script>
+    <script>
+        const USUARIO_ADMIN = {{ 'true' if usuario_admin else 'false' }};
+        const PODE_ABASTECIMENTOS = {{ 'true' if (usuario_admin or perm_abastecimentos) else 'false' }};
+        const PODE_EXTERNOS = {{ 'true' if (usuario_admin or perm_externos) else 'false' }};
+
+        function validarPermissaoLink(destino) {
+            if (USUARIO_ADMIN) return true;
+            if (destino === 'abastecimentos' && !PODE_ABASTECIMENTOS) { alert('Seu perfil não tem permissão para acessar Abastecimentos.'); return false; }
+            if (destino === 'externos' && !PODE_EXTERNOS) { alert('Seu perfil não tem permissão para acessar Serviços Externos.'); return false; }
+            return true;
+        }
+
+        const analisesBase = {{ analises | tojson | safe }};
+        const htmlElement = document.documentElement;
+        // Modo escuro: PCM.alternarTema() compartilhado (chave 'pcm-tema') - um
+        // toggle próprio com chave diferente ('theme') fazia o tema não se
+        // manter ao trocar de página, cada uma lendo uma chave diferente.
+
+        // ==========================================
+        // MOTOR DE FILTROS
+        // Combina: tipo (Todas/Críticas) + responsável + período de coleta
+        // + filtros por coluna (estilo Excel). Tudo é aplicado em cima do mesmo
+        // conjunto de dados, então tela, KPIs e PDF nunca divergem.
+        // ==========================================
+        let filtroTipoAtual = 'todas';
+        let filtroResponsavelAtual = 'TODOS';
+        let periodo = { inicio: '', fim: '' };
+        const filtrosColuna = { pend: {}, hist: {} };
+        let resumoFiltrado = { total: 0, criticas: 0, concluidas: 0, pendentes: 0 };
+
+        const isoData = a => String(a.data_coleta || '').slice(0, 10);
+        const escopoDe = a => (a.status_tratativa === 'CONCLUÍDO' ? 'hist' : 'pend');
+
+        function fmtISO(d) {
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+        function fmtBR(iso) {
+            if (!iso || iso.length < 10) return iso || '(sem data)';
+            return iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+        }
+        function fmtBRCurto(iso) {
+            if (!iso || iso.length < 10) return iso || '';
+            return iso.slice(8, 10) + '/' + iso.slice(5, 7);
+        }
+
+        function valorColuna(a, col) {
+            switch (col) {
+                case 'frota': return String(a.id_frota || '');
+                case 'setor': return String(a.agrupamento || 'GERAL');
+                case 'data':  return isoData(a);
+                case 'comp':  return String(a.compartimento || '');
+                case 'diag':  return String(a.diagnostico || '');
+                case 'resp':  return String(a.responsavel || 'Não Atribuído');
+            }
+            return '';
+        }
+        function escaparHtml(txt) {
+            const d = document.createElement('div');
+            d.textContent = txt;
+            return d.innerHTML;
+        }
+        function rotuloValor(col, valor) {
+            if (col === 'data') return fmtBR(valor);
+            return valor === '' ? '(vazio)' : valor;
+        }
+
+        function passaPeriodo(a) {
+            const d = isoData(a);
+            if (periodo.inicio && (!d || d < periodo.inicio)) return false;
+            if (periodo.fim && (!d || d > periodo.fim)) return false;
+            return true;
+        }
+
+        function passaColunas(a, escopo, ignorarCol) {
+            const conjunto = filtrosColuna[escopo];
+            for (const col in conjunto) {
+                if (col === ignorarCol) continue;
+                const sel = conjunto[col];
+                if (!sel || sel.size === 0) continue;
+                if (!sel.has(valorColuna(a, col))) return false;
+            }
+            return true;
+        }
+
+        function passaFiltros(a, ignorarCol) {
+            const escopo = escopoDe(a);
+            if (!passaPeriodo(a)) return false;
+            if (escopo === 'pend') {
+                if (filtroTipoAtual === 'criticas' && !a.is_critica) return false;
+                if (filtroResponsavelAtual !== 'TODOS' && a.responsavel !== filtroResponsavelAtual) return false;
+            }
+            return passaColunas(a, escopo, ignorarCol);
+        }
+
+        function filtrarAnalises(tipo) {
+            filtroTipoAtual = tipo;
+            let btnTodas = document.getElementById('btnFiltroTodas');
+            let btnCriticas = document.getElementById('btnFiltroCriticas');
+
+            if (tipo === 'criticas') {
+                btnCriticas.classList.replace('btn-outline-danger', 'btn-danger');
+                btnCriticas.classList.add('active', 'text-white');
+                btnTodas.classList.replace('btn-primary', 'btn-outline-primary');
+                btnTodas.classList.remove('active', 'text-white');
+            } else {
+                btnTodas.classList.replace('btn-outline-primary', 'btn-primary');
+                btnTodas.classList.add('active', 'text-white');
+                btnCriticas.classList.replace('btn-danger', 'btn-outline-danger');
+                btnCriticas.classList.remove('active', 'text-white');
+            }
+            aplicarFiltrosTela();
+        }
+
+        function filtrarPorResponsavel(nome) {
+            filtroResponsavelAtual = nome;
+            aplicarFiltrosTela();
+        }
+
+        function aplicarFiltrosTela() {
+            const permitidos = new Set();
+            resumoFiltrado = { total: 0, criticas: 0, concluidas: 0, pendentes: 0 };
+
+            analisesBase.forEach(a => {
+                if (!passaFiltros(a)) return;
+                permitidos.add(String(a.id));
+                resumoFiltrado.total++;
+                if (a.is_critica && a.status_tratativa !== 'CONCLUÍDO') resumoFiltrado.criticas++;
+                if (a.status_tratativa === 'CONCLUÍDO') resumoFiltrado.concluidas++;
+                else resumoFiltrado.pendentes++;
+            });
+
+            let visiveisPend = 0, visiveisHist = 0;
+            document.querySelectorAll('#lista-pane .linha-analise').forEach(linha => {
+                const ok = permitidos.has(linha.dataset.id);
+                if (ok) visiveisPend++;
+                linha.style.setProperty('display', ok ? '' : 'none', 'important');
+            });
+            document.querySelectorAll('#historico-pane .linha-historico').forEach(linha => {
+                const ok = permitidos.has(linha.dataset.id);
+                if (ok) visiveisHist++;
+                linha.style.setProperty('display', ok ? '' : 'none', 'important');
+            });
+
+            const vazioPend = document.getElementById('semResultadoPend');
+            const vazioHist = document.getElementById('semResultadoHist');
+            const totalLinhasPend = document.querySelectorAll('#lista-pane .linha-analise').length;
+            const totalLinhasHist = document.querySelectorAll('#historico-pane .linha-historico').length;
+            if (vazioPend) vazioPend.style.display = (totalLinhasPend > 0 && visiveisPend === 0) ? '' : 'none';
+            if (vazioHist) vazioHist.style.display = (totalLinhasHist > 0 && visiveisHist === 0) ? '' : 'none';
+
+            document.getElementById('kpiTotal').innerText = resumoFiltrado.total;
+            document.getElementById('kpiCriticas').innerText = resumoFiltrado.criticas;
+            document.getElementById('kpiConcluidas').innerText = resumoFiltrado.concluidas;
+
+            const temFiltro = periodo.inicio || periodo.fim || temFiltroColunaAtivo();
+            document.getElementById('kpiSufixoPeriodo').innerText = temFiltro ? '(FILTRADO)' : '';
+            document.getElementById('kpiPeriodoLabel').innerText = descricaoPeriodo();
+            document.getElementById('labelContagem').innerText =
+                `Exibindo ${resumoFiltrado.total} de ${analisesBase.length} análises`;
+
+            const linkDash = document.getElementById('linkDashboardPdf');
+            if (linkDash) {
+                const params = new URLSearchParams();
+                if (periodo.inicio) params.set('data_inicio', periodo.inicio);
+                if (periodo.fim) params.set('data_fim', periodo.fim);
+                const qs = params.toString();
+                linkDash.href = linkDash.dataset.base + (qs ? '?' + qs : '');
+            }
+
+            atualizarIconesFiltro();
+        }
+
+        function temFiltroColunaAtivo() {
+            for (const escopo in filtrosColuna) {
+                for (const col in filtrosColuna[escopo]) {
+                    if (filtrosColuna[escopo][col] && filtrosColuna[escopo][col].size) return true;
+                }
+            }
+            return false;
+        }
+
+        function descricaoPeriodo() {
+            if (periodo.inicio && periodo.fim) return `Período: ${fmtBR(periodo.inicio)} a ${fmtBR(periodo.fim)}`;
+            if (periodo.inicio) return `A partir de ${fmtBR(periodo.inicio)}`;
+            if (periodo.fim) return `Até ${fmtBR(periodo.fim)}`;
+            return 'Todas as datas carregadas';
+        }
+
+        // ---------- Período / calendário ----------
+        function onMudouPeriodo() {
+            periodo.inicio = document.getElementById('fDataInicio').value;
+            periodo.fim = document.getElementById('fDataFim').value;
+            if (periodo.inicio && periodo.fim && periodo.inicio > periodo.fim) {
+                const tmp = periodo.inicio;
+                periodo.inicio = periodo.fim;
+                periodo.fim = tmp;
+                document.getElementById('fDataInicio').value = periodo.inicio;
+                document.getElementById('fDataFim').value = periodo.fim;
+            }
+            sincronizarSemanaSelecionada();
+            aplicarFiltrosTela();
+        }
+
+        function aplicarSemanaRapida(valor) {
+            if (!valor) { limparPeriodo(); return; }
+            const [ini, fim] = valor.split('|');
+            document.getElementById('fDataInicio').value = ini;
+            document.getElementById('fDataFim').value = fim;
+            periodo.inicio = ini;
+            periodo.fim = fim;
+            aplicarFiltrosTela();
+        }
+
+        function limparPeriodo() {
+            document.getElementById('fDataInicio').value = '';
+            document.getElementById('fDataFim').value = '';
+            document.getElementById('fSemanaRapida').value = '';
+            periodo = { inicio: '', fim: '' };
+            aplicarFiltrosTela();
+        }
+
+        function limparTodosFiltros() {
+            filtrosColuna.pend = {};
+            filtrosColuna.hist = {};
+            filtroResponsavelAtual = 'TODOS';
+            const selResp = document.getElementById('filtroResponsavel');
+            if (selResp) selResp.value = 'TODOS';
+            filtrarAnalises('todas');   // já chama aplicarFiltrosTela
+            limparPeriodo();
+        }
+
+        function sincronizarSemanaSelecionada() {
+            const sel = document.getElementById('fSemanaRapida');
+            const alvo = `${periodo.inicio}|${periodo.fim}`;
+            sel.value = [...sel.options].some(o => o.value === alvo) ? alvo : '';
+        }
+
+        function montarSeletoresDeData() {
+            const datas = [...new Set(analisesBase.map(isoData).filter(Boolean))].sort();
+            const inpIni = document.getElementById('fDataInicio');
+            const inpFim = document.getElementById('fDataFim');
+            const label = document.getElementById('labelDisponivel');
+
+            if (!datas.length) {
+                label.innerText = 'Nenhuma data de coleta na base';
+                inpIni.disabled = true; inpFim.disabled = true;
+                document.getElementById('fSemanaRapida').disabled = true;
+                return;
+            }
+
+            // O calendário só permite escolher dentro do intervalo que existe na base
+            inpIni.min = datas[0]; inpIni.max = datas[datas.length - 1];
+            inpFim.min = datas[0]; inpFim.max = datas[datas.length - 1];
+            label.innerText = `Disponível: ${fmtBR(datas[0])} a ${fmtBR(datas[datas.length - 1])} (${datas.length} data${datas.length > 1 ? 's' : ''} de coleta)`;
+
+            // Semanas (segunda a domingo) que realmente têm análise no relatório carregado
+            const semanas = new Map();
+            analisesBase.forEach(a => {
+                const iso = isoData(a);
+                if (!iso) return;
+                const d = new Date(iso + 'T00:00:00');
+                const dia = d.getDay();
+                d.setDate(d.getDate() + (dia === 0 ? -6 : 1 - dia));
+                const ini = fmtISO(d);
+                d.setDate(d.getDate() + 6);
+                const fim = fmtISO(d);
+                const chave = `${ini}|${fim}`;
+                semanas.set(chave, (semanas.get(chave) || 0) + 1);
+            });
+
+            const sel = document.getElementById('fSemanaRapida');
+            [...semanas.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([chave, qtd]) => {
+                const [ini, fim] = chave.split('|');
+                const opt = document.createElement('option');
+                opt.value = chave;
+                opt.text = `Semana ${fmtBRCurto(ini)} a ${fmtBRCurto(fim)} — ${qtd} análise${qtd > 1 ? 's' : ''}`;
+                sel.appendChild(opt);
+            });
+        }
+
+        // ---------- Filtros por coluna (estilo Excel) ----------
+        let painelAberto = null;
+
+        function valoresDisponiveis(escopo, col) {
+            const contagem = new Map();
+            analisesBase.forEach(a => {
+                if (escopoDe(a) !== escopo) return;
+                if (!passaFiltros(a, col)) return;
+                const v = valorColuna(a, col);
+                contagem.set(v, (contagem.get(v) || 0) + 1);
+            });
+            const sel = filtrosColuna[escopo][col];
+            if (sel) sel.forEach(v => { if (!contagem.has(v)) contagem.set(v, 0); });
+
+            const lista = [...contagem.entries()];
+            lista.sort((x, y) => {
+                if (col === 'frota') return (Number(x[0]) || 0) - (Number(y[0]) || 0);
+                if (col === 'data') return String(x[0]).localeCompare(String(y[0]));
+                return String(x[0]).localeCompare(String(y[0]), 'pt-BR');
+            });
+            return lista;
+        }
+
+        function abrirFiltroColuna(ev, escopo, col, titulo) {
+            ev.stopPropagation();
+            const painel = document.getElementById('painelFiltroColuna');
+
+            if (painelAberto && painelAberto.escopo === escopo && painelAberto.col === col && painel.style.display === 'block') {
+                fecharFiltroColuna();
+                return;
+            }
+            painelAberto = { escopo, col, titulo };
+            renderPainelFiltro();
+
+            painel.style.display = 'block';
+            const r = ev.currentTarget.getBoundingClientRect();
+            const largura = painel.offsetWidth || 265;
+            let left = r.left + window.scrollX;
+            const limite = window.scrollX + document.documentElement.clientWidth - largura - 12;
+            if (left > limite) left = limite;
+            painel.style.left = Math.max(10, left) + 'px';
+            painel.style.top = (r.bottom + window.scrollY + 4) + 'px';
+            const busca = document.getElementById('pfcBusca');
+            busca.value = '';
+            busca.focus();
+        }
+
+        function fecharFiltroColuna() {
+            document.getElementById('painelFiltroColuna').style.display = 'none';
+            painelAberto = null;
+        }
+
+        function renderPainelFiltro() {
+            const { escopo, col, titulo } = painelAberto;
+            const sel = filtrosColuna[escopo][col];
+            const vals = valoresDisponiveis(escopo, col);
+
+            document.getElementById('pfcTitulo').innerText = titulo;
+            const lista = document.getElementById('pfcLista');
+            lista.innerHTML = '';
+
+            vals.forEach((par, idx) => {
+                const [valor, qtd] = par;
+                const marcado = !sel || sel.size === 0 || sel.has(valor);
+                const div = document.createElement('div');
+                div.className = 'pfc-item';
+                div.dataset.busca = rotuloValor(col, valor).toLowerCase();
+                div.innerHTML = `
+                    <input class="form-check-input mt-0 pfc-check" type="checkbox" id="pfc_${idx}" ${marcado ? 'checked' : ''}>
+                    <label for="pfc_${idx}">${escaparHtml(rotuloValor(col, valor))} <span class="text-muted">(${qtd})</span></label>`;
+                div.querySelector('input').dataset.valor = valor;
+                lista.appendChild(div);
+            });
+
+            if (!vals.length) {
+                lista.innerHTML = '<div class="text-muted fw-bold text-center py-3">Nenhum valor disponível</div>';
+            }
+            document.getElementById('pfcTodos').checked = !sel || sel.size === 0;
+        }
+
+        function pfcFiltrarBusca(texto) {
+            const t = texto.trim().toLowerCase();
+            document.querySelectorAll('#pfcLista .pfc-item').forEach(item => {
+                item.style.display = (!t || item.dataset.busca.includes(t)) ? '' : 'none';
+            });
+        }
+
+        function pfcMarcarTodos(marcado) {
+            document.querySelectorAll('#pfcLista .pfc-item').forEach(item => {
+                if (item.style.display === 'none') return;
+                item.querySelector('input').checked = marcado;
+            });
+        }
+
+        function pfcAplicar() {
+            if (!painelAberto) return;
+            const { escopo, col } = painelAberto;
+            const checks = [...document.querySelectorAll('#pfcLista .pfc-check')];
+            const marcados = checks.filter(c => c.checked).map(c => c.dataset.valor);
+
+            if (!marcados.length) {
+                alert('Selecione pelo menos um valor (ou use "Limpar" para remover o filtro desta coluna).');
+                return;
+            }
+            if (marcados.length === checks.length) delete filtrosColuna[escopo][col];
+            else filtrosColuna[escopo][col] = new Set(marcados);
+
+            fecharFiltroColuna();
+            aplicarFiltrosTela();
+        }
+
+        function pfcLimpar() {
+            if (!painelAberto) return;
+            delete filtrosColuna[painelAberto.escopo][painelAberto.col];
+            fecharFiltroColuna();
+            aplicarFiltrosTela();
+        }
+
+        function pfcOrdenar(dir) {
+            if (!painelAberto) return;
+            const { escopo, col } = painelAberto;
+            const tabela = document.getElementById(escopo === 'pend' ? 'tabelaPendentes' : 'tabelaHistorico');
+            const tbody = tabela.querySelector('tbody');
+            const classe = escopo === 'pend' ? 'linha-analise' : 'linha-historico';
+            const mapa = new Map(analisesBase.map(a => [String(a.id), a]));
+
+            const linhas = [...tbody.querySelectorAll('tr.' + classe)];
+            linhas.sort((x, y) => {
+                const ax = mapa.get(x.dataset.id), ay = mapa.get(y.dataset.id);
+                if (!ax || !ay) return 0;
+                const vx = valorColuna(ax, col), vy = valorColuna(ay, col);
+                let r;
+                if (col === 'frota') r = (Number(vx) || 0) - (Number(vy) || 0);
+                else if (col === 'data') r = String(vx).localeCompare(String(vy));
+                else r = String(vx).localeCompare(String(vy), 'pt-BR');
+                return dir === 'asc' ? r : -r;
+            });
+            linhas.forEach(l => tbody.appendChild(l));
+
+            const vazio = document.getElementById(escopo === 'pend' ? 'semResultadoPend' : 'semResultadoHist');
+            if (vazio) tbody.appendChild(vazio);
+            fecharFiltroColuna();
+        }
+
+        function atualizarIconesFiltro() {
+            document.querySelectorAll('.btn-filtro-col').forEach(btn => {
+                const partes = btn.id.split('_');
+                const sel = filtrosColuna[partes[1]] && filtrosColuna[partes[1]][partes[2]];
+                const ativo = !!(sel && sel.size);
+                btn.classList.toggle('filtro-ativo', ativo);
+                btn.querySelector('i').className = ativo ? 'bi bi-funnel-fill' : 'bi bi-funnel';
+            });
+        }
+
+        document.addEventListener('click', ev => {
+            const painel = document.getElementById('painelFiltroColuna');
+            if (painel.style.display !== 'block') return;
+            if (painel.contains(ev.target) || ev.target.closest('.btn-filtro-col')) return;
+            fecharFiltroColuna();
+        });
+        document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharFiltroColuna(); });
+
+        montarSeletoresDeData();
+        aplicarFiltrosTela();
+
+        const modalUI = new bootstrap.Modal(document.getElementById('modalTratativa'));
+
+        function hojeISO() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        // ABRE MODAL PARA TEXTO LONGO (usado tanto por "Detalhar" quanto por "Concluir Rápido",
+        // já que escolher a data de resolução exige um <input type="date"> — algo que o prompt()
+        // nativo usado antes não suporta)
+        function abrirModalTratativa(id, frota, comp, diag, tratativa) {
+            document.getElementById('trId').value = id;
+            document.getElementById('trFrota').innerText = frota;
+            document.getElementById('trComp').innerText = comp;
+            document.getElementById('trDiag').innerText = diag;
+            document.getElementById('trTexto').value = (tratativa && tratativa !== 'None') ? tratativa : '';
+            const inputData = document.getElementById('trData');
+            inputData.value = hojeISO();
+            inputData.max = hojeISO(); // não faz sentido registrar uma resolução no futuro
+            modalUI.show();
+        }
+
+        // CONCLUIR RÁPIDO: abre o mesmo modal já com um texto padrão sugerido, permitindo
+        // ajustar a ação e principalmente escolher a data em que a tratativa foi feita.
+        function concluirRapido(id) {
+            const item = analisesBase.find(a => String(a.id) === String(id));
+            if (!item) return;
+            abrirModalTratativa(id, item.id_frota, item.compartimento, item.diagnostico, '');
+            document.getElementById('trTexto').value = 'Monitorizado / Sanado';
+        }
+
+        // REABRIR DO HISTÓRICO
+        function reabrirAnalise(id) {
+            if(!confirm('Tem certeza que deseja devolver esta análise para a Fila de Pendências?')) return;
+            enviarTratativa(id, '', 'PENDENTE', '');
+        }
+
+        function salvarTratativa() {
+            let texto = document.getElementById('trTexto').value;
+            if(!texto) { alert('Escreva a ação corretiva antes de salvar!'); return; }
+            let data = document.getElementById('trData').value;
+            if(!data) { alert('Selecione a data de resolução!'); return; }
+
+            let btn = document.getElementById('btnSalvarTr');
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>A Salvar...';
+            btn.disabled = true;
+
+            enviarTratativa(document.getElementById('trId').value, texto, 'CONCLUÍDO', data);
+        }
+
+        // FUNÇÃO CENTRAL PARA CHAMAR O BACKEND
+        function enviarTratativa(id, texto, status, dataTratativa) {
+            fetch('/api/salvar_tratativa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id_analise: id,
+                    tratativa: texto,
+                    status: status,
+                    data_tratativa: dataTratativa || ''
+                })
+            }).then(r => r.json()).then(d => {
+                if(d.status === 'sucesso') window.location.reload();
+            });
+        }
+
+        // ==========================================
+        // GERADOR DE PDF
+        // ==========================================
+        function baixarAnalisesPDF() {
+            let btn = document.getElementById('btnPdfAnalises');
+            let txtOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>A Gerar PDF...';
+            btn.disabled = true;
+
+            let isApenasCriticas = document.getElementById('btnFiltroCriticas').classList.contains('active');
+            let responsavelFiltrado = filtroResponsavelAtual;
+            let tbody = document.getElementById('pdfAnalisesTbody');
+            tbody.innerHTML = '';
+
+            let dt = new Date();
+            document.getElementById('pdfAnalisesSubtitle').innerText =
+                `${descricaoPeriodo()} • Gerado a ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`;
+            let tituloBase = isApenasCriticas ? 'Relatório: Análises Críticas (Aguardando Ação)' : 'Relatório Completo de Análises Pendentes';
+            if (responsavelFiltrado !== 'TODOS') tituloBase += ` — Responsável: ${responsavelFiltrado}`;
+            document.getElementById('pdfAnalisesTitle').innerText = tituloBase;
+
+            // KPIs do PDF acompanham exatamente o que está filtrado na tela
+            document.getElementById('pdfKpiTotal').innerText = resumoFiltrado.total;
+            document.getElementById('pdfKpiCriticas').innerText = resumoFiltrado.criticas;
+            document.getElementById('pdfKpiConcluidas').innerText = resumoFiltrado.concluidas;
+
+            let countRenderizados = 0;
+
+            analisesBase.forEach(a => {
+                // PDF SÓ MOSTRA O QUE ESTÁ PENDENTE (O Histórico eles olham na tela)
+                if (a.status_tratativa === 'CONCLUÍDO') return;
+
+                // Aplica os mesmos filtros da tela (tipo, responsável, período e colunas)
+                if (!passaFiltros(a)) return;
+
+                let corDiag = a.is_critica ? 'text-danger' : 'text-success';
+                let tratativaHtml = '<span class="text-warning fw-bold">Aguardando Ação</span>';
+
+                if (!a.is_critica) {
+                    tratativaHtml = '<span class="text-muted">Monitorização</span>';
+                }
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="text-center fw-bold text-primary">${a.id_frota}</td>
+                        <td class="fw-bold text-secondary" style="font-size: 0.60rem;">${a.compartimento}</td>
+                        <td class="text-center fw-bold">${a.data_coleta_br}</td>
+                        <td>
+                            <span class="fw-bold ${corDiag}">${a.diagnostico}</span><br>
+                            <small class="text-muted" style="font-size: 0.55rem;">${a.parecer}</small>
+                        </td>
+                        <td class="text-center fw-bold">${a.responsavel}</td>
+                        <td class="text-center" style="font-size: 0.60rem; border-left: 1px solid #dee2e6;">${tratativaHtml}</td>
+                    </tr>
+                `;
+                countRenderizados++;
+            });
+
+            if (countRenderizados === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center fw-bold py-4 text-muted">Nenhum registo pendente encontrado para o filtro atual.</td></tr>`;
+            }
+
+            let container = document.getElementById('pdfAnalisesContent');
+            let nomeFicheiro = isApenasCriticas ? 'Analises_Criticas_Acao' : 'Todas_Analises_Pendentes';
+            if (responsavelFiltrado !== 'TODOS') nomeFicheiro += `_${responsavelFiltrado.replace(/\s+/g, '_')}`;
+            if (periodo.inicio || periodo.fim) nomeFicheiro += `_${periodo.inicio || 'inicio'}_a_${periodo.fim || 'fim'}`;
+            nomeFicheiro += '.pdf';
+
+            let opt = {
+                margin:       15,
+                filename:     nomeFicheiro,
+                image:        { type: 'jpeg', quality: 1.0 },
+                html2canvas:  { scale: 2, useCORS: true, scrollX: 0, scrollY: 0 },
+                jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' },
+                pagebreak:    { mode: ['css', 'legacy'] }
+            };
+
+            setTimeout(() => {
+                html2pdf().set(opt).from(container).save().then(() => {
+                    btn.innerHTML = txtOriginal;
+                    btn.disabled = false;
+                });
+            }, 500);
+        }
+    </script>
+    </div>
+</body>
+</html>
+
+
+

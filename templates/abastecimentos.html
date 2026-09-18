@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoria de Abastecimentos - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #f4f6f9; }
+        .card-upload { border: 2px dashed #198754; background-color: #f8f9fa; border-radius: 13px !important; transition: 0.3s; }
+        .card-upload:hover { background-color: #e9ecef; }
+        .bloqueadas-header { background: linear-gradient(135deg, #14181d, #1E4B9A) !important; }
+        .table-custom th { padding: 0.5rem; }
+        .table-custom td { padding: 0.5rem; vertical-align: middle; }
+        .badge-furou { background-color: #dc3545; font-size: 0.85rem; }
+        .badge-ok { background-color: #198754; font-size: 0.85rem; }
+        .linha-furou { background-color: rgba(220, 53, 69, 0.08) !important; }
+        
+        /* Estilos Fantasma para o PDF */
+        .pdf-mode .table-custom th { font-size: 0.75rem; padding: 0.4rem; background-color: #212529 !important; color: white !important; -webkit-print-color-adjust: exact; }
+        .pdf-mode .table-custom td { font-size: 0.70rem; padding: 0.3rem 0.4rem; border-bottom: 1px solid #dee2e6; }
+        .pdf-mode .table-custom tr { page-break-inside: avoid; }
+        
+        [data-bs-theme="dark"] body { background-color: #212529; }
+        [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .table { color: #f8f9fa; }
+        [data-bs-theme="dark"] .card-upload { border-color: #198754; background-color: #2b3035; }
+        [data-bs-theme="dark"] .linha-furou { background-color: rgba(220, 53, 69, 0.15) !important; }
+    </style>
+</head>
+<body class="pcm-app">
+
+    {% include '_pcm_shell.html' %}
+
+    <div class="pcm-shell">
+    <header class="pcm-topbar no-print">
+        <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+        <div>
+            <div class="pcm-tb-crumb">Análises</div>
+            <h1 class="pcm-tb-title">Auditoria de Abastecimentos</h1>
+        </div>
+        <div class="pcm-tb-spacer"></div>
+        <div class="pcm-tb-actions">
+            <button id="btnDarkMode" class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+        </div>
+    </header>
+
+    <div class="pcm-main">
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm no-print">
+                <i class="bi bi-info-circle-fill me-2"></i> {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="row mb-4 no-print">
+            <div class="col-md-12">
+                <div class="card card-upload shadow-sm">
+                    <div class="card-body text-center p-3 d-flex flex-column justify-content-center">
+                        <h6 class="fw-bold text-success mb-2"><i class="bi bi-filetype-xlsx me-2"></i>Atualizar Base via Relatório de Abastecimentos CHB (.csv ou .xlsx)</h6>
+                        <form action="/api/upload_abastecimento" method="POST" enctype="multipart/form-data" class="d-flex justify-content-center align-items-center gap-2">
+                            <input type="file" name="file" class="form-control form-control-sm w-50 border-success fw-bold" accept=".csv, .xlsx" required>
+                            <button type="submit" class="btn btn-success btn-sm fw-bold px-3 shadow-sm" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split me-2\'></i>A Sincronizar...';"><i class="bi bi-cloud-arrow-up-fill me-1"></i>Sincronizar Abastecimentos</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-white mb-5 mx-auto">
+            <div class="card-body p-0 table-responsive bg-white rounded">
+                <div class="p-3 bloqueadas-header text-white border-bottom mb-0 d-flex justify-content-between align-items-center rounded-top flex-wrap gap-2 no-print">
+                    <h5 class="fw-bold mb-0 m-0"><i class="bi bi-shield-lock-fill me-2 text-warning"></i>Frotas Atualmente Bloqueadas na Oficina</h5>
+                    
+                    <div class="d-flex gap-2 align-items-center">
+                        <div class="bg-white rounded p-1 shadow-sm d-flex">
+                            <button id="btnFiltroTodos" class="btn btn-primary btn-sm fw-bold border-0 active" onclick="filtrarAuditoria('todos')">Visualizar Todas</button>
+                            <button id="btnFiltroFuros" class="btn btn-outline-danger btn-sm fw-bold border-0 ms-1" onclick="filtrarAuditoria('furos')"><i class="bi bi-exclamation-triangle-fill me-1"></i>Apenas Furos</button>
+                        </div>
+                        <button id="btnPdfAuditoria" class="btn btn-warning btn-sm fw-bold text-dark shadow-sm" onclick="baixarAuditoriaPDF()">
+                            <i class="bi bi-printer-fill me-1"></i>Exportar PDF (A4)
+                        </button>
+                    </div>
+                </div>
+                
+                <table class="table table-hover table-custom align-middle mb-0 bg-white no-print" data-pcm-sort>
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-center border-end" style="width: 10%;" data-sort>Frota</th>
+                            <th style="width: 25%;" data-sort>Descrição do Equipamento</th>
+                            <th class="text-center" style="width: 15%;" data-sort>Data Bloqueio</th>
+                            <th style="width: 20%;" data-sort>Motivo do Bloqueio</th>
+                            <th class="text-center border-start" style="width: 15%;" data-sort>Último Abastecimento</th>
+                            <th class="text-center border-start" style="width: 15%;">Auditoria / Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if frotas %}
+                            {% for f in frotas %}
+                                <tr class="linha-auditoria {% if f.abasteceu_bloqueado %}is-furo{% else %}is-ok{% endif %}">
+                                    <td class="text-center fw-bold text-primary border-end fs-5">{{ f.frota }}</td>
+                                    <td><span class="fw-bold text-secondary">{{ f.descricao }}</span></td>
+                                    {# data-valor em aaaammdd pra ordenar por data de verdade,
+                                       e nao alfabeticamente pelo dia. #}
+                                    <td class="text-center fw-bold text-dark"
+                                        data-valor="{{ f.data_bloqueio[6:10] }}{{ f.data_bloqueio[3:5] }}{{ f.data_bloqueio[0:2] }}">
+                                        <i class="bi bi-calendar-x text-danger me-1"></i>{{ f.data_bloqueio }}
+                                    </td>
+                                    <td><small class="text-muted fw-bold">{{ f.motivo }}</small></td>
+
+                                    <td class="text-center border-start"
+                                        data-valor="{% if f.ultimo_abast %}{{ f.ultimo_abast.data[6:10] }}{{ f.ultimo_abast.data[3:5] }}{{ f.ultimo_abast.data[0:2] }}{% endif %}">
+                                        {% if f.ultimo_abast %}
+                                            <span class="d-block fw-bold fs-6 {% if f.ultimo_abast.furou %}text-danger{% else %}text-dark{% endif %}">
+                                                {{ f.ultimo_abast.data }}
+                                            </span>
+                                            <span class="badge bg-secondary mt-1"><i class="bi bi-droplet-half me-1"></i>{{ f.ultimo_abast.quantidade }} L</span>
+                                        {% else %}
+                                            <span class="text-muted small fw-bold">Sem registos</span>
+                                        {% endif %}
+                                    </td>
+                                    
+                                    <td class="text-center border-start p-2">
+                                        {% if f.abasteceu_bloqueado %}
+                                            <span class="badge badge-furou mb-2 d-block shadow-sm py-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Furou Bloqueio!</span>
+                                        {% else %}
+                                            <span class="badge badge-ok mb-2 d-block shadow-sm py-2"><i class="bi bi-check-circle-fill me-1"></i>Respeitado</span>
+                                        {% endif %}
+                                        <button class="btn btn-dark btn-sm fw-bold w-100 shadow-sm" onclick='abrirModalHist({{ f.logs | tojson | safe }}, {{ f.frota | tojson | safe }}, {{ f.data_bloqueio | tojson | safe }}, {{ f.motivo | tojson | safe }})'>
+                                            <i class="bi bi-search me-1"></i>Ver Histórico
+                                        </button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center py-5 text-muted fw-bold">
+                                    <i class="bi bi-shield-check fs-1 d-block mb-3 text-success opacity-75"></i>Nenhuma frota bloqueada neste momento.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade no-print" id="modalHistorico" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-dark text-white border-bottom-0">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-droplet-fill me-2"></i>Histórico Completo de Abastecimentos</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0 bg-light">
+                    <div class="p-3 bg-white border-bottom text-center">
+                        <h4 class="fw-bold text-primary mb-1" id="modFrotaTitle">FROTA</h4>
+                        <span class="badge bg-danger shadow-sm px-3 py-2 mt-1" id="modBloqueioTitle" style="font-size: 0.85rem;">
+                            <i class="bi bi-lock-fill me-1"></i>Bloqueada a partir de: 00/00/0000
+                        </span>
+                        <div class="mt-2">
+                            <span class="badge bg-warning text-dark shadow-sm px-3 py-2" id="modMotivoBloqueio" style="font-size: 0.85rem;">
+                                <i class="bi bi-info-circle-fill me-1"></i>Motivo: <span id="modMotivoBloqueioTexto">-</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="table-responsive" style="max-height: 400px;">
+                        <table class="table table-hover align-middle mb-0 bg-white">
+                            <thead class="table-light" style="position: sticky; top: 0; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);">
+                                <tr>
+                                    <th class="text-center">Data</th>
+                                    <th class="text-center">Litros Abastecidos</th>
+                                    <th class="text-center">KM / Horímetro</th>
+                                    <th class="text-center">Média Apurada</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyHistorico">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-top-0 d-flex justify-content-between">
+                    <span class="text-muted small fw-bold"><i class="bi bi-info-circle-fill text-danger me-1"></i>Linhas a vermelho representam furos ao bloqueio.</span>
+                    <button type="button" class="btn btn-secondary fw-bold shadow-sm" data-bs-dismiss="modal">Fechar Janela</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="pdfAuditoriaContainer" style="position: absolute; left: -9999px; top: 0; width: 760px;" class="no-print">
+        <div id="pdfAuditoriaContent" class="bg-white p-0 pdf-mode" style="width: 760px; max-width: 760px; margin: 0; border: none; box-shadow: none;">
+            <div class="p-3 text-center border-bottom mb-3">
+                <h5 class="fw-bold mb-0" id="pdfAuditoriaTitle">Relatório de Auditoria de Abastecimentos</h5>
+                <span class="small text-muted" id="pdfAuditoriaSubtitle"></span>
+            </div>
+            <table class="table table-custom align-middle mb-0 bg-white" style="table-layout: fixed; word-wrap: break-word;">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="text-center" style="width: 15%;">Frota</th>
+                        <th style="width: 28%;">Descrição da Máquina</th>
+                        <th style="width: 22%;">Motivo do Bloqueio</th>
+                        <th class="text-center" style="width: 14%;">Data do Bloqueio</th>
+                        <th class="text-center" style="width: 21%;">Datas que Furou o Bloqueio</th>
+                    </tr>
+                </thead>
+                <tbody id="pdfAuditoriaTbody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const USUARIO_ADMIN = {{ 'true' if usuario_admin else 'false' }};
+        const PODE_PROGRAMACAO = {{ 'true' if (usuario_admin or perm_programacao) else 'false' }};
+        const PODE_EXTERNOS = {{ 'true' if (usuario_admin or perm_externos) else 'false' }};
+
+        function validarPermissaoLink(destino) {
+            if (USUARIO_ADMIN) return true;
+            if (destino === 'programacao' && !PODE_PROGRAMACAO) { alert('Seu perfil não tem permissão para acessar Programação.'); return false; }
+            if (destino === 'externos' && !PODE_EXTERNOS) { alert('Seu perfil não tem permissão para acessar Serviços Externos.'); return false; }
+            return true;
+        }
+
+        // Passa todas as frotas e logs (calculados no Python) para o JavaScript
+        const frotasAuditoria = {{ frotas | tojson | safe }};
+
+        // Modo escuro: PCM.alternarTema() compartilhado (chave 'pcm-tema') - um
+        // toggle próprio com chave diferente ('theme') fazia o tema não se
+        // manter ao trocar de página, cada uma lendo uma chave diferente.
+
+        const modalHistUI = new bootstrap.Modal(document.getElementById('modalHistorico'));
+
+        function escapeHtml(valor) {
+            return String(valor || '').replace(/[&<>"']/g, function(ch) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+            });
+        }
+
+        function abrirModalHist(logs, frota, dataBloqueio, motivoBloqueio) {
+            document.getElementById('modFrotaTitle').innerText = frota;
+            document.getElementById('modBloqueioTitle').innerHTML = '<i class="bi bi-lock-fill me-1"></i>Bloqueada a partir de: ' + dataBloqueio;
+            document.getElementById('modMotivoBloqueioTexto').innerText = motivoBloqueio || '-';
+            
+            let tbody = document.getElementById('tbodyHistorico');
+            tbody.innerHTML = '';
+            
+            if(logs && logs.length > 0) {
+                logs.forEach(log => {
+                    let classeLinha = log.furou ? 'linha-furou border-danger border-opacity-25' : '';
+                    let iconeFurou = log.furou ? '<i class="bi bi-exclamation-triangle-fill text-danger me-2" title="Abasteceu durante o bloqueio!"></i>' : '';
+                    let corTexto = log.furou ? 'text-danger' : 'text-dark';
+                    
+                    tbody.innerHTML += `
+                        <tr class="${classeLinha}">
+                            <td class="text-center fw-bold ${corTexto} fs-6">${iconeFurou}${log.data}</td>
+                            <td class="text-center fw-bold text-primary"><span class="badge bg-primary bg-opacity-10 text-primary border border-primary px-2 py-1">${log.quantidade} L</span></td>
+                            <td class="text-center text-secondary fw-bold">${log.km}</td>
+                            <td class="text-center text-success fw-bold">${log.media}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5 text-muted fw-bold"><i class="bi bi-inbox fs-1 d-block mb-3 text-secondary opacity-50"></i>Nenhum registo de abastecimento encontrado.</td></tr>';
+            }
+            
+            modalHistUI.show();
+        }
+
+        // ==========================================
+        // MÁQUINA DE FILTROS E EXPORTAÇÃO PDF
+        // ==========================================
+        
+        function filtrarAuditoria(tipo) {
+            let linhas = document.querySelectorAll('.linha-auditoria');
+            
+            let btnTodos = document.getElementById('btnFiltroTodos');
+            let btnFuros = document.getElementById('btnFiltroFuros');
+            
+            if (tipo === 'furos') {
+                btnFuros.classList.replace('btn-outline-danger', 'btn-danger');
+                btnFuros.classList.add('active');
+                btnTodos.classList.replace('btn-primary', 'btn-outline-primary');
+                btnTodos.classList.remove('active');
+                
+                linhas.forEach(linha => {
+                    if (linha.classList.contains('is-furo')) linha.style.setProperty('display', '', 'important');
+                    else linha.style.setProperty('display', 'none', 'important');
+                });
+            } else {
+                btnTodos.classList.replace('btn-outline-primary', 'btn-primary');
+                btnTodos.classList.add('active');
+                btnFuros.classList.replace('btn-danger', 'btn-outline-danger');
+                btnFuros.classList.remove('active');
+                
+                linhas.forEach(linha => linha.style.setProperty('display', '', 'important'));
+            }
+        }
+
+        function baixarAuditoriaPDF() {
+            let btn = document.getElementById('btnPdfAuditoria');
+            let txtOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>A Gerar PDF...';
+            btn.disabled = true;
+
+            let isApenasFuros = document.getElementById('btnFiltroFuros').classList.contains('active');
+            let tbody = document.getElementById('pdfAuditoriaTbody');
+            tbody.innerHTML = ''; // Limpa a tabela fantasma
+
+            // Atualiza Título do Relatório
+            let dt = new Date();
+            document.getElementById('pdfAuditoriaSubtitle').innerText = `Gerado a ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`;
+            document.getElementById('pdfAuditoriaTitle').innerText = isApenasFuros ? 'Relatório de Auditoria: Frotas que Furaram o Bloqueio' : 'Relatório de Auditoria: Todas Frotas Bloqueadas';
+
+            let frotasRenderizadas = 0;
+
+            // Preenche a tabela fantasma apenas com os dados que queremos mostrar
+            frotasAuditoria.forEach(f => {
+                if (isApenasFuros && !f.abasteceu_bloqueado) return; // Ignora se o filtro for apenas furos
+                
+                // Mapeia todas as datas em que esta frota furou o bloqueio
+                let datasFuro = f.logs.filter(l => l.furou).map(l => l.data).join(', ');
+                if(!datasFuro) datasFuro = '-';
+                
+                let corFuro = f.abasteceu_bloqueado ? 'text-danger' : 'text-success';
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="text-center fw-bold">${escapeHtml(f.frota)}</td>
+                        <td>${escapeHtml(f.descricao)}</td>
+                        <td>${escapeHtml(f.motivo || '-')}</td>
+                        <td class="text-center fw-bold">${escapeHtml(f.data_bloqueio)}</td>
+                        <td class="text-center fw-bold ${corFuro}">${escapeHtml(datasFuro)}</td>
+                    </tr>
+                `;
+                frotasRenderizadas++;
+            });
+
+            if (frotasRenderizadas === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center fw-bold py-4 text-muted">Nenhum registro encontrado para os filtros atuais.</td></tr>`;
+            }
+
+            let container = document.getElementById('pdfAuditoriaContent');
+            let nomeFicheiro = isApenasFuros ? 'Auditoria_Furos_Bloqueio.pdf' : 'Auditoria_Abastecimentos_Completa.pdf';
+
+            let opt = {
+                margin:       15,
+                filename:     nomeFicheiro,
+                image:        { type: 'jpeg', quality: 1.0 },
+                html2canvas:  { scale: 2, useCORS: true, scrollX: 0, scrollY: 0 },
+                jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' },
+                pagebreak:    { mode: ['css', 'legacy'] }
+            };
+
+            setTimeout(() => {
+                html2pdf().set(opt).from(container).save().then(() => {
+                    btn.innerHTML = txtOriginal;
+                    btn.disabled = false;
+                });
+            }, 500);
+        }
+    </script>
+    </div>
+</body>
+</html>
+

@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compras - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #f4f6f9; }
+        .compras-kpi {
+            border: none !important; border-radius: 13px !important; border-top: 3px solid #6c757d !important;
+            transition: transform .2s, box-shadow .2s; animation: kpiIn .4s cubic-bezier(.16,.84,.44,1) both;
+        }
+        .compras-kpi:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(16,24,40,.10) !important; }
+        @keyframes kpiIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+        .card-sol { transition: box-shadow .15s, transform .15s; border-left: 5px solid #6c757d; }
+        .card-sol:hover { box-shadow: 0 6px 20px rgba(0,0,0,.13) !important; transform: translateY(-2px); }
+        .card-sol.prior-critico  { border-left-color: #dc3545; }
+        .card-sol.prior-urgente  { border-left-color: #fd7e14; }
+        .card-sol.prior-normal   { border-left-color: #0d6efd; }
+        .card-sol.status-comprado  { border-left-color: #198754; opacity: .85; }
+        .card-sol.status-cancelado { border-left-color: #6c757d; opacity: .65; }
+        .badge-status { font-size: .75rem; padding: .35em .65em; }
+        .label-field { font-size: .7rem; text-transform: uppercase; color: #6c757d; font-weight: 700; margin-bottom: 1px; }
+        .value-field { font-size: .9rem; font-weight: 600; word-break: break-word; }
+
+        /* Celular: o card deixa de ser 3 colunas espremidas e vira 3 blocos
+           empilhados - status em cima, dados no meio, acoes embaixo. */
+        @media (max-width: 767.98px) {
+            .card-sol > .d-flex.align-items-stretch { flex-direction: column; }
+            .card-sol > .d-flex.align-items-stretch > div:first-child {
+                min-width: 100% !important; max-width: 100% !important;
+                flex-direction: row !important; flex-wrap: wrap;
+                align-items: center !important; justify-content: flex-start !important;
+                gap: 8px !important; padding: 8px 12px !important;
+                border-right: 0 !important; border-bottom: 1px solid rgba(0,0,0,.08);
+            }
+            .card-sol .badge-status { width: auto !important; }
+            .card-sol > .d-flex.align-items-stretch > div:last-child {
+                min-width: 100% !important; max-width: 100% !important;
+                flex-direction: row !important; flex-wrap: wrap;
+                border-left: 0 !important; border-top: 1px solid rgba(0,0,0,.08);
+                padding: 9px 12px !important;
+            }
+            .card-sol > .d-flex.align-items-stretch > div:last-child > * { flex: 1 1 auto; }
+            /* Os campos param de espremer em colunas de 2 letras. */
+            .card-sol .d-flex.flex-wrap > div { flex: 1 1 140px; min-width: 140px; }
+        }
+        .dup-alert { display: none; }
+        [data-bs-theme="dark"] body { background-color: #212529; }
+        [data-bs-theme="dark"] .card { background-color: #2b3035 !important; border-color: #495057 !important; color: #f8f9fa !important; }
+        [data-bs-theme="dark"] .label-field { color: #adb5bd; }
+        [data-bs-theme="dark"] .bg-light { background-color: #343a40 !important; }
+        [data-bs-theme="dark"] .form-control, [data-bs-theme="dark"] .form-select { background-color: #343a40; color: #f8f9fa; border-color: #495057; }
+    </style>
+</head>
+<body class="pcm-app">
+{% include '_pcm_shell.html' %}
+
+<div class="pcm-shell">
+<header class="pcm-topbar">
+    <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+    <div>
+        <div class="pcm-tb-crumb">PCM</div>
+        <h1 class="pcm-tb-title">Compras &amp; Solicitações</h1>
+    </div>
+    <div class="pcm-tb-spacer"></div>
+    <div class="pcm-tb-actions">
+        <button id="btnDarkMode" class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+    </div>
+</header>
+
+<main class="pcm-main">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm">
+            <i class="bi {% if category == 'success' %}bi-check-circle-fill{% elif category == 'warning' %}bi-exclamation-triangle-fill{% else %}bi-x-circle-fill{% endif %} me-2"></i>
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- KPIs -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-2">
+            <a href="/compras?status=ABERTO" class="text-decoration-none">
+                <div class="card compras-kpi shadow-sm text-center p-3 h-100 {% if filtro_status == 'ABERTO' %}border-primary border-2{% endif %}" style="border-top-color:#1E4B9A !important;">
+                    <div class="text-muted small fw-bold">ABERTOS</div>
+                    <div class="fs-2 fw-bold" style="color:#1E4B9A" data-contador="{{ stats.abertos or 0 }}">0</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-md-2">
+            <a href="/compras?status=EM COTAÇÃO" class="text-decoration-none">
+                <div class="card compras-kpi shadow-sm text-center p-3 h-100 {% if filtro_status == 'EM COTAÇÃO' %}border-warning border-2{% endif %}" style="border-top-color:#ffc107 !important;">
+                    <div class="text-muted small fw-bold">EM COTAÇÃO</div>
+                    <div class="fs-2 fw-bold text-warning" data-contador="{{ stats.em_cotacao or 0 }}">0</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-md-2">
+            <a href="/compras?status=APROVADO" class="text-decoration-none">
+                <div class="card compras-kpi shadow-sm text-center p-3 h-100 {% if filtro_status == 'APROVADO' %}border-info border-2{% endif %}" style="border-top-color:#0dcaf0 !important;">
+                    <div class="text-muted small fw-bold">APROVADOS</div>
+                    <div class="fs-2 fw-bold text-info" data-contador="{{ stats.aprovados or 0 }}">0</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-md-2">
+            <a href="/compras?status=COMPRADO" class="text-decoration-none">
+                <div class="card compras-kpi shadow-sm text-center p-3 h-100 {% if filtro_status == 'COMPRADO' %}border-success border-2{% endif %}" style="border-top-color:#198754 !important;">
+                    <div class="text-muted small fw-bold">COMPRADOS</div>
+                    <div class="fs-2 fw-bold text-success" data-contador="{{ stats.comprados or 0 }}">0</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-md-2">
+            <a href="/compras?status=CANCELADO" class="text-decoration-none">
+                <div class="card compras-kpi shadow-sm text-center p-3 h-100 {% if filtro_status == 'CANCELADO' %}border-secondary border-2{% endif %}" style="border-top-color:#6c757d !important;">
+                    <div class="text-muted small fw-bold">CANCELADOS</div>
+                    <div class="fs-2 fw-bold text-secondary" data-contador="{{ stats.cancelados or 0 }}">0</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-md-2">
+            <a href="/compras?status=TODOS" class="text-decoration-none">
+                <div class="card compras-kpi shadow-sm text-center p-3 h-100 {% if filtro_status == 'TODOS' %}border-dark border-2{% endif %}" style="border-top-color:#343a40 !important;">
+                    <div class="text-muted small fw-bold">TOTAL</div>
+                    <div class="fs-2 fw-bold" data-contador="{{ stats.total or 0 }}">0</div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold text-primary">
+            <i class="bi bi-funnel me-1"></i>
+            {% if filtro_status == 'TODOS' %}Todas as Solicitações{% else %}{{ filtro_status }}{% endif %}
+            <span class="badge bg-secondary ms-1" id="contadorCards">{{ solicitacoes|length }}</span>
+        </h5>
+        <div class="d-flex gap-2 flex-wrap">
+            <input type="text" id="buscaGeral" class="form-control form-control-sm"
+                   placeholder="Buscar por encarregado, frota, fornecedor, nº sol., nº orc...."
+                   style="min-width:300px" oninput="filtrarCards()">
+            {% if usuario_admin or perm_compras %}
+            <button class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalNova">
+                <i class="bi bi-plus-lg me-1"></i>Nova Solicitação
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Cards (layout linha full-width) -->
+    <div class="d-flex flex-column gap-2" id="gridCards">
+        {% if solicitacoes %}
+            {% for s in solicitacoes %}
+            {% set prior_cls = 'prior-critico' if s.prioridade == 'CRÍTICO' else ('prior-urgente' if s.prioridade == 'URGENTE' else 'prior-normal') %}
+            {% set status_cls = 'status-comprado' if s.status == 'COMPRADO' else ('status-cancelado' if s.status == 'CANCELADO' else '') %}
+            <div class="card-item page-item"
+                 data-texto="{{ (s.encarregado ~ ' ' ~ s.descricao ~ ' ' ~ s.frota ~ ' ' ~ s.fornecedor ~ ' ' ~ s.nro_solicitacao ~ ' ' ~ s.nro_orcamento ~ ' ' ~ s.criado_por)|upper }}">
+                <div class="card shadow-sm card-sol {{ prior_cls }} {{ status_cls }} overflow-hidden">
+                    <div class="d-flex align-items-stretch">
+
+                        <!-- Coluna: Status + ID + Data -->
+                        <div class="d-flex flex-column justify-content-center align-items-center gap-1 px-3 py-2 border-end"
+                             style="min-width:115px; max-width:115px; background:rgba(0,0,0,.03)">
+                            {% if s.status == 'ABERTO' %}
+                                <span class="badge bg-primary badge-status w-100 text-center">ABERTO</span>
+                            {% elif s.status == 'EM COTAÇÃO' %}
+                                <span class="badge bg-warning text-dark badge-status w-100 text-center">EM COTAÇÃO</span>
+                            {% elif s.status == 'APROVADO' %}
+                                <span class="badge bg-info text-dark badge-status w-100 text-center">APROVADO</span>
+                            {% elif s.status == 'COMPRADO' %}
+                                <span class="badge bg-success badge-status w-100 text-center">COMPRADO</span>
+                            {% elif s.status == 'CANCELADO' %}
+                                <span class="badge bg-secondary badge-status w-100 text-center">CANCELADO</span>
+                            {% endif %}
+                            {% if s.prioridade == 'CRÍTICO' %}
+                                <span class="badge bg-danger badge-status w-100 text-center"><i class="bi bi-exclamation-triangle-fill me-1"></i>CRÍTICO</span>
+                            {% elif s.prioridade == 'URGENTE' %}
+                                <span class="badge bg-warning text-dark badge-status w-100 text-center"><i class="bi bi-lightning-fill me-1"></i>URGENTE</span>
+                            {% endif %}
+                            <div class="text-muted fw-bold" style="font-size:.72rem">#{{ s.id }}</div>
+                            <div class="text-muted" style="font-size:.68rem">
+                                {% if s.data_solicitacao %}{{ s.data_solicitacao[8:10] }}/{{ s.data_solicitacao[5:7] }}/{{ s.data_solicitacao[0:4] }}{% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Corpo: campos principais -->
+                        <div class="flex-grow-1 py-2 px-3 d-flex flex-column justify-content-center" style="min-width:0">
+                            <div class="d-flex flex-wrap gap-x-4 gap-y-0 align-items-start" style="column-gap:1.5rem; row-gap:.15rem">
+                                <div>
+                                    <div class="label-field">Encarregado</div>
+                                    <div class="value-field">{{ s.encarregado or '—' }}</div>
+                                </div>
+                                <div>
+                                    <div class="label-field">Frota</div>
+                                    <div class="value-field">{{ s.frota or '—' }}</div>
+                                </div>
+                                <div>
+                                    <div class="label-field">Fornecedor</div>
+                                    <div class="value-field">{{ s.fornecedor or '—' }}</div>
+                                </div>
+                                <div>
+                                    <div class="label-field">Nº Orçamento</div>
+                                    <div class="value-field text-primary">{{ s.nro_orcamento or '—' }}</div>
+                                </div>
+                                <div>
+                                    <div class="label-field">Nº Solicitação</div>
+                                    <div class="value-field text-success">{{ s.nro_solicitacao or '—' }}</div>
+                                </div>
+                                {% if s.observacao %}
+                                <div style="flex-basis:100%">
+                                    <div class="label-field">Obs</div>
+                                    <div class="value-field text-muted fst-italic" style="font-size:.82rem">{{ s.observacao }}</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% if s.itens %}
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                <span class="text-muted" style="font-size:.7rem; align-self:center"><i class="bi bi-list-ul me-1"></i>{{ s.itens|length }} iten(s):</span>
+                                {% for it in s.itens %}
+                                <span class="badge bg-light text-dark border" style="font-size:.72rem; font-weight:500; max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="{{ it.descricao }}">
+                                    {% if it.codigo %}<span class="badge bg-secondary me-1" style="font-size:.62rem">{{ it.codigo }}</span>{% endif %}
+                                    {{ it.descricao }}{% if it.quantidade %} · {{ it.quantidade }}{{ ' ' ~ it.unidade if it.unidade else '' }}{% endif %}
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            <div class="text-muted mt-1" style="font-size:.67rem">
+                                Criado por <strong>{{ s.criado_por or 'Usuário' }}</strong>
+                                em {{ s.criado_em[:10] if s.criado_em else '—' }}
+                                {% if s.data_conclusao %} · Concluído {{ s.data_conclusao[8:10] }}/{{ s.data_conclusao[5:7] }}/{{ s.data_conclusao[0:4] }}{% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Coluna: Ações -->
+                        <div class="d-flex flex-column justify-content-center gap-1 px-2 py-2 border-start"
+                             style="min-width:120px; max-width:130px; background:rgba(0,0,0,.03)">
+                            {% if s.status not in ['COMPRADO', 'CANCELADO'] %}
+                                {% if s.status == 'ABERTO' %}
+                                <button class="btn btn-warning btn-sm" onclick="mudarStatus({{ s.id }}, 'EM COTAÇÃO')" title="Mover para Em Cotação">
+                                    <i class="bi bi-arrow-right-circle me-1"></i>Em Cotação
+                                </button>
+                                {% elif s.status == 'EM COTAÇÃO' %}
+                                <button class="btn btn-info btn-sm text-dark" onclick="mudarStatus({{ s.id }}, 'APROVADO')" title="Aprovar">
+                                    <i class="bi bi-check-circle me-1"></i>Aprovar
+                                </button>
+                                {% elif s.status == 'APROVADO' %}
+                                <button class="btn btn-success btn-sm" onclick="mudarStatus({{ s.id }}, 'COMPRADO')" title="Marcar como Comprado">
+                                    <i class="bi bi-bag-check-fill me-1"></i>Comprado
+                                </button>
+                                {% endif %}
+                                <button class="btn btn-outline-primary btn-sm" title="Editar"
+                                    onclick="abrirEdicao({{ s.id }}, '{{ s.fornecedor|replace("'","\\'")|e }}', '{{ s.nro_orcamento|e }}', '{{ s.nro_solicitacao|e }}', '{{ s.observacao|replace("'","\\'")|e }}', '{{ s.prioridade }}', '{{ s.encarregado|replace("'","\\'")|e }}')">
+                                    <i class="bi bi-pencil-square me-1"></i>Editar
+                                </button>
+                                <button class="btn btn-secondary btn-sm" onclick="mudarStatus({{ s.id }}, 'CANCELADO')" title="Cancelar">
+                                    <i class="bi bi-x-circle me-1"></i>Cancelar
+                                </button>
+                            {% endif %}
+                            {% if usuario_admin %}
+                            <form action="/api/compras/excluir/{{ s.id }}" method="POST"
+                                  onsubmit="return confirm('Excluir #{{ s.id }} permanentemente?')">
+                                <button class="btn btn-outline-danger btn-sm w-100" title="Excluir"><i class="bi bi-trash3 me-1"></i>Excluir</button>
+                            </form>
+                            {% endif %}
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+        <div class="card shadow-sm text-center py-5">
+            <div class="text-muted">
+                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                Nenhuma solicitação encontrada com o filtro atual.
+                <br><a href="#" data-bs-toggle="modal" data-bs-target="#modalNova">Criar a primeira solicitação</a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Paginação -->
+    <div id="paginacaoBar" class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2" style="display:none!important">
+        <span class="text-muted small" id="paginacaoInfo"></span>
+        <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-secondary" onclick="irPagina(_pgAtual - 1)" id="btnPrev">
+                <i class="bi bi-chevron-left"></i> Anterior
+            </button>
+            <div id="paginacaoBotoes" class="d-flex gap-1"></div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="irPagina(_pgAtual + 1)" id="btnNext">
+                Próximo <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+</main>
+
+<!-- Menu flutuante de autocomplete (compartilhado entre as linhas) -->
+<div id="menuAutocompleteCompra" class="list-group shadow border" style="position:fixed;z-index:2000;max-height:240px;overflow-y:auto;display:none;min-width:340px;"></div>
+
+<!-- Modal: Nova Solicitação -->
+<div class="modal fade" id="modalNova" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle-fill me-2"></i>Nova Solicitação de Compra</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/api/compras/nova" method="POST">
+                <div class="modal-body">
+
+                    <!-- Alerta de duplicidade em tempo real -->
+                    <div id="alertaDup" class="alert alert-warning d-none mb-3">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <span id="alertaDupMsg"></span>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Data <span class="text-danger">*</span></label>
+                            <input type="date" name="data_solicitacao" class="form-control" value="{{ hoje }}" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Prioridade</label>
+                            <select name="prioridade" class="form-select">
+                                <option value="NORMAL">Normal</option>
+                                <option value="URGENTE">Urgente</option>
+                                <option value="CRÍTICO">Crítico</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Encarregado / Solicitante <span class="text-danger">*</span></label>
+                            <input type="text" name="encarregado" class="form-control" placeholder="Nome do encarregado que pediu" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Fornecedor</label>
+                            <input type="text" name="fornecedor" class="form-control" placeholder="Ex.: DISTRIBUIDORA XYZ">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Frota Vinculada</label>
+                            <input type="text" name="frota" class="form-control" list="listFrotas" placeholder="Nº da frota (opcional)">
+                            <datalist id="listFrotas">
+                                {% for f in frotas %}
+                                <option value="{{ f.id_frota }}">{{ f.descricao }}</option>
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Nº Orçamento</label>
+                            <input type="text" name="nro_orcamento" id="inputNroOrc" class="form-control" placeholder="Número do orçamento"
+                                   onblur="verificarDuplicidade()">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Nº Solicitação</label>
+                            <input type="text" name="nro_solicitacao" id="inputNroSol" class="form-control" placeholder="Número da solicitação"
+                                   onblur="verificarDuplicidade()">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Observação</label>
+                            <textarea name="observacao" class="form-control" rows="1" placeholder="Informações adicionais..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Seção de itens -->
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold"><i class="bi bi-list-ul me-1 text-primary"></i>Itens
+                            <span class="badge bg-primary ms-1" id="badgeQtdItens">0</span>
+                        </span>
+                        <button type="button" class="btn btn-primary btn-sm fw-bold" onclick="adicionarItemCompra()">
+                            <i class="bi bi-plus-circle me-1"></i>Adicionar Item
+                        </button>
+                    </div>
+                    <div class="table-responsive border rounded">
+                        <table class="table table-sm align-middle mb-0" id="tabelaItensCompra">
+                            <thead class="table-secondary">
+                                <tr>
+                                    <th style="width:110px">Código</th>
+                                    <th>Descrição</th>
+                                    <th style="width:80px">Qtd</th>
+                                    <th style="width:80px">Unidade</th>
+                                    <th style="width:40px"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="itensCompraBody">
+                                <tr id="trVazio">
+                                    <td colspan="5" class="text-center text-muted py-3" style="font-size:.85rem">
+                                        <i class="bi bi-arrow-up-circle me-1"></i>Clique em "Adicionar Item" para incluir produtos
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-floppy-fill me-1"></i>Registrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Editar campos complementares -->
+<div class="modal fade" id="modalEdicao" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i>Editar Solicitação #<span id="editId"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Encarregado / Solicitante</label>
+                        <input type="text" id="editEncarregado" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Prioridade</label>
+                        <select id="editPrior" class="form-select">
+                            <option value="NORMAL">Normal</option>
+                            <option value="URGENTE">Urgente</option>
+                            <option value="CRÍTICO">Crítico</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Fornecedor</label>
+                        <input type="text" id="editFornecedor" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Nº Orçamento</label>
+                        <input type="text" id="editNroOrc" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Nº Solicitação</label>
+                        <input type="text" id="editNroSol" class="form-control">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Observação</label>
+                        <textarea id="editObs" class="form-control" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning fw-bold" onclick="salvarEdicao()"><i class="bi bi-floppy-fill me-1"></i>Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<datalist id="listUnidades">
+    <option value="UN">
+    <option value="PC">
+    <option value="CX">
+    <option value="KG">
+    <option value="LT">
+    <option value="MT">
+    <option value="PAR">
+    <option value="JG">
+    <option value="RL">
+</datalist>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        PCM.iniciarContadores(document);
+    });
+</script>
+<script>
+    // Modo escuro: PCM.alternarTema() compartilhado (chave 'pcm-tema'). Esta
+    // página usava uma chave própria ('pcm_theme', com underscore) - o tema
+    // não se mantinha ao trocar de página porque cada uma lia uma chave.
+
+    // ── Paginação ─────────────────────────────────────────────────────────────
+    const POR_PAGINA = 20;
+    let _pgAtual = 1;
+
+    function renderPaginacao() {
+        const items = Array.from(document.querySelectorAll('.page-item')).filter(el => el.style.display !== 'none');
+        const total = items.length;
+        const totalPags = Math.max(1, Math.ceil(total / POR_PAGINA));
+        _pgAtual = Math.min(_pgAtual, totalPags);
+        const inicio = (_pgAtual - 1) * POR_PAGINA;
+        const fim = inicio + POR_PAGINA;
+
+        items.forEach((el, i) => { el.style.visibility = ''; el.style.position = ''; el.hidden = (i < inicio || i >= fim); });
+        document.getElementById('contadorCards').textContent = total;
+
+        const bar = document.getElementById('paginacaoBar');
+        if (total > POR_PAGINA) {
+            bar.style.removeProperty('display');
+            document.getElementById('paginacaoInfo').textContent =
+                `Exibindo ${inicio + 1}–${Math.min(fim, total)} de ${total}`;
+            document.getElementById('btnPrev').disabled = (_pgAtual === 1);
+            document.getElementById('btnNext').disabled = (_pgAtual === totalPags);
+            // Botões de página
+            const btns = document.getElementById('paginacaoBotoes');
+            btns.innerHTML = '';
+            for (let p = 1; p <= totalPags; p++) {
+                const b = document.createElement('button');
+                b.className = 'btn btn-sm ' + (p === _pgAtual ? 'btn-primary' : 'btn-outline-secondary');
+                b.textContent = p;
+                b.onclick = () => irPagina(p);
+                btns.appendChild(b);
+            }
+        } else {
+            bar.style.display = 'none';
+        }
+    }
+
+    function irPagina(pg) {
+        _pgAtual = pg;
+        renderPaginacao();
+        document.getElementById('gridCards').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ── Filtro local por texto ────────────────────────────────────────────────
+    function filtrarCards() {
+        const termo = document.getElementById('buscaGeral').value.toUpperCase().trim();
+        document.querySelectorAll('.card-item').forEach(el => {
+            el.style.display = (!termo || (el.dataset.texto || '').includes(termo)) ? '' : 'none';
+        });
+        _pgAtual = 1;
+        renderPaginacao();
+    }
+
+    // ── Mudar status via API ──────────────────────────────────────────────────
+    function mudarStatus(id, novoStatus) {
+        const msgs = {
+            'EM COTAÇÃO': 'Mover para Em Cotação?',
+            'APROVADO':   'Aprovar esta solicitação?',
+            'COMPRADO':   'Marcar como Comprado?',
+            'CANCELADO':  'Cancelar esta solicitação?'
+        };
+        if (!confirm(msgs[novoStatus] || 'Confirmar?')) return;
+        if (window.PCM) PCM.loading.show('Atualizando solicitação...');
+        fetch('/api/compras/atualizar/' + id, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: novoStatus })
+        }).then(r => r.json()).then(d => {
+            if (d.status === 'ok') { location.reload(); return; }
+            if (window.PCM) { PCM.loading.hide(); PCM.toast(d.msg || 'Não deu para atualizar.', 'erro'); }
+        }).catch(() => { if (window.PCM) { PCM.loading.hide(); PCM.toast('Erro de conexão.', 'erro'); } });
+    }
+
+    // ── Edição inline ─────────────────────────────────────────────────────────
+    let _editId = null;
+    function abrirEdicao(id, fornecedor, nroOrc, nroSol, obs, prior, encarregado) {
+        _editId = id;
+        document.getElementById('editId').textContent = id;
+        document.getElementById('editEncarregado').value = encarregado || '';
+        document.getElementById('editFornecedor').value = fornecedor || '';
+        document.getElementById('editNroOrc').value = nroOrc || '';
+        document.getElementById('editNroSol').value = nroSol || '';
+        document.getElementById('editObs').value = obs || '';
+        document.getElementById('editPrior').value = prior || 'NORMAL';
+        new bootstrap.Modal(document.getElementById('modalEdicao')).show();
+    }
+    function salvarEdicao() {
+        if (!_editId) return;
+        const payload = {
+            encarregado:     document.getElementById('editEncarregado').value.trim(),
+            fornecedor:      document.getElementById('editFornecedor').value.trim(),
+            nro_orcamento:   document.getElementById('editNroOrc').value.trim(),
+            nro_solicitacao: document.getElementById('editNroSol').value.trim(),
+            observacao:      document.getElementById('editObs').value.trim(),
+            prioridade:      document.getElementById('editPrior').value
+        };
+        if (window.PCM) PCM.loading.show('Salvando alterações...');
+        fetch('/api/compras/atualizar/' + _editId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(r => r.json()).then(d => {
+            if (d.status === 'ok') { location.reload(); return; }
+            if (window.PCM) { PCM.loading.hide(); PCM.toast(d.msg || 'Não deu para salvar.', 'erro'); }
+        }).catch(() => { if (window.PCM) { PCM.loading.hide(); PCM.toast('Erro de conexão.', 'erro'); } });
+    }
+
+    // ── Itens com autocomplete da base da ferramentaria ──────────────────────
+    let _acTimer = null;
+    let _acLinhaAtual = null;
+
+    function adicionarItemCompra() {
+        const tbody = document.getElementById('itensCompraBody');
+        // Remove linha "vazio" se ainda existir
+        const trVazio = document.getElementById('trVazio');
+        if (trVazio) trVazio.remove();
+
+        const tr = document.createElement('tr');
+        tr.className = 'item-compra-row';
+        tr.innerHTML = `
+            <td style="position:relative">
+                <input type="text" name="item_codigo[]" class="form-control form-control-sm ic-codigo"
+                       placeholder="Cód." autocomplete="off"
+                       oninput="acBuscar(this)">
+            </td>
+            <td style="position:relative">
+                <input type="text" name="item_descricao[]" class="form-control form-control-sm ic-descricao"
+                       placeholder="Digite para buscar..." autocomplete="off"
+                       oninput="acBuscar(this)">
+            </td>
+            <td><input type="text" name="item_quantidade[]" class="form-control form-control-sm" placeholder="1"></td>
+            <td>
+                <input type="text" name="item_unidade[]" class="form-control form-control-sm" placeholder="UN" list="listUnidades">
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-outline-danger btn-sm border-0 px-1" onclick="removerItemCompra(this)" title="Remover">
+                    <i class="bi bi-trash-fill"></i>
+                </button>
+            </td>`;
+        tbody.appendChild(tr);
+        atualizarBadgeItens();
+        tr.querySelector('.ic-descricao').focus();
+    }
+
+    function removerItemCompra(btn) {
+        btn.closest('tr').remove();
+        atualizarBadgeItens();
+        if (document.getElementById('itensCompraBody').children.length === 0) {
+            const tbody = document.getElementById('itensCompraBody');
+            const trVazio = document.createElement('tr');
+            trVazio.id = 'trVazio';
+            trVazio.innerHTML = `<td colspan="5" class="text-center text-muted py-3" style="font-size:.85rem">
+                <i class="bi bi-arrow-up-circle me-1"></i>Clique em "Adicionar Item" para incluir produtos</td>`;
+            tbody.appendChild(trVazio);
+        }
+    }
+
+    function atualizarBadgeItens() {
+        const n = document.querySelectorAll('.item-compra-row').length;
+        document.getElementById('badgeQtdItens').textContent = n;
+    }
+
+    // Autocomplete
+    function acBuscar(input) {
+        clearTimeout(_acTimer);
+        const termo = input.value.trim();
+        _acLinhaAtual = input.closest('tr');
+        if (termo.length < 2) { acFechar(); return; }
+        _acTimer = setTimeout(() => {
+            fetch('/api/ferramentaria/ferramentas/buscar?q=' + encodeURIComponent(termo))
+                .then(r => r.json())
+                .then(dados => acRenderizar(dados, input))
+                .catch(() => acFechar());
+        }, 250);
+    }
+
+    function acRenderizar(dados, input) {
+        const menu = document.getElementById('menuAutocompleteCompra');
+        const rect = input.getBoundingClientRect();
+        menu.style.left  = rect.left + 'px';
+        menu.style.top   = (rect.bottom + 4) + 'px';
+        menu.style.width = Math.max(rect.width, 360) + 'px';
+        if (!dados.length) {
+            menu.innerHTML = '<div class="list-group-item small text-muted">Nenhum item encontrado</div>';
+            menu.style.display = 'block';
+            return;
+        }
+        menu.innerHTML = dados.map(it => `
+            <button type="button" class="list-group-item list-group-item-action py-2"
+                    data-codigo="${escHtml(it.codigo)}" data-descricao="${escHtml(it.descricao)}">
+                <div class="fw-bold text-primary small">${escHtml(it.codigo)}</div>
+                <div class="small">${escHtml(it.descricao)}</div>
+            </button>`).join('');
+        menu.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('mousedown', e => {
+                e.preventDefault();
+                acSelecionar(btn.dataset.codigo, btn.dataset.descricao);
+            });
+        });
+        menu.style.display = 'block';
+    }
+
+    function acSelecionar(codigo, descricao) {
+        if (!_acLinhaAtual) return;
+        _acLinhaAtual.querySelector('.ic-codigo').value    = codigo;
+        _acLinhaAtual.querySelector('.ic-descricao').value = descricao;
+        acFechar();
+        const qtd = _acLinhaAtual.querySelector('input[name="item_quantidade[]"]');
+        if (qtd) qtd.focus();
+    }
+
+    function acFechar() {
+        const menu = document.getElementById('menuAutocompleteCompra');
+        menu.style.display = 'none';
+        menu.innerHTML = '';
+    }
+
+    function escHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#menuAutocompleteCompra')) acFechar();
+    });
+
+    // Limpa itens ao fechar o modal
+    document.getElementById('modalNova').addEventListener('hidden.bs.modal', function () {
+        document.querySelectorAll('.item-compra-row').forEach(r => r.remove());
+        acFechar();
+        const tbody = document.getElementById('itensCompraBody');
+        if (!document.getElementById('trVazio')) {
+            const trVazio = document.createElement('tr');
+            trVazio.id = 'trVazio';
+            trVazio.innerHTML = `<td colspan="5" class="text-center text-muted py-3" style="font-size:.85rem">
+                <i class="bi bi-arrow-up-circle me-1"></i>Clique em "Adicionar Item" para incluir produtos</td>`;
+            tbody.appendChild(trVazio);
+        }
+        atualizarBadgeItens();
+    });
+
+    // Inicializa paginação ao carregar
+    renderPaginacao();
+
+    // ── Verificação de duplicidade em tempo real ──────────────────────────────
+    function verificarDuplicidade() {
+        const nroOrc = document.getElementById('inputNroOrc').value.trim();
+        const nroSol = document.getElementById('inputNroSol').value.trim();
+        if (!nroOrc && !nroSol) {
+            document.getElementById('alertaDup').classList.add('d-none');
+            return;
+        }
+        const params = new URLSearchParams();
+        if (nroOrc) params.set('nro_orcamento', nroOrc);
+        if (nroSol) params.set('nro_solicitacao', nroSol);
+        fetch('/api/compras/verificar?' + params.toString())
+            .then(r => r.json())
+            .then(d => {
+                const alerta = document.getElementById('alertaDup');
+                if (d.duplicado) {
+                    document.getElementById('alertaDupMsg').textContent = d.msg;
+                    alerta.classList.remove('d-none');
+                } else {
+                    alerta.classList.add('d-none');
+                }
+            });
+    }
+</script>
+    </div>
+</body>
+</html>

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatórios de Programação - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+    <style>
+        .esp-grade {
+            display: grid; gap: clamp(12px, 1.2vw, 18px);
+            grid-template-columns: repeat(auto-fill, minmax(clamp(250px, 23vw, 320px), 1fr));
+        }
+        .esp-card {
+            background: var(--pcm-surface); border: 1px solid var(--pcm-border);
+            border-radius: var(--pcm-r); box-shadow: var(--pcm-shadow-1);
+            padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;
+            transition: transform var(--pcm-fast) var(--pcm-ease),
+                        box-shadow var(--pcm-fast) var(--pcm-ease),
+                        border-color var(--pcm-fast) var(--pcm-ease);
+        }
+        .esp-card:hover {
+            transform: translateY(-3px); box-shadow: var(--pcm-shadow-2);
+            border-color: var(--pcm-brand-hi);
+        }
+        .esp-nome {
+            font-size: .95rem; font-weight: 700; color: var(--pcm-text);
+            line-height: 1.25; display: flex; align-items: center; gap: 7px;
+        }
+        .esp-nome i { color: var(--pcm-brand); font-size: 1.05rem; }
+
+        .esp-minis { display: flex; gap: 7px; }
+        .esp-mini {
+            flex: 1; min-width: 0; text-align: center;
+            background: var(--pcm-surface-2); border-radius: var(--pcm-r-sm); padding: 6px 4px;
+        }
+        .esp-mini .rot {
+            font-size: .62rem; font-weight: 600; letter-spacing: .4px;
+            text-transform: uppercase; color: var(--pcm-text-mute);
+        }
+        .esp-mini .vl { font-size: 1.05rem; font-weight: 700; color: var(--pcm-text); line-height: 1.25; }
+
+        .esp-ad-txt {
+            display: flex; justify-content: space-between; align-items: baseline;
+            font-size: .72rem; color: var(--pcm-text-mute); margin-bottom: 4px;
+        }
+        .esp-ad-txt b { font-size: .95rem; font-weight: 700; color: var(--pcm-ad-cor); }
+        .esp-ad-barra {
+            height: 8px; border-radius: 99px; background: var(--pcm-surface-2); overflow: hidden;
+        }
+        .esp-ad-barra > span {
+            display: block; height: 100%; width: 0; border-radius: 99px;
+            background: var(--pcm-ad-cor);
+            transition: width .95s var(--pcm-ease);
+        }
+        .esp-card--bom     { --pcm-ad-cor: var(--pcm-realizada); }
+        .esp-card--atencao { --pcm-ad-cor: #b58500; }
+        .esp-card--critico { --pcm-ad-cor: var(--pcm-bloqueada); }
+
+        .esp-acoes { display: flex; gap: 7px; margin-top: auto; }
+        .esp-acoes .btn { flex: 1; font-weight: 600; font-size: .78rem; }
+
+        a.pcm-chip { text-decoration: none; }
+
+        #loteCaixa { display: none; }
+        #loteCaixa.ativo { display: block; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .esp-card { transition: none; }
+            .esp-ad-barra > span { transition: none; }
+        }
+    </style>
+</head>
+<body class="pcm-app">
+    {% include '_pcm_shell.html' %}
+
+    <div class="pcm-shell">
+    <header class="pcm-topbar">
+        <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+        <div>
+            <div class="pcm-tb-crumb">PCM</div>
+            <h1 class="pcm-tb-title">Relatórios por Setor</h1>
+        </div>
+        <div class="pcm-tb-spacer"></div>
+        <div class="pcm-tb-actions">
+            <span class="pcm-status pcm-status--pendente">
+                {{ setores|length }} setor{{ 'es' if setores|length != 1 }}
+            </span>
+            <a href="/programacao" class="pcm-btn-icon" title="Voltar à programação"><i class="bi bi-arrow-left"></i></a>
+            <button class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+        </div>
+    </header>
+
+    <div class="pcm-main">
+
+        <div class="pcm-card mb-3">
+            <div class="pcm-card-h">
+                <h6><i class="bi bi-sliders me-1"></i>Como separar os relatórios</h6>
+                <span class="text-muted small">Um PDF separado por setor, com as frentes dentro</span>
+            </div>
+            <div class="pcm-card-b">
+                {% if not total_vinculos %}
+                <div class="pcm-leitura pcm-leitura--atencao mb-3">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <div>
+                        Dentro de cada setor o relatório separa as frotas por <strong>frente</strong>, mas
+                        nenhuma frota está vinculada a uma frente ainda — por isso essa divisão não aparece.
+                        O vínculo é feito em <a href="/dash_frentes" class="fw-semibold">Frentes de Serviço</a>.
+                    </div>
+                </div>
+                {% endif %}
+
+                <form class="row g-2 align-items-end" method="get" action="/relatorios_preventiva">
+                    <div class="col-6 col-lg-3">
+                        <label class="form-label small fw-semibold mb-1">Início</label>
+                        <input type="date" class="form-control form-control-sm" name="inicio" value="{{ inicio }}">
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <label class="form-label small fw-semibold mb-1">Fim</label>
+                        <input type="date" class="form-control form-control-sm" name="fim" value="{{ fim }}">
+                    </div>
+                    <div class="col-12 col-lg-3">
+                        <label class="form-label small fw-semibold mb-1">Tipo de serviço</label>
+                        <select class="form-select form-select-sm" name="tipo">
+                            {% for t, rot in [('PREVENTIVA', 'Preventiva'),
+                                              ('PIT STOP', 'Pit Stop'),
+                                              ('TROCA DE OLEO', 'Troca de Óleo'),
+                                              ('ANALISE DE OLEO', 'Análise de Óleo'),
+                                              ('SOPRAGEM DE FILTROS', 'Sopragem de Filtros')] %}
+                            <option value="{{ t }}" {{ 'selected' if tipo == t }}>{{ rot }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-lg-3 d-flex gap-2">
+                        <button class="btn btn-primary btn-sm fw-semibold flex-fill">
+                            <i class="bi bi-funnel-fill me-1"></i>Aplicar
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm fw-semibold flex-fill"
+                                id="btnLote" onclick="gerarSelecionados()" {{ 'disabled' if not setores }}>
+                            <i class="bi bi-files me-1"></i>Gerar <span id="qtdSel">0</span> PDFs
+                        </button>
+                    </div>
+                </form>
+
+                <div id="loteCaixa" class="mt-3">
+                    <div class="d-flex justify-content-between small fw-semibold mb-1">
+                        <span id="loteTexto">Preparando…</span>
+                        <span id="loteContador" class="text-muted">0 / 0</span>
+                    </div>
+                    <div class="pcm-progress"><span id="loteBarra" style="width:0%;background:var(--pcm-bloqueada)"></span></div>
+                </div>
+            </div>
+        </div>
+
+        {% if setores %}
+        {% set _geral = namespace(total=0, real=0) %}
+        {% for e in setores %}{% set _geral.total = _geral.total + e.servicos %}{% set _geral.real = _geral.real + e.realizadas %}{% endfor %}
+        {% set _ad_geral = (_geral.real / _geral.total * 100) if _geral.total else 0 %}
+        <div class="pcm-leitura pcm-leitura--{{ 'bom' if _ad_geral >= 80 else ('atencao' if _ad_geral >= 50 else 'critico') }} mb-3">
+            <i class="bi bi-{{ 'emoji-smile-fill' if _ad_geral >= 80 else ('emoji-neutral-fill' if _ad_geral >= 50 else 'emoji-frown-fill') }}"></i>
+            <div>
+                No período, <strong>{{ _geral.real }}</strong> de <strong>{{ _geral.total }}</strong> serviços de
+                {{ tipo|lower }} foram realizados em {{ setores|length }} setores.
+                {% if _ad_geral >= 80 %}O plano está sendo cumprido.
+                {% elif _ad_geral >= 50 %}Há um volume relevante em aberto — veja os cartões em vermelho abaixo.
+                {% else %}A execução está muito abaixo do programado; priorize os críticos.{% endif %}
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <div class="form-check m-0">
+                <input class="form-check-input" type="checkbox" id="selTodas" onchange="marcarTodas(this.checked)">
+                <label class="form-check-label small fw-semibold" for="selTodas">Selecionar todos</label>
+            </div>
+            <button type="button" class="pcm-chip" onclick="marcarCriticas()">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>Só os críticos (&lt; 50%)
+            </button>
+            <span class="text-muted small ms-auto">Marque o que precisa e clique em <strong>Gerar</strong>.</span>
+        </div>
+
+        <div class="esp-grade">
+            {% for e in setores %}
+            {% set faixa = 'bom' if e.aderencia >= 80 else ('atencao' if e.aderencia >= 50 else 'critico') %}
+            <article class="esp-card esp-card--{{ faixa }}" data-aderencia="{{ e.aderencia }}">
+                <div class="esp-nome">
+                    <input class="form-check-input esp-sel m-0" type="checkbox"
+                           value="{{ e.nome }}" onchange="atualizarSelecao()"
+                           aria-label="Incluir {{ e.nome }} na geração em lote">
+                    <i class="bi bi-geo-alt-fill"></i>{{ e.nome }}
+                </div>
+
+                <div class="esp-minis">
+                    <div class="esp-mini"><div class="rot">Frotas</div><div class="vl" data-contador="{{ e.frotas }}">0</div></div>
+                    <div class="esp-mini"><div class="rot">Especial.</div><div class="vl" data-contador="{{ e.especialidades }}">0</div></div>
+                    <div class="esp-mini"><div class="rot">Serviços</div><div class="vl" data-contador="{{ e.servicos }}">0</div></div>
+                    <div class="esp-mini"><div class="rot">Realiz.</div><div class="vl" data-contador="{{ e.realizadas }}">0</div></div>
+                </div>
+
+                <div>
+                    <div class="esp-ad-txt">
+                        <span>Aderência</span>
+                        <b>{{ ('%.1f'|format(e.aderencia))|replace('.', ',') }}%</b>
+                    </div>
+                    <div class="esp-ad-barra"><span data-largura="{{ e.aderencia }}"></span></div>
+                </div>
+
+                <div class="esp-acoes">
+                    <a class="btn btn-sm btn-outline-primary"
+                       href="/relatorio_preventiva_setor?setor={{ e.nome|urlencode }}&tipo={{ tipo|urlencode }}&inicio={{ inicio }}&fim={{ fim }}"
+                       target="_blank" rel="noopener">
+                        <i class="bi bi-eye-fill me-1"></i>Abrir
+                    </a>
+                    <button class="btn btn-sm btn-danger" onclick="baixarUm({{ e.nome|tojson }})">
+                        <i class="bi bi-file-earmark-pdf-fill me-1"></i>PDF
+                    </button>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="pcm-card">
+            <div class="pcm-card-b text-center py-5">
+                <i class="bi bi-inbox" style="font-size:2.4rem;color:var(--pcm-text-mute)"></i>
+                <p class="mt-2 mb-0 text-muted">
+                    Nenhuma programação de <strong>{{ tipo|lower }}</strong> encontrada entre
+                    {{ inicio }} e {{ fim }}.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    PCM.iniciarTudo(document);
+    // A barra sai de zero depois da montagem, senao o crescimento nao aparece.
+    // setTimeout puro (sem requestAnimationFrame): numa aba em segundo plano o
+    // rAF pode nunca disparar, e essa tela é aberta assim com frequência (geração
+    // em lote de PDFs abre um monte de abas atrás da atual).
+    setTimeout(() => {
+        document.querySelectorAll('.esp-ad-barra > span').forEach(b => {
+            b.style.width = Math.max(0, Math.min(100, parseFloat(b.dataset.largura) || 0)) + '%';
+        });
+    }, 140);
+    if (document.querySelector('.esp-sel')) atualizarSelecao();
+});
+
+const BASE = '/relatorio_preventiva_setor';
+const EXTRA = '&tipo={{ tipo|urlencode }}&inicio={{ inicio }}&fim={{ fim }}&auto=1';
+
+// O PDF e montado dentro do proprio relatorio (html2pdf precisa do DOM ja
+// renderizado), entao cada setor abre numa aba que baixa e se fecha.
+function baixarUm(nome) {
+    const w = window.open(BASE + '?setor=' + encodeURIComponent(nome) + EXTRA, '_blank');
+    if (!w) PCM.toast('Libere os pop-ups deste site para baixar o PDF.', 'alerta', 4000);
+}
+
+const caixas = () => Array.from(document.querySelectorAll('.esp-sel'));
+
+function atualizarSelecao() {
+    const marcadas = caixas().filter(c => c.checked);
+    document.getElementById('qtdSel').textContent = marcadas.length;
+    document.getElementById('btnLote').disabled = marcadas.length === 0;
+    const todas = document.getElementById('selTodas');
+    todas.checked = marcadas.length === caixas().length && marcadas.length > 0;
+    todas.indeterminate = marcadas.length > 0 && marcadas.length < caixas().length;
+}
+
+function marcarTodas(valor) {
+    caixas().forEach(c => { c.checked = valor; });
+    atualizarSelecao();
+}
+
+function marcarCriticas() {
+    caixas().forEach(c => {
+        const ad = parseFloat(c.closest('.esp-card').dataset.aderencia) || 0;
+        c.checked = ad < 50;
+    });
+    atualizarSelecao();
+}
+
+function gerarSelecionados() {
+    const SETORES = caixas().filter(c => c.checked).map(c => c.value);
+    if (!SETORES.length) return;
+    const btn   = document.getElementById('btnLote');
+    const caixa = document.getElementById('loteCaixa');
+    const barra = document.getElementById('loteBarra');
+    const texto = document.getElementById('loteTexto');
+    const cont  = document.getElementById('loteContador');
+
+    btn.disabled = true;
+    caixa.classList.add('ativo');
+    let i = 0;
+
+    // Em serie: abrir todas de uma vez trava o navegador e aciona o bloqueador.
+    (function proxima() {
+        if (i >= SETORES.length) {
+            texto.textContent = 'Concluído — ' + SETORES.length + ' PDFs gerados.';
+            barra.style.width = '100%';
+            atualizarSelecao();
+            PCM.toast(SETORES.length + ' PDFs gerados, um por setor.', 'ok', 4000);
+            return;
+        }
+        const nome = SETORES[i];
+        texto.textContent = 'Gerando: ' + nome;
+        cont.textContent  = (i + 1) + ' / ' + SETORES.length;
+        barra.style.width = Math.round(((i + 1) / SETORES.length) * 100) + '%';
+
+        const w = window.open(BASE + '?setor=' + encodeURIComponent(nome) + EXTRA, '_blank');
+        if (!w) {
+            texto.textContent = 'Pop-ups bloqueados — libere-os para gerar em lote.';
+            atualizarSelecao();
+            PCM.toast('Libere os pop-ups deste site para gerar em lote.', 'alerta', 4500);
+            return;
+        }
+        i++;
+        setTimeout(proxima, 5000);
+    })();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1445 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCM - Vitrine de Operações</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; transition: background-color 0.3s, color 0.3s; }
+
+        /* Barras de aderencia (cards "Aderência da Semana"): comecam em 0% e enchem ate
+           o valor real quando a pagina carrega, em vez de aparecer ja no tamanho final. */
+        .progress-bar[data-aderencia-fill] { transition: width 1.1s cubic-bezier(.16,.84,.44,1); }
+
+        /* ── Balao do dashboard: cresce a partir do card clicado, em vez de so aparecer ── */
+        #modalMiniDash .modal-dialog { transform-origin: var(--dash-origin-x, 50%) var(--dash-origin-y, 50%); }
+        #modalMiniDash .modal-dialog.dash-modal-grow {
+            animation: dashGrow .40s cubic-bezier(.2,.9,.3,1);
+        }
+        @keyframes dashGrow {
+            from { opacity: 0; transform: translate(var(--dash-dx, 0px), var(--dash-dy, 0px)) scale(.28); }
+            to   { opacity: 1; transform: translate(0, 0) scale(1); }
+        }
+        #modalMiniDash .modal-content { border: none; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+        #modalMiniDash .modal-header { background: linear-gradient(135deg, #14181d, #1E4B9A); }
+
+        #modalMiniDash .dash-stat-tile {
+            border-radius: 12px; padding: 14px 12px; text-align: center; background: #fff;
+            box-shadow: 0 1px 3px rgba(16,24,40,.06); transition: transform .18s, box-shadow .18s;
+        }
+        #modalMiniDash .dash-stat-tile:hover { transform: translateY(-3px); box-shadow: 0 8px 18px rgba(16,24,40,.10); }
+        #modalMiniDash .dash-stat-tile h6 { font-size: .66rem; letter-spacing: .5px; }
+        #modalMiniDash .dash-stat-tile h3 { font-size: 1.9rem; letter-spacing: -.5px; }
+
+        .dash-divisor {
+            display: flex; align-items: center; gap: 8px;
+            font-weight: 800; font-size: .78rem; letter-spacing: .6px; text-transform: uppercase;
+            color: #fff; background: linear-gradient(90deg, #1E4B9A, #3D77D6);
+            padding: 8px 14px; border-radius: 9px; margin: 22px 0 14px;
+        }
+        [data-bs-theme="dark"] #modalMiniDash .dash-stat-tile { background: #2b3035; }
+        [data-bs-theme="dark"] #modalMiniDash .bg-white { background-color: #2b3035 !important; color: #f1f5f9; }
+        .table-excel th { border-top: 1px solid #000; border-bottom: 2px solid #000; color: #00509E; cursor: pointer; user-select: none; }
+        .table-excel th:hover { background-color: rgba(0,0,0,0.05); }
+        .table-excel td { border-bottom: 1px solid #bfbfbf; }
+
+        .calendario-wrapper { display: flex; flex-direction: column; width: 100%; }
+        .calendario-wrapper .col-dia { padding: 15px 10px; border-bottom: 2px dashed #dee2e6; width: 100%; min-height: 100px; transition: background-color 0.2s;}
+        .calendario-wrapper .col-dia:last-child { border-bottom: none; }
+
+        @media (min-width: 992px) {
+            /* align-items: flex-start evita que o flexbox estique todas as colunas
+               do dia pra altura da mais cheia da semana (comportamento padrao
+               "stretch") - cada dia agora ocupa so a altura dos seus proprios cards. */
+            .calendario-wrapper { flex-direction: row; flex-wrap: nowrap; align-items: flex-start; overflow-x: auto; padding-bottom: 10px;}
+            .calendario-wrapper .col-dia { flex: 1 1 0%; width: 14.28%; min-width: 180px; border-right: 1px dashed #dee2e6; border-bottom: none; padding: 10px; }
+            .calendario-wrapper .col-dia:last-child { border-right: none; }
+        }
+        .calendario-wrapper::-webkit-scrollbar { height: 8px; }
+        .calendario-wrapper::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+
+        .matriz-container { width: 100%; overflow-x: auto; padding-bottom: 10px; }
+        .matriz-container::-webkit-scrollbar { height: 8px; }
+        .matriz-container::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+        .matriz-scroll { min-width: 1000px; display: flex; flex-direction: column; }
+        .calendario-linha { display: flex; flex-direction: row; align-items: flex-start; width: 100%; border-bottom: 1px dashed #dee2e6; }
+        .calendario-linha:last-child { border-bottom: none; }
+        .matriz-container .col-dia { flex: 1 1 0%; width: 14.28%; padding: 10px; border-right: 1px dashed #dee2e6; transition: background-color 0.2s;}
+        .matriz-container .col-dia:last-child { border-right: none; }
+
+        .especialidade-divisor { background-color: #e9ecef; border-left: 6px solid #0d6efd; font-size: 1.15rem; color: #00509E !important; text-shadow: 1px 1px 2px rgba(255,255,255,0.8); }
+        .setor-divisor { background-color: #e9ecef; border-left: 6px solid #1E4B9A; font-size: 1.15rem; color: #1E4B9A !important; text-shadow: 1px 1px 2px rgba(255,255,255,0.8); }
+
+        /* ── Visao mensal: faixa continua, dia 1 ao ultimo, um ao lado do outro ──────────
+           Colunas mais estreitas e cards mais compactos que a visao semanal, pra caber
+           bem mais dias na tela sem cortar tanto (a semana continua com o espacamento
+           normal - isso so vale quando .modo-mensal esta ativo). */
+        .calendario-wrapper.modo-mensal { overflow-x: auto; }
+        .calendario-wrapper.modo-mensal .col-dia { padding: 8px 6px; }
+        @media (min-width: 992px) {
+            .calendario-wrapper.modo-mensal .col-dia { flex: 0 0 132px; width: 132px; min-width: 132px; padding: 8px 6px; }
+        }
+        @media (max-width: 991.98px) {
+            /* Em telas menores a coluna vira uma faixa horizontal compacta (cabecalho +
+               cards lado a lado dentro dela) em vez de empilhar 30 dias na vertical. */
+            .calendario-wrapper.modo-mensal .col-dia { display: flex; align-items: flex-start; gap: 8px; min-height: auto; padding: 8px 10px; }
+            .calendario-wrapper.modo-mensal .col-dia > .text-center { flex: 0 0 62px; display: flex; flex-direction: column; align-items: center; margin: 0 !important; border: none !important; padding: 0 !important; }
+            .calendario-wrapper.modo-mensal .col-dia .card-tarefa-flow { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+            .calendario-wrapper.modo-mensal .col-dia .card-tarefa { width: 130px; flex: 0 0 auto; margin-bottom: 0 !important; }
+        }
+        .calendario-wrapper.modo-mensal .col-dia.dia-fim-semana { background-color: #f6f8fb; }
+        .calendario-wrapper.modo-mensal .col-dia.dia-hoje { box-shadow: inset 0 0 0 2px #1E4B9A; border-radius: 6px; }
+        .dia-num-mensal {
+            display: inline-grid; place-items: center;
+            min-width: 24px; height: 24px; padding: 0 4px;
+            border-radius: 7px; font-weight: 800; font-size: .8rem;
+            border: 1px solid #1E4B9A; color: #1E4B9A; background: #eef3fb;
+        }
+        .col-dia.dia-hoje .dia-num-mensal { background: #1E4B9A; color: #fff; }
+        [data-bs-theme="dark"] .calendario-wrapper.modo-mensal .col-dia.dia-fim-semana { background-color: #24282d; }
+        [data-bs-theme="dark"] .dia-num-mensal { background: #2b3035; border-color: #6ea8fe; color: #6ea8fe; }
+
+        /* Cards mais enxutos so dentro da visao mensal (a semanal fica como estava). */
+        .modo-mensal .card-tarefa { font-size: .68rem; border-radius: 8px; }
+        .modo-mensal .card-tarefa .card-body { padding: 6px 7px !important; }
+        .modo-mensal .card-tarefa .fw-bold.fs-6 { font-size: .78rem !important; }
+        .modo-mensal .card-tarefa .status-badge { font-size: .55rem !important; padding: .2em .4em !important; }
+        .modo-mensal .card-tarefa .small { font-size: .65rem !important; }
+        .modo-mensal .card-tarefa [style*="font-size: 0.75rem"],
+        .modo-mensal .card-tarefa [style*="font-size: 0.65rem"] { font-size: .6rem !important; padding: 1px 3px !important; }
+
+        /* Matriz em modo mensal: a faixa fica mais larga que a tela, entao o conteudo passa
+           a ter largura max-content pra os divisores acompanharem as colunas. O rotulo do
+           divisor gruda na borda esquerda ao rolar (barra cobre tudo, rotulo fica visivel). */
+        .matriz-container.modo-mensal .matriz-scroll { width: max-content; min-width: 100%; }
+        .matriz-container.modo-mensal .col-dia { flex: 0 0 180px; width: 180px; min-width: 180px; }
+        .matriz-container.modo-mensal .especialidade-divisor,
+        .matriz-container.modo-mensal .setor-divisor { width: 100%; }
+        .matriz-container.modo-mensal .divisor-rotulo { position: sticky; left: 12px; display: inline-block; z-index: 2; }
+
+        .accordion-button:not(.collapsed) { background-color: #00509E; color: white; }
+        .accordion-button { font-weight: bold; font-size: 1.1rem; }
+        .card-tarefa { transition: transform 0.2s, background-color 0.3s; font-size: 0.85rem; cursor: pointer; border-left: 4px solid rgba(0,0,0,0.2); }
+        .card-tarefa:hover { transform: scale(1.03); opacity: 0.95; box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+
+        .card-dash-hover { cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; }
+        .card-dash-hover:hover { transform: scale(1.05); box-shadow: 0 1rem 3rem rgba(0,0,0,.175)!important; border-color: #00509E !important; }
+
+        /* Modo escuro: nos tokens do design system (pcm-ui.css), nao mais em
+           cinzas do Bootstrap padrao (#212529/#343a40/#495057) que nao batiam
+           com o resto do sistema - cada pagina tinha o proprio cinza. */
+        [data-bs-theme="dark"] body { background-color: var(--pcm-shell-bg); }
+        [data-bs-theme="dark"] .card:not(.card-tarefa) { background-color: var(--pcm-surface) !important; border-color: var(--pcm-border) !important; }
+        [data-bs-theme="dark"] .bg-white { background-color: var(--pcm-surface) !important; color: var(--pcm-text) !important; }
+        [data-bs-theme="dark"] .table-excel th { color: var(--pcm-brand-soft); border-bottom: 2px solid var(--pcm-brand-soft); border-top: 1px solid var(--pcm-border); }
+        [data-bs-theme="dark"] .table-excel td { border-bottom: 1px solid var(--pcm-border); }
+        [data-bs-theme="dark"] .table-striped>tbody>tr:nth-of-type(odd)>* { background-color: var(--pcm-surface); color: var(--pcm-text); }
+        [data-bs-theme="dark"] .table-striped>tbody>tr:nth-of-type(even)>* { background-color: var(--pcm-surface-2); color: var(--pcm-text); }
+        [data-bs-theme="dark"] .col-dia { border-right-color: var(--pcm-border); }
+        [data-bs-theme="dark"] .nav-tabs .nav-link { color: var(--pcm-text-mute); }
+        [data-bs-theme="dark"] .nav-tabs .nav-link.active { background-color: var(--pcm-surface); color: var(--pcm-text); border-color: var(--pcm-border) var(--pcm-border) var(--pcm-surface); }
+        [data-bs-theme="dark"] .accordion-item { background-color: var(--pcm-surface); border-color: var(--pcm-border); }
+        [data-bs-theme="dark"] .accordion-button { background-color: var(--pcm-surface-2); color: var(--pcm-text); }
+        [data-bs-theme="dark"] .accordion-button:not(.collapsed) { background-color: var(--pcm-brand-lo); color: #fff; }
+        [data-bs-theme="dark"] .bg-light { background-color: var(--pcm-surface-2) !important; color: var(--pcm-text) !important; border-color: var(--pcm-border) !important; }
+        [data-bs-theme="dark"] .calendario-linha { border-bottom-color: var(--pcm-border); }
+        [data-bs-theme="dark"] .especialidade-divisor { background-color: var(--pcm-surface-2); border-left-color: var(--pcm-brand-soft); color: var(--pcm-brand-soft) !important; text-shadow: none; border-bottom-color: var(--pcm-border) !important; }
+    </style>
+</head>
+<body class="pcm-app">
+    {# Vitrine publica: quem esta logado navega pelo menu completo;
+       visitante ve so a barra com o acesso restrito. #}
+    {% if usuario_logado %}{% include '_pcm_shell.html' %}{% endif %}
+
+    <div class="{{ 'pcm-shell' if usuario_logado else '' }}">
+    <header class="pcm-topbar no-print">
+        {% if usuario_logado %}
+        <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+        {% endif %}
+        <div>
+            <div class="pcm-tb-crumb">Gestão PCM</div>
+            <h1 class="pcm-tb-title">Transparência</h1>
+        </div>
+        <div class="pcm-tb-spacer"></div>
+        <div class="pcm-tb-actions">
+            <button id="btnDarkMode" class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+            {% if not usuario_logado %}
+            <a href="/login" class="btn btn-sm fw-semibold text-white"
+               style="background:var(--pcm-brand);border-radius:9px;padding:7px 14px;">
+                <i class="bi bi-lock-fill me-1"></i>Acesso Restrito
+            </a>
+            {% endif %}
+        </div>
+    </header>
+
+    <div class="pcm-main">
+
+        <div class="input-group mb-4 shadow-sm no-print" style="max-width: 500px; margin: 0 auto;">
+            <span class="input-group-text bg-white text-primary border-secondary"><i class="bi bi-search"></i></span>
+            <input type="text" id="buscaPublica" class="form-control border-start-0 border-secondary bg-white fw-bold" placeholder="Filtrar por Frota ou Descrição..." onkeyup="pesquisarGeral()">
+        </div>
+
+        <ul class="nav nav-tabs fw-bold mb-3 no-print" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="bloqueios-tab" data-bs-toggle="tab" data-bs-target="#bloqueios" type="button"><i class="bi bi-tools me-2"></i>Frotas Bloqueadas</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link text-primary" id="calendario-tab" data-bs-toggle="tab" data-bs-target="#calendario" type="button"><i class="bi bi-calendar-week-fill me-2"></i>Programação Semanal</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+
+            <div class="tab-pane fade show active" id="bloqueios">
+                <div class="accordion" id="accordionEspecialidadesPublico">
+                    {% for esp, frotas_lista in frotas.items() %}
+                    <div class="accordion-item mb-3 shadow-sm border rounded">
+                        <h2 class="accordion-header" id="headingPub-{{ loop.index }}">
+                            <button class="accordion-button rounded" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePub-{{ loop.index }}">
+                                <i class="bi bi-tags-fill me-2"></i> {{ esp }}
+                                <span class="badge bg-light text-dark ms-2 shadow-sm">{{ frotas_lista|length }}</span>
+                            </button>
+                        </h2>
+                        <div id="collapsePub-{{ loop.index }}" class="accordion-collapse collapse show" aria-labelledby="headingPub-{{ loop.index }}">
+                            <div class="accordion-body p-0 table-responsive">
+                                <table class="table table-striped table-excel align-middle mb-0" id="tabelaPublica-{{ loop.index }}" data-ordem="asc">
+                                    <thead>
+                                        <tr class="bg-light">
+                                            <th class="text-center" style="width: 15%" onclick="ordenarTabela('tabelaPublica-{{ loop.index }}', 0, 'numero')">FROTA <i class="bi bi-arrow-down-up ms-1 small"></i></th>
+                                            <th style="width: 40%">DESCRIÇÃO</th>
+                                            <th style="width: 25%">MOTIVO(S)</th>
+                                            <th class="text-center" style="width: 10%" onclick="ordenarTabela('tabelaPublica-{{ loop.index }}', 3, 'data')">DATA <i class="bi bi-arrow-down-up ms-1 small"></i></th>
+                                            <th style="width: 10%">STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for frota in frotas_lista %}
+                                        <tr class="linha-dados-publica">
+                                            <td class="text-center fw-bold fs-6">{{ frota.id_frota }}</td>
+                                            <td>{{ frota.descricao }}</td>
+                                            <td class="text-danger fw-bold">{{ frota.motivo }}</td>
+                                            <td class="text-center">{{ frota.data_bloqueio }}</td>
+                                            <td>{{ frota.status_oficina }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-center text-muted py-4">Nenhuma frota bloqueada de momento. Oficina livre!</p>
+                    {% endfor %}
+                    <div id="avisoBuscaBloqueiosVazia" class="text-center text-muted py-4" style="display:none;">
+                        <i class="bi bi-search d-block mb-2" style="font-size:1.6rem;opacity:.4;"></i>
+                        Nenhuma frota bloqueada bate com essa busca.
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="calendario">
+                <div class="card shadow border-0 bg-white">
+                    <div class="card-body p-0">
+
+                        <div class="p-3 border-bottom bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="d-flex align-items-center flex-wrap gap-2">
+                                {% if modo_visualizacao == 'mensal' %}
+                                <a href="?view=mensal&mes_offset={{ mes_offset - 1 }}#calendario" class="btn btn-outline-secondary btn-sm" title="Mês anterior"><i class="bi bi-chevron-left"></i> Anterior</a>
+                                <h6 class="mb-0 text-primary fw-bold mx-1 text-center d-flex align-items-center">Mês: {{ titulo_mes }}</h6>
+                                <a href="?view=mensal&mes_offset={{ mes_offset + 1 }}#calendario" class="btn btn-outline-secondary btn-sm" title="Próximo mês">Próximo <i class="bi bi-chevron-right"></i></a>
+                                {% else %}
+                                <a href="?offset={{ offset - 1 }}#calendario" class="btn btn-outline-secondary btn-sm" title="Semana Anterior"><i class="bi bi-chevron-left"></i> Anterior</a>
+                                <h6 class="mb-0 text-primary fw-bold mx-1 text-center d-flex align-items-center">Semana: {{ data_inicio_db[-2:] }}/{{ data_inicio_db[5:7] }} a {{ data_fim_db[-2:] }}/{{ data_fim_db[5:7] }}</h6>
+                                <a href="?offset={{ offset + 1 }}#calendario" class="btn btn-outline-secondary btn-sm" title="Próxima Semana">Próxima <i class="bi bi-chevron-right"></i></a>
+                                {% endif %}
+
+                                <div class="btn-group shadow-sm ms-1">
+                                    <a href="?view=semana&offset={{ offset }}#calendario" class="btn btn-sm {% if modo_visualizacao != 'mensal' %}btn-primary{% else %}btn-outline-primary{% endif %}"><i class="bi bi-calendar-week me-1"></i>Semana</a>
+                                    <a href="?view=mensal&mes_offset={{ mes_offset }}#calendario" class="btn btn-sm {% if modo_visualizacao == 'mensal' %}btn-primary{% else %}btn-outline-primary{% endif %}"><i class="bi bi-calendar3 me-1"></i>Mês</a>
+                                </div>
+
+                                <select id="filtroEspecialidade" class="form-select form-select-sm border-primary fw-bold text-primary shadow-sm ms-md-1" style="width: auto; background-color: #e9ecef;" onchange="aplicarVisibilidadeGeral()">
+                                    <option value="TODAS">Todas Especialidades</option>
+                                    {% if especialidades_na_semana %}
+                                        {% for esp in especialidades_na_semana %}
+                                        <option value="{{ esp }}">{{ esp }}</option>
+                                        {% endfor %}
+                                    {% endif %}
+                                </select>
+                                <select id="filtroSetor" class="form-select form-select-sm border-success fw-bold text-success shadow-sm ms-md-1" style="width: auto; background-color: #eefaf1;" onchange="aplicarVisibilidadeGeral()">
+                                    <option value="TODOS">Todos Setores</option>
+                                    {% if setores_na_semana %}
+                                        {% for setor in setores_na_semana %}
+                                        <option value="{{ setor }}">{{ setor }}</option>
+                                        {% endfor %}
+                                    {% endif %}
+                                </select>
+                                <select id="modoAgrupamentoPublico" class="form-select form-select-sm fw-bold shadow-sm ms-md-1" style="width: auto; border-color: #1E4B9A; color: #1E4B9A; background-color: #eef3fb;" onchange="alternarModoAgrupamentoPublico()">
+                                    <option value="NENHUM">Sem Agrupamento</option>
+                                    <option value="ESPECIALIDADE">Por Especialidade</option>
+                                    <option value="SETOR">Por Setor</option>
+                                </select>
+                            </div>
+
+                            <div class="btn-group shadow-sm">
+                                <button type="button" class="btn btn-primary btn-sm btn-filtro fw-bold active" onclick="aplicarFiltroBotoes('TODOS', this)">TODOS</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltroBotoes('TROCA DE OLEO', this)">🛢️ ÓLEO</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltroBotoes('PREVENTIVA', this)">⚙️ PREV</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltroBotoes('ANALISE DE OLEO', this)">🧪 ANÁLISE</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltroBotoes('PIT STOP', this)">🏁 PITSTOP</button>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltroBotoes('SOPRAGEM DE FILTROS', this)">💨 SOPRAGEM</button>
+                            </div>
+                        </div>
+
+                        {% set dias_render = dias_mes if modo_visualizacao == 'mensal' else dias_semana %}
+                        <div id="view-normal" class="calendario-wrapper {% if modo_visualizacao == 'mensal' %}modo-mensal{% endif %}">
+                            {% for dia in dias_render %}
+                            <div class="col-dia {% if dia.data_db == hoje %}dia-hoje{% endif %} {% if dia.fim_semana %}dia-fim-semana{% endif %}" data-data-db="{{ dia.data_db }}">
+                                <div class="text-center mb-3 border-bottom pb-2 pointer-events-none">
+                                    <span class="d-block text-muted small fw-bold text-uppercase">{{ dia.nome_dia }}</span>
+                                    {% if modo_visualizacao == 'mensal' %}
+                                        <span class="dia-num-mensal mt-1">{{ dia.dia_num }}</span>
+                                        <span class="d-block text-muted" style="font-size:.7rem;">{{ dia.data_br }}</span>
+                                    {% else %}
+                                        <span class="fs-5 fw-bold {% if dia.data_db == hoje %}text-primary{% endif %}">{{ dia.data_br }}</span>
+                                    {% endif %}
+                                </div>
+                                {% for item in programacao %}
+                                    {% if item.data_planejada == dia.data_db %}
+                                        {% set cor_bg = 'bg-secondary text-white border-secondary' %}
+                                        {% set badge_bg = 'bg-white text-secondary' %}
+                                        {% if item.status == 'REALIZADA' %} {% set cor_bg = 'bg-success text-white border-success' %} {% set badge_bg = 'bg-white text-success' %}
+                                        {% elif item.status == 'BLOQUEADA' %} {% set cor_bg = 'bg-danger text-white border-danger' %} {% set badge_bg = 'bg-white text-danger' %}
+                                        {% elif item.status == 'QUEBRADA' %} {% set cor_bg = 'bg-warning text-dark border-warning' %} {% set badge_bg = 'bg-white text-warning' %} {% endif %}
+
+                                        <div class="card card-tarefa mb-2 shadow-sm {{ cor_bg }}" data-tipo="{{ item.tipo_servico }}" data-esp="{{ item.especialidade }}" data-setor="{{ item.setor }}"
+                                             onclick="abrirModalEdicao('{{ item.dados_modal }}', '{{ item.ids }}', '{{ item.id_frota }}', '{{ item.status }}', '{{ item.local_execucao }}')">
+                                            <div class="card-body p-2">
+                                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                                    <span class="fw-bold fs-6">{{ item.id_frota }}</span>
+                                                    <span class="badge {{ badge_bg }} shadow-sm status-badge" style="font-size: 0.65rem;">{{ item.status }}</span>
+                                                </div>
+                                                <div class="small fw-bold lh-sm mb-1" style="font-size: 0.80rem;">{{ item.tipo_servico }}</div>
+
+                                                {% if item.observacao_exibicao %}
+                                                    <div class="small fw-bold text-dark mb-1" style="font-size: 0.75rem; background-color: rgba(255,255,255,0.6); padding: 2px 4px; border-radius: 3px;">
+                                                        <i class="bi bi-gear-wide-connected me-1"></i>{{ item.observacao_exibicao }}
+                                                    </div>
+                                                {% endif %}
+
+                                                {% if item.status == 'REALIZADA' %}
+                                                    {% if 'ANALISE DE OLEO' in item.tipo_servico and item.resultado_analise_exibicao %}
+                                                        {% set cor_analise = 'text-dark' %}
+                                                        {% if 'NORMAL' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-success' %} {% endif %}
+                                                        {% if 'ANOMALIA' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-warning text-dark' %} {% endif %}
+                                                        {% if 'CRÍTICO' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-danger' %} {% endif %}
+                                                        <div class="mt-2 border-top border-white border-opacity-25 pt-1">
+                                                            <span class="badge bg-light shadow-sm w-100 text-start {{ cor_analise }}" style="font-size: 0.65rem;">
+                                                                <i class="bi bi-eyedropper me-1"></i>Res: {{ item.resultado_analise_exibicao }}
+                                                            </span>
+                                                        </div>
+                                                    {% endif %}
+
+                                                    <div class="mt-1 border-top border-white border-opacity-25 pt-1">
+                                                        <span class="badge bg-light text-dark shadow-sm w-100 text-start" style="font-size: 0.65rem;">
+                                                            <i class="bi bi-geo-alt-fill text-success me-1"></i>Local: {{ item.local_execucao }}
+                                                        </span>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% macro card_item(item) %}
+                            {% set cor_bg = 'bg-secondary text-white border-secondary' %}
+                            {% set badge_bg = 'bg-white text-secondary' %}
+                            {% if item.status == 'REALIZADA' %} {% set cor_bg = 'bg-success text-white border-success' %} {% set badge_bg = 'bg-white text-success' %}
+                            {% elif item.status == 'BLOQUEADA' %} {% set cor_bg = 'bg-danger text-white border-danger' %} {% set badge_bg = 'bg-white text-danger' %}
+                            {% elif item.status == 'QUEBRADA' %} {% set cor_bg = 'bg-warning text-dark border-warning' %} {% set badge_bg = 'bg-white text-warning' %} {% endif %}
+                            <div class="card card-tarefa mb-2 shadow-sm {{ cor_bg }}" data-tipo="{{ item.tipo_servico }}" data-esp="{{ item.especialidade }}" data-setor="{{ item.setor }}"
+                                 onclick="abrirModalEdicao('{{ item.dados_modal }}', '{{ item.ids }}', '{{ item.id_frota }}', '{{ item.status }}', '{{ item.local_execucao }}')">
+                                <div class="card-body p-2 pointer-events-none">
+                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                        <span class="fw-bold fs-6">{{ item.id_frota }}</span>
+                                        <span class="badge {{ badge_bg }} shadow-sm status-badge" style="font-size: 0.65rem;">{{ item.status }}</span>
+                                    </div>
+                                    <div class="small fw-bold lh-sm mb-1" style="font-size: 0.80rem;">{{ item.tipo_servico }}</div>
+                                    {% if item.observacao_exibicao %}
+                                        <div class="small fw-bold text-dark mb-1" style="font-size: 0.75rem; background-color: rgba(255,255,255,0.6); padding: 2px 4px; border-radius: 3px;">
+                                            <i class="bi bi-gear-wide-connected me-1"></i>{{ item.observacao_exibicao }}
+                                        </div>
+                                    {% endif %}
+                                    {% if item.status == 'REALIZADA' %}
+                                        {% if 'ANALISE DE OLEO' in item.tipo_servico and item.resultado_analise_exibicao %}
+                                            {% set cor_analise = 'text-dark' %}
+                                            {% if 'NORMAL' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-success' %} {% endif %}
+                                            {% if 'ANOMALIA' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-warning text-dark' %} {% endif %}
+                                            {% if 'CRÍTICO' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-danger' %} {% endif %}
+                                            <div class="mt-2 border-top border-white border-opacity-25 pt-1">
+                                                <span class="badge bg-light shadow-sm w-100 text-start {{ cor_analise }}" style="font-size: 0.65rem;">
+                                                    <i class="bi bi-eyedropper me-1"></i>Res: {{ item.resultado_analise_exibicao }}
+                                                </span>
+                                            </div>
+                                        {% endif %}
+                                        <div class="mt-1 border-top border-white border-opacity-25 pt-1">
+                                            <span class="badge bg-light text-dark shadow-sm w-100 text-start" style="font-size: 0.65rem;">
+                                                <i class="bi bi-geo-alt-fill text-success me-1"></i>Local: {{ item.local_execucao }}
+                                            </span>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endmacro %}
+
+                        <div id="view-matriz" class="matriz-container {% if modo_visualizacao == 'mensal' %}modo-mensal{% endif %}" style="display: none;">
+                            <div id="matrizEspecialidadeIdx" class="matriz-scroll">
+                                <div class="calendario-linha bg-light border-bottom">
+                                    {% for dia in dias_render %}
+                                    <div class="col-dia py-2 text-center pointer-events-none" style="min-height: auto; border-right: 1px solid #dee2e6;">
+                                        <span class="d-block text-muted small fw-bold text-uppercase">{{ dia.nome_dia }}</span>
+                                        <span class="fs-5 fw-bold {% if dia.data_db == hoje %}text-primary{% endif %}">{{ dia.data_br }}</span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+
+                                {% if especialidades_na_semana %}
+                                    {% for esp in especialidades_na_semana %}
+                                    {% set total_esp = programacao | selectattr('especialidade', 'equalto', esp) | list | length %}
+                                    <div class="especialidade-divisor border-bottom p-2 px-3 fw-bold text-uppercase shadow-sm" data-esp="{{ esp }}">
+                                        <span class="divisor-rotulo"><i class="bi bi-layers-fill me-2 opacity-75"></i>{{ esp }} <span class="badge bg-light text-dark ms-2 shadow-sm" data-contagem-secao>{{ total_esp }}</span></span>
+                                    </div>
+                                    <div class="calendario-linha especialidade-linha" data-esp="{{ esp }}">
+                                        {% for dia in dias_render %}
+                                        <div class="col-dia" data-data-db="{{ dia.data_db }}">
+                                            {% for item in programacao %}
+                                                {% if item.data_planejada == dia.data_db and item.especialidade == esp %}{{ card_item(item) }}{% endif %}
+                                            {% endfor %}
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="text-center p-5 text-muted fw-bold">
+                                        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>Nenhum serviço agendado para este período.
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div id="matrizSetorIdx" class="matriz-scroll" style="display: none;">
+                                <div class="calendario-linha bg-light border-bottom">
+                                    {% for dia in dias_render %}
+                                    <div class="col-dia py-2 text-center pointer-events-none" style="min-height: auto; border-right: 1px solid #dee2e6;">
+                                        <span class="d-block text-muted small fw-bold text-uppercase">{{ dia.nome_dia }}</span>
+                                        <span class="fs-5 fw-bold {% if dia.data_db == hoje %}text-primary{% endif %}">{{ dia.data_br }}</span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+
+                                {% if setores_na_semana %}
+                                    {% for setor in setores_na_semana %}
+                                    {% set total_setor_idx = programacao | selectattr('setor', 'equalto', setor) | list | length %}
+                                    <div class="setor-divisor border-bottom p-2 px-3 fw-bold text-uppercase shadow-sm" data-setor="{{ setor }}">
+                                        <span class="divisor-rotulo"><i class="bi bi-diagram-3-fill me-2 opacity-75"></i>{{ setor }} <span class="badge bg-light text-dark ms-2 shadow-sm" data-contagem-secao>{{ total_setor_idx }}</span></span>
+                                    </div>
+                                    <div class="calendario-linha setor-linha" data-setor="{{ setor }}">
+                                        {% for dia in dias_render %}
+                                        <div class="col-dia" data-data-db="{{ dia.data_db }}">
+                                            {% for item in programacao %}
+                                                {% if item.data_planejada == dia.data_db and (item.setor or 'SEM SETOR') == setor %}{{ card_item(item) }}{% endif %}
+                                            {% endfor %}
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="text-center p-5 text-muted fw-bold">
+                                        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>Nenhum serviço agendado para este período.
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="card-footer bg-light border-top p-3 text-body">
+                            <h6 class="fw-bold text-secondary mb-3"><i class="bi bi-bar-chart-fill me-2"></i>Aderência da Semana (Clique para abrir Dashboard)</h6>
+                            <div class="row g-3">
+                                {% for tipo, dados in stats.items() %}
+                                <div class="col-md-4">
+                                    <div class="border border-secondary-subtle rounded p-3 bg-white shadow-sm h-100 card-dash-hover" onclick="abrirMiniDash('{{ tipo }}', event)">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span class="small fw-bold text-uppercase text-dark">{{ tipo }}</span>
+                                            {% set cor_barra = 'bg-danger' %}
+                                            {% set cor_texto = 'text-danger' %}
+                                            {% if dados.percentual >= 80 %} {% set cor_barra = 'bg-success' %} {% set cor_texto = 'text-success' %}
+                                            {% elif dados.percentual >= 50 %} {% set cor_barra = 'bg-warning' %} {% set cor_texto = 'text-warning' %} {% endif %}
+                                            <span class="fs-6 fw-bold {{ cor_texto }}">{{ dados.percentual }}%</span>
+                                        </div>
+                                        <div class="progress shadow-sm mb-3" style="height: 10px;">
+                                            <div class="progress-bar {{ cor_barra }} progress-bar-striped progress-bar-animated" role="progressbar" data-aderencia-fill="{{ dados.percentual }}" style="width: 0%;"></div>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span class="badge bg-secondary shadow-sm" style="font-size: 0.70rem;">{{ dados.total }} Prog.</span>
+                                            <span class="badge bg-success shadow-sm" style="font-size: 0.70rem;">{{ dados.realizadas }} Feitas</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <div class="col-12 text-center text-muted small py-2">Nenhum serviço agendado para esta semana.</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalMiniDash" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="modal-title fw-bold m-0"><i class="bi bi-graph-up-arrow me-2"></i>DASHBOARD PARCIAL: <span id="dashTitulo" class="text-warning"></span></h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-warning btn-sm fw-bold border-2 text-dark shadow-sm" id="btnRelatorioOficial" onclick="abrirRelatorioOficial()" style="display: none;">
+                            <i class="bi bi-droplet-fill me-1"></i>Dash Óleo Oficial
+                        </button>
+                        <button type="button" class="btn btn-info btn-sm fw-bold border-2 text-dark shadow-sm" id="btnRelatorioAnalise" onclick="abrirRelatorioAnalise()" style="display: none;">
+                            <i class="bi bi-eyedropper me-1"></i>Dash Análise Oficial
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm fw-bold border-2 text-white shadow-sm" id="btnRelatorioPreventiva" onclick="abrirRelatorioPreventiva()" style="display: none;">
+                            <i class="bi bi-gear-fill me-1"></i>Dash Preventiva Oficial
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm fw-bold border-2 text-dark shadow-sm" id="btnRelatorioPitStop" onclick="abrirRelatorioPitStop()" style="display: none;">
+                            <i class="bi bi-wrench-adjustable me-1"></i>Dash Pit Stop Oficial
+                        </button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body bg-light" id="dashContentToPrint">
+
+                    <div id="dashFiltroArea" class="d-flex flex-column flex-md-row justify-content-between align-items-center bg-white p-3 border rounded shadow-sm mb-4">
+                        <div class="mb-2 mb-md-0">
+                            <h6 class="mb-0 fw-bold text-secondary"><i class="bi bi-calendar-range me-2"></i>Filtre as Datas se Desejar</h6>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="date" id="dashDataInicio" class="form-control form-control-sm border-secondary fw-bold text-secondary" style="width: 130px;" value="{{ data_inicio_db }}">
+                            <span class="small fw-bold text-muted">até</span>
+                            <input type="date" id="dashDataFim" class="form-control form-control-sm border-secondary fw-bold text-secondary" style="width: 130px;" value="{{ data_fim_db }}">
+                            <button type="button" id="btnAtualizarDash" class="btn btn-primary btn-sm fw-bold shadow-sm" onclick="filtrarDashModal()"><i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica</button>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-4 text-center d-flex justify-content-center">
+                        <div class="col"><div class="dash-stat-tile" style="border-top: 3px solid #1E4B9A;"><h6 class="text-muted mb-1 fw-bold text-uppercase">Total Programado</h6><h3 class="mb-0 fw-bold" style="color:#1E4B9A;" id="dashTotal">0</h3></div></div>
+                        <div class="col"><div class="dash-stat-tile" style="border-top: 3px solid #198754;"><h6 class="text-muted mb-1 fw-bold text-uppercase">Realizadas</h6><h3 class="mb-0 fw-bold text-success" id="dashRealizadas">0</h3></div></div>
+                        <div class="col"><div class="dash-stat-tile" style="border-top: 3px solid #6c757d;"><h6 class="text-muted mb-1 fw-bold text-uppercase">Pendentes</h6><h3 class="mb-0 fw-bold text-secondary" id="dashPendentes">0</h3></div></div>
+                        <div class="col"><div class="dash-stat-tile" style="border-top: 3px solid #dc3545;"><h6 class="text-muted mb-1 fw-bold text-uppercase">Bloqueadas</h6><h3 class="mb-0 fw-bold text-danger" id="dashBloqueadas">0</h3></div></div>
+                        <div class="col"><div class="dash-stat-tile" style="border-top: 3px solid #ffc107;"><h6 class="text-muted mb-1 fw-bold text-uppercase">Quebradas</h6><h3 class="mb-0 fw-bold text-warning" id="dashQuebradas">0</h3></div></div>
+                    </div>
+
+                    <div class="bg-white p-3 border rounded shadow-sm mb-4">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="small fw-bold text-secondary">Aderência Geral do Período</span>
+                            <span class="small fw-bold" id="dashPercText">0%</span>
+                        </div>
+                        <div class="progress shadow-sm" style="height: 20px;">
+                            <div id="dashProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success fw-bold" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="bg-white p-3 border rounded shadow-sm h-100">
+                                <h6 class="small fw-bold text-center mb-3 text-secondary">Aderência</h6>
+                                <div style="height: 250px; position: relative; display: flex; align-items: center; justify-content: center;">
+                                    <canvas id="chartStatus" style="position: relative; z-index: 2;"></canvas>
+                                    <div id="chartCenterTotal" style="position: absolute; font-size: 2.5rem; font-weight: bold; color: #333; z-index: 1; margin-top: -15px;">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="bg-white p-3 border rounded shadow-sm h-100">
+                                <h6 class="small fw-bold text-center mb-3 text-secondary">Desempenho por Especialidade</h6>
+                                <div style="height: 250px; position: relative;"><canvas id="chartEspecialidades"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Painel completo (mesmos dados/graficos do relatorio oficial em PDF), carregado
+                         via /api/dash_dados/<tipo> assim que o balao abre. -->
+                    <div id="dashPainelCompleto" style="display:none;">
+                        <div class="dash-divisor"><i class="bi bi-bar-chart-line-fill"></i>Detalhamento Completo (igual ao relatório oficial)</div>
+
+                        {# Filtro cruzado: clicar num setor do grafico recorta o painel inteiro. #}
+                        <div id="dashFiltroSetor" class="d-flex align-items-center gap-2 mb-2" style="display:none !important;">
+                            <span class="pcm-filter-count"><i class="bi bi-funnel-fill"></i>Setor: <strong id="dashFiltroSetorNome"></strong></span>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limparFiltroSetorDash()">
+                                <i class="bi bi-x-circle me-1"></i>Ver todos os setores
+                            </button>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-12">
+                                <div class="bg-white p-3 border rounded shadow-sm">
+                                    <h6 class="small fw-bold text-center mb-1 text-secondary">Total de Equipamentos por Setor</h6>
+                                    <div class="text-center text-muted mb-2" style="font-size:.7rem;">
+                                        <i class="bi bi-hand-index"></i> clique num setor para filtrar o painel
+                                    </div>
+                                    <div style="height: 220px; position: relative;"><canvas id="chartDashSetor"></canvas></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-12">
+                                <div class="bg-white p-3 border rounded shadow-sm">
+                                    <h6 class="small fw-bold text-center mb-1 text-secondary">Comparativo Semanal — 5 Semanas</h6>
+                                    <div id="dashLeituraTendencia" class="pcm-leitura justify-content-center mb-2" style="margin-top:0;"></div>
+                                    <div style="height: 200px; position: relative;"><canvas id="chartDashHistorico"></canvas></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="bg-white p-3 border rounded shadow-sm h-100">
+                                    <h6 class="small fw-bold text-center mb-3 text-secondary">Realizado com Atraso</h6>
+                                    <div style="height: 190px; position: relative;"><canvas id="chartDashAtraso"></canvas></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="bg-white p-3 border-2 border-danger rounded shadow-sm h-100">
+                                    <h6 class="small fw-bold text-center mb-3 text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>Frotas Paradas — Manutenção</h6>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div style="height: 170px; flex: 1; position: relative;"><canvas id="chartDashParadas"></canvas></div>
+                                        <div class="text-center bg-danger bg-opacity-10 border border-danger rounded p-2" style="width: 100px; flex-shrink: 0;">
+                                            <div class="small fw-bold text-danger" style="font-size: .65rem;">TOTAL QUEBRADAS</div>
+                                            <div id="dashTotalParadas" class="fw-bold text-danger" style="font-size: 1.8rem;">0</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {# Skeleton no formato do painel real, pra tela nao "pular" quando os dados chegam. #}
+                    <div id="dashPainelCompletoLoading" class="py-2">
+                        <div class="dash-divisor"><i class="bi bi-bar-chart-line-fill"></i>Carregando detalhamento completo...</div>
+                        <div class="pcm-skeleton mb-3" style="height: 250px;"></div>
+                        <div class="pcm-skeleton mb-3" style="height: 230px;"></div>
+                        <div class="row g-3">
+                            <div class="col-md-6"><div class="pcm-skeleton" style="height: 215px;"></div></div>
+                            <div class="col-md-6"><div class="pcm-skeleton" style="height: 215px;"></div></div>
+                        </div>
+                    </div>
+
+                    <div id="dashPrintFooter" style="display: none; margin-top: 30px; text-align: center; font-size: 10px; color: #777;">
+                        Documento gerado automaticamente pelo Sistema de Gestão PCM - Oficina.
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalGestaoTarefa" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-sliders me-2"></i>Detalhes do Serviço</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="modalIdProg">
+                    <div class="mb-3 text-center border-bottom pb-2">
+                        <h4 class="fw-bold text-primary mb-0" id="modalLabelFrota"></h4>
+                    </div>
+
+                    <div id="containerServicosModal"></div>
+
+                    <div class="mb-2 mt-3 p-2 border border-success rounded bg-success bg-opacity-10" id="divDataExecucao" style="display: none;">
+                        <label class="form-label fw-bold small text-success mb-1">Local da Execução</label>
+                        <select id="modalLocalExecucao" class="form-select border-success fw-bold text-secondary" disabled>
+                            <option value="BASE">Base (Oficina)</option>
+                            <option value="CAMPO">Campo</option>
+                            <option value="GARANTIA">Garantia</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-end">
+                    <button type="button" class="btn btn-secondary btn-sm fw-bold" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let filtroAtivoBotoes = 'TODOS';
+        const htmlElement = document.documentElement;
+        // Modo escuro: PCM.alternarTema() compartilhado (chave 'pcm-tema') - um
+        // toggle próprio com chave diferente ('theme') fazia o tema não se
+        // manter ao trocar de página, cada uma lendo uma chave diferente.
+
+        document.addEventListener("DOMContentLoaded", function() {
+            if (window.location.hash === "#calendario") {
+                var triggerEl = document.querySelector('#calendario-tab');
+                var tab = new bootstrap.Tab(triggerEl);
+                tab.show();
+            }
+
+            let urlParams = new URLSearchParams(window.location.search);
+            let espSalvo = urlParams.get('esp');
+            if (espSalvo) {
+                let selectEsp = document.getElementById('filtroEspecialidade');
+                if(selectEsp) selectEsp.value = espSalvo;
+            }
+            let setorSalvo = urlParams.get('setor');
+            if (setorSalvo) {
+                let selectSetor = document.getElementById('filtroSetor');
+                if(selectSetor) selectSetor.value = setorSalvo;
+            }
+
+            let filtroSalvo = urlParams.get('filtro');
+            if (filtroSalvo) {
+                let botaoParaClicar = Array.from(document.querySelectorAll('.btn-filtro')).find(b => b.getAttribute('onclick').includes(filtroSalvo));
+                if (botaoParaClicar) botaoParaClicar.click();
+            } else {
+                alternarModoAgrupamentoPublico();
+            }
+        });
+
+        setInterval(function() {
+            let inputEl = document.getElementById("buscaPublica");
+            let input = inputEl ? inputEl.value : "";
+            let modalAberto = document.querySelector('.modal.show');
+            if(input.trim() === "" && filtroAtivoBotoes === 'TODOS' && !modalAberto) window.location.reload();
+        }, 60000);
+
+        function aplicarFiltroBotoes(tipo, btnClicado) {
+            filtroAtivoBotoes = tipo;
+
+            document.querySelectorAll('.btn-filtro').forEach(b => {
+                b.classList.remove('active', 'btn-primary');
+                b.classList.add('btn-outline-primary');
+            });
+            btnClicado.classList.remove('btn-outline-primary');
+            btnClicado.classList.add('btn-primary', 'active');
+
+            let url = new URL(window.location);
+            url.searchParams.set('filtro', tipo);
+            window.history.replaceState({}, '', url);
+
+            // Agrupamento por especialidade / setor disponivel para TODOS os tipos - quem
+            // decide qual view aparece (lista corrida ou agrupada) e o seletor de modo.
+            alternarModoAgrupamentoPublico();
+        }
+
+        function alternarModoAgrupamentoPublico() {
+            let modo = document.getElementById('modoAgrupamentoPublico');
+            let viewNormal = document.getElementById('view-normal');
+            let viewMatriz = document.getElementById('view-matriz');
+            let matrizEsp = document.getElementById('matrizEspecialidadeIdx');
+            let matrizSetor = document.getElementById('matrizSetorIdx');
+            if (!modo) return;
+
+            let valor = modo.value || 'NENHUM';
+            let semAgrupamento = valor === 'NENHUM';
+            let porSetor = valor === 'SETOR';
+
+            if (viewNormal) viewNormal.style.setProperty('display', semAgrupamento ? 'flex' : 'none', 'important');
+            if (viewMatriz) viewMatriz.style.setProperty('display', semAgrupamento ? 'none' : 'block', 'important');
+            if (matrizEsp) matrizEsp.style.display = porSetor ? 'none' : 'flex';
+            if (matrizSetor) matrizSetor.style.display = porSetor ? 'flex' : 'none';
+
+            // Especialidade e Setor agora sao filtros gerais, sempre visiveis e
+            // aplicados em qualquer modo de agrupamento (inclusive "Sem Agrupamento") -
+            // antes so funcionavam dentro da visao em matriz.
+            aplicarVisibilidadeGeral();
+        }
+
+        function pesquisarGeral() { aplicarVisibilidadeGeral(); }
+
+        function aplicarVisibilidadeGeral() {
+            try {
+                let inputEl = document.getElementById("buscaPublica");
+                let input = inputEl ? inputEl.value.toUpperCase() : "";
+
+                let selectEsp = document.getElementById('filtroEspecialidade');
+                let filtroEsp = selectEsp ? selectEsp.value : 'TODAS';
+                let selectSetor = document.getElementById('filtroSetor');
+                let filtroSetor = selectSetor ? selectSetor.value : 'TODOS';
+
+                let url = new URL(window.location);
+                if(filtroEsp !== 'TODAS') { url.searchParams.set('esp', filtroEsp); }
+                else { url.searchParams.delete('esp'); }
+                if(filtroSetor !== 'TODOS') { url.searchParams.set('setor', filtroSetor); }
+                else { url.searchParams.delete('setor'); }
+                window.history.replaceState({}, '', url);
+
+                let trs = document.getElementsByClassName("linha-dados-publica");
+                if(trs.length > 0) {
+                    for (let i = 0; i < trs.length; i++) {
+                        let textoLinha = trs[i].innerText.toUpperCase();
+                        trs[i].style.setProperty('display', textoLinha.includes(input) ? "" : "none", "important");
+                    }
+                }
+
+                // Frotas Bloqueadas: com um texto digitado, some com o grupo (especialidade)
+                // inteiro se nenhuma frota dele bateu na busca - so os grupos com resultado
+                // ficam visiveis.
+                let algumGrupoVisivelPub = false;
+                document.querySelectorAll('#accordionEspecialidadesPublico .accordion-item').forEach(item => {
+                    let linhas = item.querySelectorAll('.linha-dados-publica');
+                    let temVisivel = Array.from(linhas).some(tr => tr.style.display !== 'none');
+                    let mostrar = (input === '') || temVisivel;
+                    item.style.setProperty('display', mostrar ? '' : 'none', 'important');
+                    if (mostrar) algumGrupoVisivelPub = true;
+                });
+                let avisoVazioPub = document.getElementById('avisoBuscaBloqueiosVazia');
+                if (avisoVazioPub) avisoVazioPub.style.display = (input !== '' && !algumGrupoVisivelPub) ? '' : 'none';
+
+                let cards = document.getElementsByClassName("card-tarefa");
+                for (let i = 0; i < cards.length; i++) {
+                    let textoCard = cards[i].innerText.toUpperCase();
+                    let tipoCard = cards[i].getAttribute('data-tipo') || '';
+                    let espCard = cards[i].getAttribute('data-esp') || '';
+                    let setorCard = cards[i].getAttribute('data-setor') || '';
+                    let passaNoTexto = (input === "") || textoCard.includes(input);
+                    let passaNoBotao = (filtroAtivoBotoes === 'TODOS' || tipoCard.toUpperCase().includes(filtroAtivoBotoes.toUpperCase()));
+                    let passaEspCard = (filtroEsp === 'TODAS' || filtroEsp === espCard);
+                    let passaSetorCard = (filtroSetor === 'TODOS' || filtroSetor === setorCard);
+
+                    if (passaNoTexto && passaNoBotao && passaEspCard && passaSetorCard) {
+                        cards[i].style.setProperty('display', 'block', 'important');
+                    } else {
+                        cards[i].style.setProperty('display', 'none', 'important');
+                    }
+                }
+
+                document.querySelectorAll('#view-matriz .especialidade-linha').forEach(linha => {
+                    let cardsLinha = Array.from(linha.querySelectorAll('.card-tarefa'));
+                    let cardsVisiveis = cardsLinha.filter(c => c.style.display === 'block' || c.style.display === '');
+                    let esp = linha.getAttribute('data-esp');
+                    let divisor = document.querySelector(`#view-matriz .especialidade-divisor[data-esp="${esp}"]`);
+                    let badge = divisor ? divisor.querySelector('[data-contagem-secao]') : null;
+                    if (badge) badge.textContent = cardsVisiveis.length;
+
+                    let passaEsp = (filtroEsp === 'TODAS' || filtroEsp === esp);
+
+                    if(cardsLinha.length > 0) {
+                        let temVisivel = cardsVisiveis.length > 0;
+                        if (!temVisivel || !passaEsp) {
+                            linha.style.setProperty('display', 'none', 'important');
+                            if(divisor) divisor.style.setProperty('display', 'none', 'important');
+                        } else {
+                            linha.style.setProperty('display', 'flex', 'important');
+                            if(divisor) divisor.style.setProperty('display', 'block', 'important');
+                        }
+                    } else {
+                        linha.style.setProperty('display', 'none', 'important');
+                        if(divisor) divisor.style.setProperty('display', 'none', 'important');
+                    }
+                });
+
+                document.querySelectorAll('#view-matriz .setor-linha').forEach(linha => {
+                    let cardsLinha = Array.from(linha.querySelectorAll('.card-tarefa'));
+                    let cardsVisiveis = cardsLinha.filter(c => c.style.display === 'block' || c.style.display === '');
+                    let setor = linha.getAttribute('data-setor');
+                    let divisor = document.querySelector(`#view-matriz .setor-divisor[data-setor="${setor}"]`);
+                    let badge = divisor ? divisor.querySelector('[data-contagem-secao]') : null;
+                    if (badge) badge.textContent = cardsVisiveis.length;
+
+                    let passaSetor = (filtroSetor === 'TODOS' || filtroSetor === setor);
+
+                    if(cardsLinha.length > 0) {
+                        let temVisivel = cardsVisiveis.length > 0;
+                        if (!temVisivel || !passaSetor) {
+                            linha.style.setProperty('display', 'none', 'important');
+                            if(divisor) divisor.style.setProperty('display', 'none', 'important');
+                        } else {
+                            linha.style.setProperty('display', 'flex', 'important');
+                            if(divisor) divisor.style.setProperty('display', 'block', 'important');
+                        }
+                    } else {
+                        linha.style.setProperty('display', 'none', 'important');
+                        if(divisor) divisor.style.setProperty('display', 'none', 'important');
+                    }
+                });
+            } catch (e) {
+                console.error("Erro ao aplicar filtros:", e);
+            }
+        }
+
+        const modalUI = new bootstrap.Modal(document.getElementById('modalGestaoTarefa'));
+        function abrirModalEdicao(dadosModal, idsStr, frota, statusAtual, localExec) {
+            document.getElementById('modalIdProg').value = idsStr;
+            document.getElementById('modalLabelFrota').innerText = frota;
+            let container = document.getElementById('containerServicosModal');
+            let html = '';
+
+            let servicos = dadosModal.split('||');
+            servicos.forEach(s => {
+                let parts = s.split('::');
+                let id = parts[0];
+                let tipo = parts[1];
+                let resAnalise = parts[2] ? parts[2] : '';
+                let obs = parts[3] ? parts[3] : '';
+
+                html += `
+                <div class="mb-3 p-2 border rounded bg-light shadow-sm">
+                    <label class="form-label fw-bold small text-primary mb-1"><i class="bi bi-wrench me-1"></i>${tipo}</label>`;
+
+                if(obs) {
+                    html += `<div class="small fw-bold text-secondary mb-2" style="font-size: 0.85rem;"><i class="bi bi-gear-wide-connected me-1"></i>Compartimento: ${obs}</div>`;
+                }
+
+                html += `
+                    <select class="form-select form-select-sm border-secondary fw-bold mb-2" disabled>
+                        <option value="PENDENTE" ${statusAtual === 'PENDENTE' ? 'selected' : ''} class="text-secondary">⚪ PENDENTE</option>
+                        <option value="REALIZADA" ${statusAtual === 'REALIZADA' ? 'selected' : ''} class="text-success">🟢 REALIZADA</option>
+                        <option value="BLOQUEADA" ${statusAtual === 'BLOQUEADA' ? 'selected' : ''} class="text-danger">🔴 BLOQUEADA</option>
+                        <option value="QUEBRADA" ${statusAtual === 'QUEBRADA' ? 'selected' : ''} class="text-warning">🟡 QUEBRADA</option>
+                    </select>`;
+
+                if(tipo.includes('ANALISE DE OLEO') && resAnalise) {
+                    html += `
+                    <label class="form-label fw-bold small text-info mt-1 mb-1"><i class="bi bi-eyedropper me-1"></i>Resultado da Análise</label>
+                    <select class="form-select form-select-sm border-info fw-bold text-dark" disabled>
+                        <option value="NORMAL" ${resAnalise === 'NORMAL' ? 'selected' : ''} class="text-success">🟢 NORMAL (Bom)</option>
+                        <option value="ANOMALIA" ${resAnalise === 'ANOMALIA' ? 'selected' : ''} class="text-warning text-dark">🟡 ANOMALIA (Atenção)</option>
+                        <option value="CRÍTICO" ${resAnalise === 'CRÍTICO' ? 'selected' : ''} class="text-danger">🔴 CRÍTICO (Bloqueia Frota)</option>
+                    </select>`;
+                }
+                html += `</div>`;
+            });
+            container.innerHTML = html;
+
+            let divData = document.getElementById('divDataExecucao');
+            if(statusAtual === 'REALIZADA') {
+                divData.style.display = 'block';
+                let selectLoc = document.getElementById('modalLocalExecucao');
+                if(selectLoc) {
+                    selectLoc.value = localExec && localExec !== 'None' ? localExec : 'BASE';
+                }
+            } else {
+                divData.style.display = 'none';
+            }
+
+            modalUI.show();
+        }
+
+        // Anima as barras de "Aderência da Semana": comecam em 0% (definido no HTML) e
+        // enchem ate o valor real logo apos o primeiro paint, disparando a transicao CSS.
+        document.addEventListener('DOMContentLoaded', () => {
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                document.querySelectorAll('[data-aderencia-fill]').forEach(el => {
+                    el.style.width = el.dataset.aderenciaFill + '%';
+                });
+            }));
+        });
+
+        // Desenha um numero centralizado no meio de um donut, direto no canvas - fica
+        // pixel-perfeito independente da legenda. Ativado via options.plugins.centerTexto.
+        const centerTextoPlugin = {
+            id: 'centerTexto',
+            afterDraw(chart) {
+                const cfg = chart.config.options.plugins && chart.config.options.plugins.centerTexto;
+                if (!cfg || !cfg.texto) return;
+                const { ctx, chartArea } = chart;
+                const x = (chartArea.left + chartArea.right) / 2;
+                const y = (chartArea.top + chartArea.bottom) / 2;
+                ctx.save();
+                ctx.font = cfg.font || '700 32px Calibri, Arial, sans-serif';
+                ctx.fillStyle = cfg.cor || '#333';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(cfg.texto, x, y);
+                ctx.restore();
+            }
+        };
+        Chart.register(ChartDataLabels, centerTextoPlugin);
+        Chart.defaults.set('plugins.datalabels', {
+            color: '#ffffff', font: { weight: 'bold', size: 12 },
+            formatter: function(value, context) {
+                if (value === 0) return '';
+                if (context.chart.config.type === 'doughnut') {
+                    let sum = context.dataset.data.reduce((a, b) => a + b, 0);
+                    return Math.round((value / sum) * 100) + "%";
+                }
+                if (context.chart.config.type === 'bar') {
+                    let sum = 0;
+                    context.chart.data.datasets.forEach(ds => { sum += ds.data[context.dataIndex]; });
+                    return Math.round((value / sum) * 100) + "%";
+                }
+                return value;
+            }
+        });
+
+        let dadosStatsGlobais = {{ stats | tojson | safe }};
+        let chartStatusObj = null; let chartEspObj = null;
+        // Barras mais finas em todos os graficos (Chart.js v4: propriedade de DATASET, nao
+        // de escala). maxBarThickness trava um teto em pixels - essencial com poucas
+        // categorias, senao a barra vira um bloco gigante.
+        const BARRA_FINA = { barPercentage: 0.55, categoryPercentage: 0.55, maxBarThickness: 42 };
+        // Animação dos gráficos do Dashboard Parcial: barra sobe da base, linha é
+        // traçada da esquerda pra direita, anel cresce girando - mesmo tratamento
+        // usado no Dashboard de OS.
+        const PCM_ANIM = { duration: 750, easing: 'easeOutQuart', delay: ctx => ctx.type === 'data' ? ctx.dataIndex * 35 : 0 };
+        const PCM_ANIM_LINHA = {
+            x: { type: 'number', easing: 'linear', duration: 400, from: NaN, delay: ctx => ctx.type === 'data' ? ctx.dataIndex * 45 : 0 },
+            y: { type: 'number', easing: 'easeOutQuart', duration: 650, from: ctx => ctx.chart.scales.y ? ctx.chart.scales.y.getPixelForValue(ctx.chart.scales.y.min) : undefined }
+        };
+        const PCM_ANIM_DONUT = { animateRotate: true, animateScale: true, duration: 900, easing: 'easeOutQuart' };
+        let currentDashTipo = '';
+        const modalDashUI = new bootstrap.Modal(document.getElementById('modalMiniDash'));
+
+        function abrirRelatorioOficial() { let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let base = '/dash_oleo'; if (i && f) base += `?inicio=${i}&fim=${f}`; window.open(base, '_blank'); }
+        function abrirRelatorioAnalise() { let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let base = '/dash_analise'; if (i && f) base += `?inicio=${i}&fim=${f}`; window.open(base, '_blank'); }
+        function abrirRelatorioPreventiva() { let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let base = '/dash_preventiva'; if (i && f) base += `?inicio=${i}&fim=${f}`; window.open(base, '_blank'); }
+        function abrirRelatorioPitStop() { let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let base = '/dash_pitstop'; if (i && f) base += `?inicio=${i}&fim=${f}`; window.open(base, '_blank'); }
+
+        // Tipos com dashboard ampliado (slug da API + botao "Ver Relatorio Oficial / Baixar PDF").
+        const DASH_TIPO_INFO = [
+            ['TROCA DE OLEO',   'oleo',       'btnRelatorioOficial'],
+            ['ANALISE DE OLEO', 'analise',    'btnRelatorioAnalise'],
+            ['PREVENTIVA',      'preventiva', 'btnRelatorioPreventiva'],
+            ['PIT STOP',        'pitstop',    'btnRelatorioPitStop'],
+            ['PITSTOP',         'pitstop',    'btnRelatorioPitStop'],
+        ];
+
+        function infoDashAmpliado(tipo) {
+            const t = (tipo || '').toUpperCase();
+            for (const [chave, slug, botaoId] of DASH_TIPO_INFO) {
+                if (t.includes(chave)) return { slug, botaoId };
+            }
+            return null;
+        }
+
+        function periodoDashAtual() {
+            const i = document.getElementById('dashDataInicio');
+            const f = document.getElementById('dashDataFim');
+            return {
+                inicio: (i && i.value) ? i.value : '{{ data_inicio_db }}',
+                fim:    (f && f.value) ? f.value : '{{ data_fim_db }}'
+            };
+        }
+
+        function abrirMiniDash(tipo, event) {
+            currentDashTipo = tipo;
+
+            ['btnRelatorioOficial', 'btnRelatorioAnalise', 'btnRelatorioPreventiva', 'btnRelatorioPitStop']
+                .forEach(id => { document.getElementById(id).style.display = 'none'; });
+            const info = infoDashAmpliado(tipo);
+            if (info) document.getElementById(info.botaoId).style.display = 'inline-block';
+
+            renderizarDashboard(dadosStatsGlobais[tipo]);
+
+            // O balao "cresce" a partir do card clicado em vez de so aparecer no centro.
+            const dialogEl = document.querySelector('#modalMiniDash .modal-dialog');
+            if (event && event.currentTarget && dialogEl) {
+                const rect = event.currentTarget.getBoundingClientRect();
+                const originX = rect.left + rect.width / 2;
+                const originY = rect.top + rect.height / 2;
+                dialogEl.style.setProperty('--dash-dx', (originX - window.innerWidth / 2) + 'px');
+                dialogEl.style.setProperty('--dash-dy', (originY - window.innerHeight / 2) + 'px');
+                dialogEl.classList.remove('dash-modal-grow'); void dialogEl.offsetWidth;
+                dialogEl.classList.add('dash-modal-grow');
+                dialogEl.addEventListener('animationend', () => dialogEl.classList.remove('dash-modal-grow'), { once: true });
+            }
+
+            modalDashUI.show();
+            carregarDashboardCompleto(tipo);
+        }
+
+        // ── Painel completo (setor / comparativo 5 semanas / atraso / frotas paradas) ──
+        let chartDashSetorObj = null, chartDashHistObj = null, chartDashAtrasoObj = null, chartDashParadasObj = null;
+
+        function carregarDashboardCompleto(tipo) {
+            const painel = document.getElementById('dashPainelCompleto');
+            const loading = document.getElementById('dashPainelCompletoLoading');
+            const info = infoDashAmpliado(tipo);
+            if (!info) { painel.style.display = 'none'; loading.style.display = 'none'; return; }
+
+            painel.style.display = 'none'; loading.style.display = 'block';
+            const p = periodoDashAtual();
+            fetch(`/api/dash_dados/${info.slug}?inicio=${p.inicio}&fim=${p.fim}`)
+                .then(r => r.json())
+                .then(payload => {
+                    dashPayloadAtual = payload;
+                    dashSetorSelecionado = null;
+                    renderizarDashboardCompleto(payload);
+                    loading.style.display = 'none'; painel.style.display = 'block';
+                })
+                .catch(() => { loading.innerHTML = '<span class="text-danger fw-bold">Não foi possível carregar o detalhamento completo.</span>'; });
+        }
+
+        // ── Filtro cruzado: o setor clicado recorta todo o painel ──────────────
+        let dashPayloadAtual = null;
+        let dashSetorSelecionado = null;
+
+        function selecionarSetorDash(setor) {
+            if (!dashPayloadAtual) return;
+            dashSetorSelecionado = (dashSetorSelecionado === setor) ? null : setor;
+            aplicarFiltroSetorDash();
+        }
+
+        function limparFiltroSetorDash() {
+            dashSetorSelecionado = null;
+            aplicarFiltroSetorDash();
+        }
+
+        function aplicarFiltroSetorDash() {
+            const faixa = document.getElementById('dashFiltroSetor');
+            const nome = document.getElementById('dashFiltroSetorNome');
+            if (dashSetorSelecionado) {
+                if (nome) nome.textContent = dashSetorSelecionado;
+                if (faixa) faixa.style.setProperty('display', 'flex', 'important');
+            } else if (faixa) {
+                faixa.style.setProperty('display', 'none', 'important');
+            }
+            renderizarDashboardCompleto(dashPayloadAtual);
+            const painel = document.getElementById('dashPainelCompleto');
+            if (painel) { painel.classList.remove('pcm-fade-swap'); void painel.offsetWidth; painel.classList.add('pcm-fade-swap'); }
+        }
+
+        function renderizarDashboardCompleto(payload) {
+            // Com um setor selecionado, todo o painel (menos a serie historica, que
+            // e do periodo inteiro) passa a mostrar so aquele setor.
+            const todos = payload.dados || [];
+            const dados = dashSetorSelecionado
+                ? todos.filter(r => ((r.setor || 'SEM SETOR').trim()) === dashSetorSelecionado)
+                : todos;
+            const hist = payload.historico || [];
+
+            // Mesma logica de agrupamento por setor do relatorio oficial em PDF - alem da
+            // contagem, guarda tambem a frota de cada registro pra mostrar no hover.
+            function agruparPorSetor(linhas) {
+                const acc = {};
+                linhas.forEach(r => {
+                    const setor = (r.setor || 'SEM SETOR').trim();
+                    if (!acc[setor]) acc[setor] = { real: 0, pend: 0, atraso: 0, paradas: 0, bloqueadas: 0, frotasReal: [], frotasPend: [], frotasAtraso: [], frotasParadas: [] };
+                    const frota = r.id_frota;
+                    if (r.status === 'REALIZADA') {
+                        const atrasado = !!(r.data_execucao && r.data_planejada && r.data_execucao > r.data_planejada);
+                        acc[setor].real++; acc[setor].frotasReal.push(frota);
+                        if (atrasado) { acc[setor].atraso++; acc[setor].frotasAtraso.push(frota); }
+                    } else if (r.status === 'BLOQUEADA') {
+                        acc[setor].pend++; acc[setor].frotasPend.push(frota); acc[setor].bloqueadas++;
+                    } else if (r.status === 'QUEBRADA') {
+                        acc[setor].paradas++; acc[setor].frotasParadas.push(frota);
+                    } else {
+                        acc[setor].pend++; acc[setor].frotasPend.push(frota);
+                    }
+                });
+                return acc;
+            }
+
+            const set = agruparPorSetor(dados);
+            // O grafico de setores continua mostrando TODOS os setores mesmo com filtro
+            // ativo - senao nao haveria como trocar de setor depois de escolher um.
+            const setTodos = agruparPorSetor(todos);
+            const lTodos = Object.keys(setTodos).sort();
+
+            // Tooltip com a lista de frotas ao passar o mouse na barra.
+            const tooltipFrotasSetor = {
+                callbacks: {
+                    afterLabel: ctx => {
+                        const s = setTodos[ctx.label];
+                        if (!s) return '';
+                        const lista = ctx.dataset.label === 'Realizado' ? s.frotasReal : s.frotasPend;
+                        return lista && lista.length ? [' '].concat(lista.map(f => ' ' + f)) : '';
+                    }
+                }
+            };
+            const lSet = Object.keys(set).sort();
+            const totalParadas = lSet.reduce((s, k) => s + set[k].paradas, 0);
+            document.getElementById('dashTotalParadas').innerText = totalParadas;
+
+            // Setor nao selecionado fica esmaecido, pra deixar claro o recorte ativo.
+            const corSetor = (base) => lTodos.map(s =>
+                (!dashSetorSelecionado || dashSetorSelecionado === s) ? base : base + '33');
+
+            const destruir = obj => { if (obj) obj.destroy(); };
+
+            destruir(chartDashSetorObj);
+            chartDashSetorObj = new Chart(document.getElementById('chartDashSetor'), {
+                type: 'bar',
+                data: { labels: lTodos, datasets: [
+                    { label: 'Realizado', data: lTodos.map(s => setTodos[s].real), backgroundColor: corSetor(PCM.cores.realizada), ...BARRA_FINA },
+                    { label: 'Pendente',  data: lTodos.map(s => setTodos[s].pend), backgroundColor: corSetor(PCM.cores.pendente), ...BARRA_FINA }
+                ]},
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: PCM_ANIM,
+                    onClick: (evt, elementos, gr) => {
+                        const alvo = gr.getElementsAtEventForMode(evt, 'index', { intersect: false }, true);
+                        if (alvo.length) selecionarSetorDash(gr.data.labels[alvo[0].index]);
+                    },
+                    onHover: (evt, elementos) => { evt.native.target.style.cursor = elementos.length ? 'pointer' : 'default'; },
+                    scales: { x: { stacked: true }, y: { stacked: true, display: false } },
+                    plugins: { legend: { position: 'bottom' }, tooltip: tooltipFrotasSetor, datalabels: {
+                        display: ctx => (ctx.dataset.data[ctx.dataIndex] || 0) > 0, color: '#fff', anchor: 'center', align: 'center'
+                    } }
+                }
+            });
+
+            destruir(chartDashHistObj);
+            // A linha mostra o caminho; esta leitura diz se ele e bom ou ruim.
+            const serieHist = hist.map(h => h.perc);
+            const tend = PCM.tendencia(serieHist);
+            const leituraTend = document.getElementById('dashLeituraTendencia');
+            if (leituraTend) {
+                const classe = tend.dir === 'subindo' ? 'bom' : (tend.dir === 'caindo' ? 'critico' : 'neutro');
+                leituraTend.className = 'pcm-leitura justify-content-center mb-2 pcm-leitura--' + classe;
+                leituraTend.style.marginTop = '0';
+                leituraTend.innerHTML =
+                    `<i class="bi ${tend.icone}"></i><strong>${tend.texto}</strong>` +
+                    `<span>de ${serieHist[0]}% para ${serieHist[serieHist.length - 1]}% em 5 semanas</span>`;
+            }
+
+            // Serie temporal (5 semanas) em linha com area - mostra tendencia, que
+            // e o que interessa aqui; barras so comparariam blocos soltos.
+            chartDashHistObj = new Chart(document.getElementById('chartDashHistorico'), {
+                type: 'line',
+                data: {
+                    labels: hist.map(h => h.semana),
+                    datasets: [{
+                        data: serieHist,
+                        borderColor: tend.cor, borderWidth: 1.5,
+                        backgroundColor: ctx => {
+                            const { ctx: c, chartArea: a } = ctx.chart;
+                            if (!a) return 'transparent';
+                            const g = c.createLinearGradient(0, a.top, 0, a.bottom);
+                            g.addColorStop(0, tend.cor + '40');
+                            g.addColorStop(1, tend.cor + '05');
+                            return g;
+                        },
+                        fill: true, tension: .32,
+                        pointRadius: 4, pointHoverRadius: 7,
+                        pointBackgroundColor: ctx => ctx.dataIndex === serieHist.length - 1 ? tend.cor : '#fff',
+                        pointBorderColor: tend.cor, pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: PCM_ANIM, animations: PCM_ANIM_LINHA,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: {
+                            label: c => `Aderência: ${c.parsed.y}%`,
+                            afterLabel: c => `${hist[c.dataIndex].realizadas} realizada(s)`
+                        } },
+                        datalabels: {
+                            anchor: 'end', align: 'top', offset: 4,
+                            color: ctx => ctx.dataIndex === serieHist.length - 1 ? tend.cor : PCM.cores.textoFraco,
+                            font: ctx => ({ weight: 'bold', size: ctx.dataIndex === serieHist.length - 1 ? 12 : 10 }),
+                            formatter: v => `${v}%`
+                        }
+                    },
+                    scales: { y: { max: 125, display: false }, x: { grid: { display: false }, ticks: { font: { size: 9 } } } }
+                }
+            });
+
+            const lAtr = lSet.filter(s => set[s].atraso > 0);
+            const tooltipFrotasAtraso = {
+                callbacks: {
+                    afterLabel: ctx => {
+                        const s = set[ctx.label];
+                        const lista = s && s.frotasAtraso;
+                        return lista && lista.length ? [' '].concat(lista.map(f => ' ' + f)) : '';
+                    }
+                }
+            };
+            destruir(chartDashAtrasoObj);
+            chartDashAtrasoObj = new Chart(document.getElementById('chartDashAtraso'), {
+                type: 'bar',
+                data: { labels: lAtr.length ? lAtr : ['Sem atraso'], datasets: [{ data: lAtr.length ? lAtr.map(s => set[s].atraso) : [0], backgroundColor: PCM.cores.atrasada, ...BARRA_FINA }] },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    animation: PCM_ANIM,
+                    plugins: { legend: { display: false }, tooltip: tooltipFrotasAtraso, datalabels: {
+                        display: ctx => (ctx.dataset.data[ctx.dataIndex] || 0) > 0, anchor: 'center', align: 'center', color: '#000'
+                    } },
+                    scales: { x: { display: false } }
+                }
+            });
+
+            const lPar = lSet.filter(s => set[s].paradas > 0);
+            const tooltipFrotasParadas = {
+                callbacks: {
+                    afterLabel: ctx => {
+                        const s = set[ctx.label];
+                        const lista = s && s.frotasParadas;
+                        return lista && lista.length ? [' '].concat(lista.map(f => ' ' + f)) : '';
+                    }
+                }
+            };
+            destruir(chartDashParadasObj);
+            chartDashParadasObj = new Chart(document.getElementById('chartDashParadas'), {
+                type: 'bar',
+                data: { labels: lPar.length ? lPar : ['Sem paradas'], datasets: [{ data: lPar.length ? lPar.map(s => set[s].paradas) : [0], backgroundColor: PCM.cores.bloqueada, ...BARRA_FINA }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: PCM_ANIM,
+                    plugins: { legend: { display: false }, tooltip: tooltipFrotasParadas, datalabels: {
+                        display: ctx => (ctx.dataset.data[ctx.dataIndex] || 0) > 0, anchor: 'center', align: 'center', color: '#fff'
+                    } },
+                    scales: { y: { display: false } }
+                }
+            });
+        }
+
+        function renderizarDashboard(d) {
+            if(!d) { d = {total: 0, realizadas: 0, pendentes: 0, bloqueadas: 0, quebradas: 0, percentual: 0, especialidades: {}}; }
+
+            document.getElementById('dashTitulo').innerText = currentDashTipo;
+            document.getElementById('dashTotal').innerText = d.total;
+            document.getElementById('dashRealizadas').innerText = d.realizadas;
+            document.getElementById('dashPendentes').innerText = d.pendentes;
+            document.getElementById('dashBloqueadas').innerText = d.bloqueadas;
+            document.getElementById('dashQuebradas').innerText = d.quebradas;
+            // O numero central agora e desenhado direto no canvas (plugin centerTexto),
+            // pixel-perfeito no meio do anel independente da legenda. A div antiga fica
+            // escondida pra nao desenhar o numero duas vezes.
+            let elCenterAntigo = document.getElementById('chartCenterTotal');
+            if (elCenterAntigo) { elCenterAntigo.innerText = d.total; elCenterAntigo.style.display = 'none'; }
+
+            // Frotas de cada status, juntando todas as especialidades - usado no hover do anel.
+            function coletarFrotas(campo) {
+                let todas = [];
+                for (let esp in d.especialidades) todas = todas.concat(d.especialidades[esp][campo] || []);
+                return [...new Set(todas)];
+            }
+            const frotasPorStatusDonut = {
+                'Realizadas': coletarFrotas('frotas_realizadas'),
+                'Pendentes': coletarFrotas('frotas_pendentes'),
+                'Bloqueadas': coletarFrotas('frotas_bloqueadas'),
+                'Quebradas': coletarFrotas('frotas_quebradas')
+            };
+
+            let pb = document.getElementById('dashProgressBar');
+            let txt = document.getElementById('dashPercText');
+            pb.style.width = d.percentual + '%';
+            pb.innerText = d.percentual + '%';
+
+            pb.className = 'progress-bar progress-bar-striped progress-bar-animated fw-bold';
+            txt.className = 'small fw-bold';
+
+            if(d.percentual >= 80) { pb.classList.add('bg-success'); txt.classList.add('text-success'); }
+            else if(d.percentual >= 50) { pb.classList.add('bg-warning', 'text-dark'); txt.classList.add('text-warning'); }
+            else { pb.classList.add('bg-danger'); txt.classList.add('text-danger'); }
+            txt.innerText = d.percentual + '%';
+
+            if(chartStatusObj) chartStatusObj.destroy();
+            const ctxStatus = document.getElementById('chartStatus').getContext('2d');
+            chartStatusObj = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Realizadas', 'Pendentes', 'Bloqueadas', 'Quebradas'],
+                    datasets: [{ data: [d.realizadas, d.pendentes, d.bloqueadas, d.quebradas], backgroundColor: ['#198754', '#6c757d', '#dc3545', '#ffc107'], borderWidth: 2 }]
+                },
+                options: {
+                    cutout: '65%', responsive: true, maintainAspectRatio: false,
+                    animation: PCM_ANIM_DONUT,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        centerTexto: { texto: String(d.total) },
+                        datalabels: {
+                            anchor: 'center', align: 'center', clamp: true, clip: false, offset: 0,
+                            display: ctx => (ctx.dataset.data[ctx.dataIndex] || 0) > 0,
+                            backgroundColor: ctx => ctx.dataset.backgroundColor[ctx.dataIndex],
+                            borderRadius: 4, padding: 4, color: '#fff', font: { weight: 'bold', size: 11 },
+                            formatter: (value, ctx) => {
+                                let soma = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                let perc = soma > 0 ? Math.round((value / soma) * 100) : 0;
+                                return value + ' (' + perc + '%)';
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                // Mostra as frotas daquele status ao passar o mouse na fatia.
+                                afterLabel: ctx => {
+                                    let lista = frotasPorStatusDonut[ctx.label] || [];
+                                    return lista.length > 0 ? [' '].concat(lista.map(f => ' ' + f)) : '';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            let labelsEsp = []; let dataRealizadas = []; let dataPendentes = []; let dataBloqueadas = []; let dataQuebradas = [];
+
+            for (let esp in d.especialidades) {
+                labelsEsp.push(esp);
+                dataRealizadas.push(d.especialidades[esp].realizadas);
+                dataPendentes.push(d.especialidades[esp].pendentes);
+                dataBloqueadas.push(d.especialidades[esp].bloqueadas);
+                dataQuebradas.push(d.especialidades[esp].quebradas);
+            }
+
+            if(chartEspObj) chartEspObj.destroy();
+            const ctxEsp = document.getElementById('chartEspecialidades').getContext('2d');
+            chartEspObj = new Chart(ctxEsp, {
+                type: 'bar',
+                data: {
+                    labels: labelsEsp,
+                    datasets: [
+                        { label: 'Realizadas', data: dataRealizadas, backgroundColor: '#198754', ...BARRA_FINA },
+                        { label: 'Pendentes', data: dataPendentes, backgroundColor: '#6c757d', ...BARRA_FINA },
+                        { label: 'Bloqueadas', data: dataBloqueadas, backgroundColor: PCM.cores.bloqueada, ...BARRA_FINA },
+                        { label: 'Quebradas', data: dataQuebradas, backgroundColor: PCM.cores.atrasada, ...BARRA_FINA }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: PCM_ANIM,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } },
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        datalabels: { anchor: 'center', align: 'center', color: '#fff', formatter: v => v > 0 ? v : '' }
+                    }
+                }
+            });
+        }
+
+        function filtrarDashModal() {
+            let i = document.getElementById('dashDataInicio').value;
+            let f = document.getElementById('dashDataFim').value;
+            let btn = document.getElementById('btnAtualizarDash');
+            if(i && f && currentDashTipo) {
+                btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>...';
+                btn.disabled = true;
+                fetch(`/api/dashboard_stats?inicio=${i}&fim=${f}`).then(response => response.json()).then(data => {
+                    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica';
+                    btn.disabled = false;
+                    dadosStatsGlobais = data;
+                    renderizarDashboard(dadosStatsGlobais[currentDashTipo]);
+                    carregarDashboardCompleto(currentDashTipo);
+                }).catch(error => {
+                    btn.innerHTML = 'Erro!';
+                    setTimeout(() => { btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica'; btn.disabled = false; }, 2000);
+                });
+            }
+        }
+
+    </script>
+    </div>
+</body>
+</html>

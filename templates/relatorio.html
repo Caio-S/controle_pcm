@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório PDF - PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <style>
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { font-family: Calibri, Arial, sans-serif; background-color: #ffffff; padding: 20px; color: #1c2430; }
+        .tabela-excel {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 11px;
+            border: none;
+            margin: 0 auto;
+            max-width: 700px;
+            table-layout: fixed;
+            word-wrap: break-word;
+            box-shadow: 0 1px 4px rgba(30,75,154,.12);
+        }
+        .titulo {
+            background: linear-gradient(135deg, #1E4B9A, #00509E);
+            color: #fff; font-size: 14px; font-weight: bold; letter-spacing: .02em;
+            padding: 11px 10px; text-align: center;
+        }
+        .cabecalho th { background-color: #eef3fb; border-top: 1.5px solid #1E4B9A; border-bottom: 2px solid #1E4B9A; color: #00509E; padding: 7px 6px; font-weight: bold; font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; }
+        .linha-dados td { border-bottom: 1px solid #dbe3ef; padding: 6px; vertical-align: middle; }
+
+        .caixa-resumo {
+            max-width: 700px; margin: 0 auto 16px auto;
+            display: flex; flex-wrap: wrap; gap: 8px;
+            padding: 0; border: none; background: none;
+        }
+        .resumo-total {
+            flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center;
+            background: linear-gradient(135deg, #1E4B9A, #00509E); color: #fff;
+            border-radius: 8px; padding: 8px 16px; min-width: 132px;
+        }
+        .resumo-total .num { font-size: 20px; font-weight: bold; line-height: 1.05; }
+        .resumo-total .lbl { font-size: 9.5px; letter-spacing: .04em; opacity: .9; text-transform: uppercase; }
+        .resumo-chips { flex: 1 1 auto; display: flex; flex-wrap: wrap; gap: 6px; align-content: center; }
+        .resumo-item {
+            display: flex; align-items: baseline; gap: 5px;
+            background: #eef3fb; border: 1px solid #d7e2f2; border-left: 3px solid #00509E;
+            border-radius: 6px; padding: 5px 10px; font-size: 10.5px;
+        }
+        .resumo-item .qtd { font-size: 13px; font-weight: bold; color: #00509E; }
+        .resumo-item .rot { color: #4a5568; font-weight: 600; text-transform: uppercase; letter-spacing: .01em; font-size: 9px; }
+        @media print {
+            @page { margin: 1cm; size: A4 portrait; }
+            body { padding: 0; }
+        }
+    
+        /* Folha A4 tem largura fixa por natureza. No celular ela e reduzida
+           proporcionalmente pra caber na tela (a escala vem do script abaixo,
+           porque scale(calc()) nao e aceito por todos os motores). A impressao
+           continua em 794px. */
+        @media screen and (max-width: 820px) {
+            body { padding: 8px !important; display: block !important; overflow-x: hidden; }
+            #page, #relatorioCompleto { transform-origin: top left; }
+        }
+        @media print {
+            #page, #relatorioCompleto { transform: none !important; margin-bottom: 0 !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="caixa-resumo">
+        <div class="resumo-total">
+            <span class="num">{{ total }}</span>
+            <span class="lbl">{% if filtro_motivo and filtro_motivo != 'TODOS' %}Total ({{ filtro_motivo }}){% else %}Total bloqueada{% endif %}</span>
+        </div>
+        <div class="resumo-chips">
+            {% for motivo, qtd in contagem.items() %}
+                <div class="resumo-item"><span class="qtd">{{ qtd }}</span><span class="rot">{{ motivo }}</span></div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <table class="tabela-excel">
+        <tr><td colspan="5" class="titulo">BLOQUEIO DE ABASTECIMENTO{% if filtro_motivo and filtro_motivo != 'TODOS' %} — Somente {{ filtro_motivo }}{% endif %} - {{ data_hoje }}</td></tr>
+        <tr><td colspan="5" style="padding: 2px;"></td></tr>
+        <tr class="cabecalho">
+            <th style="text-align: center; width: 10%;">FROTA</th>
+            <th style="text-align: left; width: 40%;">DESCRIÇÃO</th>
+            <th style="text-align: left; width: 20%;">MOTIVO</th>
+            <th style="text-align: center; width: 14%;">DATA</th>
+            <th style="text-align: left; width: 16%;">STATUS</th>
+        </tr>
+        {% for linha in frotas %}
+        <tr class="linha-dados" style="background-color: {{ '#f2f2f2' if loop.index0 % 2 == 0 else '#ffffff' }};">
+            <td style="text-align: center; font-weight: bold;">{{ linha.id_frota }}</td>
+            <td style="text-align: left;">{{ linha.descricao }}</td>
+            <td style="text-align: left;">{{ linha.motivo }}</td>
+            <td style="text-align: center;">{{ linha.data_bloqueio }}</td>
+            <td style="text-align: left;">{{ linha.status_oficina }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <script>window.onload = function() { window.print(); }</script>
+<script>
+// A4 tem 794px fixos. Em tela estreita a folha inteira e reduzida pra caber,
+// em vez de obrigar a arrastar pro lado. Nao afeta a impressao nem o PDF.
+(function () {
+  function ajustarFolha() {
+    var folha = document.getElementById('page') || document.getElementById('relatorioCompleto');
+    if (!folha) return;
+    var largura = document.documentElement.clientWidth;
+    if (largura > 820) { folha.style.transform = ''; folha.style.marginBottom = ''; return; }
+    var escala = (largura - 16) / 794;
+    folha.style.transform = 'scale(' + escala + ')';
+    // O transform nao encolhe o espaco ocupado no fluxo: sem isso sobraria uma
+    // area vazia enorme abaixo da folha.
+    folha.style.marginBottom = -(folha.offsetHeight * (1 - escala)) + 'px';
+  }
+  window.addEventListener('resize', ajustarFolha);
+  window.addEventListener('load', ajustarFolha);
+  document.addEventListener('DOMContentLoaded', ajustarFolha);
+})();
+</script>
+</body>
+</html>

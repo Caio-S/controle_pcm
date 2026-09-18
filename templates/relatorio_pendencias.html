@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Pendências - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+    <style>
+        /* Árvore Especialidade -> Setor -> Frente -> Frota, cada nível um
+           acordeão que soma o total dos filhos - dá pra abrir só o que importa
+           em vez de rolar uma lista enorme de 200+ pendências. */
+        .pend-grupo { border: 1px solid var(--pcm-border); border-radius: var(--pcm-r); background: var(--pcm-surface); margin-bottom: 8px; overflow: hidden; }
+        .pend-grupo-h {
+            display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer;
+            font-weight: 700; font-size: .88rem; user-select: none;
+        }
+        .pend-grupo-h:hover { background: var(--pcm-surface-2); }
+        .pend-grupo-h i.bi-chevron-right { transition: transform var(--pcm-fast) var(--pcm-ease); font-size: .78rem; color: var(--pcm-text-mute); }
+        .pend-grupo.aberto > .pend-grupo-h i.bi-chevron-right { transform: rotate(90deg); }
+        .pend-grupo-corpo { display: none; padding: 0 10px 10px; }
+        .pend-grupo.aberto > .pend-grupo-corpo { display: block; }
+        .pend-badge { margin-left: auto; font-size: .72rem; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--pcm-surface-2); color: var(--pcm-text-mute); }
+        .pend-badge.critico { background: rgba(220,53,69,.12); color: var(--pcm-bloqueada); }
+
+        /* Níveis mais fundos ficam levemente recuados e mais claros - a
+           hierarquia fica visível sem precisar ler o texto pra saber onde está. */
+        .pend-nivel-setor .pend-grupo-h    { font-size: .84rem; }
+        .pend-nivel-frente .pend-grupo-h   { font-size: .8rem; color: var(--pcm-text-mute); }
+        .pend-nivel-setor, .pend-nivel-frente { margin-left: 6px; border-style: dashed; }
+
+        .pend-frota { border-top: 1px solid var(--pcm-border); padding: 8px 4px 8px 10px; }
+        .pend-frota:first-child { border-top: none; }
+        .pend-frota-h { display: flex; align-items: baseline; gap: 8px; font-size: .82rem; margin-bottom: 5px; }
+        .pend-frota-h b { color: var(--pcm-text); }
+        .pend-frota-h span { color: var(--pcm-text-mute); font-size: .74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pend-lista { display: flex; flex-wrap: wrap; gap: 5px; }
+        .pend-chip {
+            display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; font-weight: 600;
+            padding: 3px 9px; border-radius: 99px; background: var(--pcm-surface-2); color: var(--pcm-text);
+            border: 1px solid var(--pcm-border);
+        }
+        .pend-chip.bloqueada { background: rgba(220,53,69,.10); border-color: rgba(220,53,69,.3); color: var(--pcm-bloqueada); }
+        .pend-chip.atrasada  { background: rgba(253,126,20,.12); border-color: rgba(253,126,20,.35); color: var(--pcm-atrasada); }
+        .pend-chip small { font-weight: 500; opacity: .85; }
+    </style>
+</head>
+<body class="pcm-app">
+{% include '_pcm_shell.html' %}
+
+<div class="pcm-shell">
+<header class="pcm-topbar">
+    <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+    <div>
+        <div class="pcm-tb-crumb">PCM</div>
+        <h1 class="pcm-tb-title">Relatório de Pendências</h1>
+    </div>
+    <div class="pcm-tb-spacer"></div>
+    <div class="pcm-tb-actions">
+        <span class="pcm-status pcm-status--pendente">{{ total_geral }} pendência{{ 's' if total_geral != 1 }}</span>
+        <button class="pcm-btn-icon" onclick="window.print()" title="Imprimir"><i class="bi bi-printer"></i></button>
+        <button class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+    </div>
+</header>
+
+<div class="pcm-main">
+
+    <div class="pcm-card mb-3 no-print">
+        <div class="pcm-card-h">
+            <h6><i class="bi bi-funnel-fill me-1"></i>Filtros</h6>
+            <span class="text-muted small">Combináveis — Especialidade + Setor + Frente</span>
+        </div>
+        <div class="pcm-card-b">
+            <form class="row g-2 align-items-end" method="get">
+                <div class="col-6 col-md-3">
+                    <label class="form-label small fw-semibold mb-1">Especialidade</label>
+                    <select name="especialidade" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        {% for e in opcoes_especialidade %}
+                        <option value="{{ e }}" {{ 'selected' if e == f_especialidade }}>{{ e }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label small fw-semibold mb-1">Setor</label>
+                    <select name="setor" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for s in opcoes_setor %}
+                        <option value="{{ s }}" {{ 'selected' if s == f_setor }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label small fw-semibold mb-1">Frente</label>
+                    <select name="frente" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        {% for f in opcoes_frente %}
+                        <option value="{{ f }}" {{ 'selected' if f == f_frente }}>{{ f }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3 d-flex gap-2">
+                    <button class="btn btn-primary btn-sm fw-semibold flex-fill"><i class="bi bi-funnel-fill me-1"></i>Aplicar</button>
+                    {% if f_especialidade or f_setor or f_frente %}
+                    <a href="/relatorio_pendencias" class="btn btn-outline-secondary btn-sm fw-semibold">Limpar</a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 mb-3 no-print">
+        <button type="button" class="btn btn-outline-secondary btn-sm fw-semibold" onclick="alternarTodos(true)">
+            <i class="bi bi-arrows-expand me-1"></i>Abrir tudo
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm fw-semibold" onclick="alternarTodos(false)">
+            <i class="bi bi-arrows-collapse me-1"></i>Fechar tudo
+        </button>
+    </div>
+
+    {% if especialidades %}
+    <div id="arvorePendencias">
+        {% for esp in especialidades %}
+        <div class="pend-grupo pend-nivel-esp aberto">
+            <div class="pend-grupo-h" onclick="this.closest('.pend-grupo').classList.toggle('aberto')">
+                <i class="bi bi-chevron-right"></i>
+                <i class="bi bi-tags-fill text-primary"></i>
+                {{ esp.nome }}
+                <span class="pend-badge {{ 'critico' if esp.total >= 10 }}">{{ esp.total }}</span>
+            </div>
+            <div class="pend-grupo-corpo">
+                {% for setor in esp.setores %}
+                <div class="pend-grupo pend-nivel-setor">
+                    <div class="pend-grupo-h" onclick="event.stopPropagation(); this.closest('.pend-grupo').classList.toggle('aberto')">
+                        <i class="bi bi-chevron-right"></i>
+                        <i class="bi bi-geo-alt-fill text-secondary"></i>
+                        {{ setor.nome }}
+                        <span class="pend-badge">{{ setor.total }}</span>
+                    </div>
+                    <div class="pend-grupo-corpo">
+                        {% for frente in setor.frentes %}
+                        <div class="pend-grupo pend-nivel-frente">
+                            <div class="pend-grupo-h" onclick="event.stopPropagation(); this.closest('.pend-grupo').classList.toggle('aberto')">
+                                <i class="bi bi-chevron-right"></i>
+                                <i class="bi bi-diagram-3-fill"></i>
+                                {{ frente.nome }}
+                                <span class="pend-badge">{{ frente.total }}</span>
+                            </div>
+                            <div class="pend-grupo-corpo">
+                                {% for f in frente.frotas %}
+                                <div class="pend-frota">
+                                    <div class="pend-frota-h">
+                                        <b>{{ f.id_frota }}</b>
+                                        <span title="{{ f.descricao }}">{{ f.descricao }}</span>
+                                    </div>
+                                    <div class="pend-lista">
+                                        {% for p in f.pendencias %}
+                                        <span class="pend-chip {{ 'bloqueada' if p.status == 'BLOQUEADA' else ('atrasada' if p.atrasada) }}"
+                                              title="{{ p.motivo if p.motivo }}">
+                                            {{ p.tipo_servico }}
+                                            <small>{{ p.data[8:10] }}/{{ p.data[5:7] }}{{ ' · ' ~ p.motivo if p.motivo }}</small>
+                                        </span>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="pcm-card">
+        <div class="pcm-card-b text-center py-5">
+            <i class="bi bi-check2-circle" style="font-size:2.4rem;color:var(--pcm-realizada)"></i>
+            <p class="mt-2 mb-0 text-muted">Nenhuma pendência encontrada para este filtro.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="text-muted small mt-3 no-print">Gerado em {{ data_geracao }}</div>
+</div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => PCM.iniciarTudo(document));
+function alternarTodos(abrir) {
+    document.querySelectorAll('#arvorePendencias .pend-grupo').forEach(g => g.classList.toggle('aberto', abrir));
+}
+</script>
+</body>
+</html>

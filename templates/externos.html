@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serviços Externos - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #f4f6f9; }
+
+        .table-custom th { padding: 0.5rem; }
+        .table-custom td { padding: 0.5rem; vertical-align: middle; }
+
+        .especialidade-header { background-color: #e9ecef; border-bottom: 1px solid #dee2e6; font-weight: bold; color: #333; text-transform: uppercase; font-size: 0.95rem; padding: 0.5rem !important; page-break-after: avoid; page-break-inside: avoid; }
+        .macro-header { background-color: #212529; color: #fff; font-weight: bold; text-transform: uppercase; font-size: 1.1rem; padding: 0.5rem !important; page-break-after: avoid; page-break-inside: avoid; }
+
+        .pdf-mode .table-custom th { font-size: 0.70rem; padding: 0.3rem; }
+        .pdf-mode .table-custom td { font-size: 0.70rem; padding: 0.2rem 0.3rem; }
+        .pdf-mode .table-custom .fs-5 { font-size: 0.9rem !important; }
+        .pdf-mode .table-custom .badge { font-size: 0.65rem !important; padding: 2px 4px; }
+        .pdf-mode .especialidade-header { font-size: 0.80rem !important; padding: 0.2rem 0.5rem !important; }
+        .pdf-mode .macro-header { font-size: 0.90rem !important; padding: 0.3rem 0.5rem !important; }
+
+        .table-custom tr { page-break-inside: avoid; }
+        .table-hover tbody tr:hover { background-color: rgba(0, 80, 158, 0.05); cursor: pointer; }
+
+        .card-upload { border: 2px dashed #00509E; background-color: #f8f9fa; transition: 0.3s; }
+        .card-upload:hover { background-color: #e9ecef; }
+
+        .kpi-card { border-left: 5px solid; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+
+        .nav-tabs .nav-link { color: #6c757d; font-size: 1.1rem; border: none; padding: 12px 20px; transition: 0.2s; }
+        .nav-tabs .nav-link:hover { color: #00509E; background-color: rgba(0, 80, 158, 0.05); border-radius: 8px 8px 0 0; }
+        .nav-tabs .nav-link.active { color: #0d6efd !important; font-weight: 800; border-bottom: 3px solid #0d6efd; background-color: transparent; }
+
+        [data-bs-theme="dark"] body { background-color: #212529; }
+        [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .macro-header { background-color: #1a1d20; color: #6ea8fe; border-color: #495057; }
+        [data-bs-theme="dark"] .especialidade-header { background-color: #343a40; border-color: #495057; color: #f8f9fa; }
+        [data-bs-theme="dark"] .table { color: #f8f9fa; }
+        [data-bs-theme="dark"] .table-hover tbody tr:hover { background-color: rgba(255,255,255,0.05); }
+        [data-bs-theme="dark"] .card-upload { border-color: #6ea8fe; background-color: #2b3035; }
+        [data-bs-theme="dark"] .card-upload:hover { background-color: #343a40; }
+        [data-bs-theme="dark"] .nav-tabs .nav-link:hover { color: #6ea8fe; background-color: rgba(255, 255, 255, 0.05); }
+    </style>
+</head>
+<body class="pcm-app">
+
+    {% include '_pcm_shell.html' %}
+
+    <div class="pcm-shell">
+    <header class="pcm-topbar no-print">
+        <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+        <div>
+            <div class="pcm-tb-crumb">Manutenção</div>
+            <h1 class="pcm-tb-title">Serviços Externos</h1>
+        </div>
+        <div class="pcm-tb-spacer"></div>
+        <div class="pcm-tb-actions">
+            <button class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+        </div>
+    </header>
+
+    <div class="pcm-main">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm no-print">
+                <i class="bi bi-info-circle-fill me-2"></i> {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="row mb-4 no-print">
+            <div class="col-md-8">
+                <div class="card card-upload shadow-sm h-100">
+                    <div class="card-body text-center p-3 d-flex flex-column justify-content-center">
+                        <h6 class="fw-bold text-primary mb-2"><i class="bi bi-file-earmark-spreadsheet-fill me-2"></i>Atualizar Base via Relatório CHB (.xlsx ou .csv)</h6>
+                        <form action="/api/upload_chb" method="POST" enctype="multipart/form-data" class="d-flex justify-content-center align-items-center gap-2">
+                            <input type="file" name="file" class="form-control form-control-sm w-50 border-primary" accept=".csv, .xlsx" required>
+                            <button type="submit" class="btn btn-primary btn-sm fw-bold px-3" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split me-2\'></i>Lendo...';"><i class="bi bi-cloud-arrow-up-fill me-1"></i>Processar Arquivo</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-white shadow-sm border-0 h-100">
+                    <div class="card-body d-flex flex-column justify-content-center gap-2 p-3">
+                        <h6 class="fw-bold text-secondary mb-1 text-center"><i class="bi bi-printer me-2"></i>Exportar Fila Completa (A4 Retrato)</h6>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filtroEspPdf" aria-expanded="false">
+                            <i class="bi bi-funnel me-1"></i>Filtrar por Especialidade
+                        </button>
+                        <div class="collapse" id="filtroEspPdf">
+                            <div class="border rounded p-2" style="background: #f8f9fa; max-height: 170px; overflow-y: auto;">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <small class="fw-bold text-muted" style="font-size: 0.7rem;">ESPECIALIDADES NO PDF:</small>
+                                    <div class="d-flex gap-2">
+                                        <a href="#" class="text-primary" style="font-size: 0.7rem;" onclick="selecionarTodasEsp(true); return false;">Todas</a>
+                                        <a href="#" class="text-danger" style="font-size: 0.7rem;" onclick="selecionarTodasEsp(false); return false;">Nenhuma</a>
+                                    </div>
+                                </div>
+                                {% set ns = namespace(seen=[]) %}
+                                {% for macro, subgrupos in agrupado.items() %}
+                                    {% for detalhe in subgrupos.keys() %}
+                                        {% if detalhe not in ns.seen %}
+                                            {% set ns.seen = ns.seen + [detalhe] %}
+                                            <div class="form-check mb-0">
+                                                <input class="form-check-input esp-pdf-check" type="checkbox" value="{{ detalhe }}" id="espChk_{{ loop.index }}" checked>
+                                                <label class="form-check-label" for="espChk_{{ loop.index }}" style="font-size: 0.72rem; cursor: pointer;">{{ detalhe }}</label>
+                                            </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <button id="btnPdfLista" class="btn btn-danger fw-bold w-100 shadow-sm" onclick="baixarListaPDF()"><i class="bi bi-list-columns me-2"></i>Exportar Toda a Fila em Aberto</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 mb-4 no-print">
+            <div class="col">
+                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #0d6efd;" onclick="abrirModalKpi('todas', 'TOTAL DE FROTAS EM OFICINAS', 'text-primary')">
+                    <div class="card-body text-center py-2 px-1">
+                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.70rem;">TOTAL EM OFICINAS</h6>
+                        <h2 class="fw-bold text-primary mb-0">{{ stats.total_os }}</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #6c757d;" onclick="abrirModalKpi('sem_previsao', 'FROTAS SEM PREVISÃO DE ENTREGA', 'text-secondary')">
+                    <div class="card-body text-center py-2 px-1">
+                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.70rem;">SEM PREVISÃO</h6>
+                        <h2 class="fw-bold text-secondary mb-0">{{ stats.sem_previsao_count }}</h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #dc3545;" onclick="abrirModalKpi('atrasadas', 'FROTAS COM PREVISÃO VENCIDA', 'text-danger')">
+                    <div class="card-body text-center py-2 px-1">
+                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.70rem;">PREVISÕES VENCIDAS</h6>
+                        <h2 class="fw-bold text-danger mb-0">{{ stats.atrasadas }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #ffc107;" onclick="abrirModalKpi('sem_pedido', 'FROTAS AGUARDANDO PEDIDO DE COMPRA', 'text-warning text-dark')">
+                    <div class="card-body text-center py-2 px-1">
+                        <h6 class="text-muted fw-bold mb-1" style="font-size: 0.70rem;">SEM PED. DE COMPRA</h6>
+                        <h2 class="fw-bold text-warning text-dark mb-0">{{ stats.sem_pedido }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #198754;" onclick="abrirModalKpi('entregas', 'PREVISÕES DE ENTREGA PROGRAMADAS', 'text-success')">
+                    <div class="card-body text-center py-1 px-1 d-flex flex-column justify-content-center">
+                        <h6 class="text-muted fw-bold mb-2" style="font-size: 0.65rem;">ENTREGAS PROGRAMADAS</h6>
+                        <div class="d-flex justify-content-center align-items-center gap-3">
+                            <div>
+                                <span class="badge bg-success rounded-pill mb-1 d-block" style="font-size: 0.55rem;">SEMANA</span>
+                                <h4 class="fw-bold text-success mb-0 lh-1" style="font-size: 1.3rem;">{{ stats.na_semana }}</h4>
+                            </div>
+                            <div style="border-left: 1px solid #dee2e6; height: 35px;"></div>
+                            <div>
+                                <span class="badge bg-info text-dark rounded-pill mb-1 d-block" style="font-size: 0.55rem;">PRÓXIMAS</span>
+                                <h4 class="fw-bold text-info mb-0 lh-1" style="font-size: 1.3rem;">{{ stats.proximas_semanas }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-4 border-bottom-0 shadow-sm bg-white rounded-top px-3 pt-3 no-print" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="lista-tab" data-bs-toggle="tab" data-bs-target="#lista-pane" type="button" role="tab"><i class="bi bi-list-columns-reverse me-2"></i>Fila de Frotas Externas</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard-pane" type="button" role="tab"><i class="bi bi-speedometer2 me-2"></i>Gráficos & Análises</button>
+            </li>
+            <li class="nav-item ms-auto" role="presentation">
+                <button class="nav-link text-secondary" id="historico-tab" data-bs-toggle="tab" data-bs-target="#historico-pane" type="button" role="tab"><i class="bi bi-archive-fill me-2"></i>Histórico (Frotas Encerradas)</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+
+            <div class="tab-pane fade show active" id="lista-pane" role="tabpanel" tabindex="0">
+                <div id="pdfLista" class="card shadow-sm border-0 bg-white mb-5 mx-auto">
+                    <div class="card-body p-0 table-responsive bg-white rounded">
+
+                        <div class="d-none print-only-header p-3 mb-2 bg-white">
+                            <div class="text-center border-bottom pb-2 mb-3">
+                                <h5 class="fw-bold mb-0">Relatório de Fila - Serviços Externos (Oficina)</h5>
+                            </div>
+                            <div class="d-flex justify-content-between text-center gap-2 mb-2">
+                                <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #0d6efd !important; background-color: #f8f9fa;">
+                                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">TOTAL EM OFICINAS</div>
+                                    <div style="font-size: 1.1rem;" class="fw-bold text-primary lh-1">{{ stats.total_os }}</div>
+                                </div>
+                                <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #6c757d !important; background-color: #f8f9fa;">
+                                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">SEM PREVISÃO</div>
+                                    <div style="font-size: 1.1rem;" class="fw-bold text-secondary lh-1">{{ stats.sem_previsao_count }}</div>
+                                </div>
+                                <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #dc3545 !important; background-color: #f8f9fa;">
+                                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">PREVISÕES VENCIDAS</div>
+                                    <div style="font-size: 1.1rem;" class="fw-bold text-danger lh-1">{{ stats.atrasadas }}</div>
+                                </div>
+                                <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #ffc107 !important; background-color: #f8f9fa;">
+                                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">SEM PED. DE COMPRA</div>
+                                    <div style="font-size: 1.1rem;" class="fw-bold text-warning text-dark lh-1">{{ stats.sem_pedido }}</div>
+                                </div>
+                                <div class="border rounded p-2 flex-fill" style="border-left: 4px solid #198754 !important; background-color: #f8f9fa;">
+                                    <div style="font-size: 0.55rem;" class="text-muted fw-bold mb-1">ENTREGAS PROGRAMADAS</div>
+                                    <div class="d-flex justify-content-center align-items-center gap-2">
+                                        <div>
+                                            <span class="badge bg-success text-white" style="font-size: 0.45rem;">SEMANA</span>
+                                            <div class="fw-bold text-success lh-1 mt-1" style="font-size: 0.9rem;">{{ stats.na_semana }}</div>
+                                        </div>
+                                        <div style="border-left: 1px solid #dee2e6; height: 20px;"></div>
+                                        <div>
+                                            <span class="badge bg-info text-dark" style="font-size: 0.45rem;">PRÓXIMAS</span>
+                                            <div class="fw-bold text-info lh-1 mt-1" style="font-size: 0.9rem;">{{ stats.proximas_semanas }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <table class="table table-hover table-custom align-middle mb-0 bg-white" style="table-layout: fixed; word-wrap: break-word;">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th class="text-center" style="width: 8%;">Nro OS</th>
+                                    <th class="text-center" style="width: 15%;">Frota</th>
+                                    <th style="width: 23%;">Fornecedor</th>
+                                    <th class="text-center" style="width: 9%;">Abertura</th>
+                                    <th class="text-center" style="width: 6%;">Dias</th>
+                                    <th class="text-center border-start border-end" style="width: 24%;" colspan="4">Controle Operacional</th>
+                                    <th class="text-center" style="width: 15%;">Previsão</th>
+                                </tr>
+                                <tr class="bg-secondary text-white">
+                                    <th></th><th></th><th></th><th></th><th></th>
+                                    <th class="text-center border-start" style="width: 6%;">Orç</th>
+                                    <th class="text-center" style="width: 6%;">Sol</th>
+                                    <th class="text-center" style="width: 6%;">Cot</th>
+                                    <th class="text-center border-end" style="width: 6%;">Ped</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if agrupado %}
+                                    {% for macro, subgrupos in agrupado.items() %}
+                                        <tr data-grp="{{ macro }}">
+                                            <td colspan="10" class="macro-header" style="print-color-adjust: exact; -webkit-print-color-adjust: exact;">
+                                                <i class="bi bi-folder-fill me-2"></i>{{ macro }}
+                                            </td>
+                                        </tr>
+
+                                        {% for detalhe, servicos in subgrupos.items() %}
+                                            <tr data-esp="{{ detalhe }}" data-grp="{{ macro }}" data-type="esp-header">
+                                                <td colspan="10" class="especialidade-header" style="print-color-adjust: exact; -webkit-print-color-adjust: exact;">
+                                                    <i class="bi bi-arrow-return-right me-2 text-primary"></i>{{ detalhe }}
+                                                    <span class="badge bg-primary rounded-pill ms-2">{{ servicos|length }}</span>
+                                                </td>
+                                            </tr>
+
+                                            {% for s in servicos %}
+                                                <tr data-esp="{{ detalhe }}" data-grp="{{ macro }}" onclick='abrirModal("{{ s.nro_os }}", "{{ s.frota }}", "{{ s.orcamento }}", "{{ s.solicitacao }}", "{{ s.cotacao }}", "{{ s.pedido }}", "{{ s.previsao_atual if s.previsao_atual else '' }}", {{ s.historico | tojson | safe }}, {{ s.observacao | tojson | safe }}, {{ s.orcamento_numero | tojson | safe }}, {{ s.solicitacao_numero | tojson | safe }}, {{ s.cotacao_numero | tojson | safe }}, {{ s.pedido_numero | tojson | safe }})'>
+                                                    <td class="text-center fw-bold">{{ s.nro_os }}</td>
+
+                                                    <td class="text-center">
+                                                        <span class="fw-bold text-primary d-block">{{ s.frota }}</span>
+                                                        <span class="text-muted d-block" style="font-size: 0.65rem; line-height: 1;">{{ s.descricao }}</span>
+                                                    </td>
+
+                                                    <td class="fw-bold" style="font-size: 0.70rem;">
+                                                        {{ s.fornecedor }}
+                                                        {% if s.observacao %}
+                                                        <div class="text-muted fst-italic fw-normal" style="font-size: 0.62rem; line-height: 1.15; white-space: normal;"><i class="bi bi-chat-left-text me-1"></i>{{ s.observacao }}</div>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="text-center">{{ s.data_abertura }}</td>
+                                                    <td class="text-center">
+                                                        <span class="badge {% if s.dias > 30 %}bg-danger{% elif s.dias > 15 %}bg-warning text-dark{% else %}bg-success{% endif %} shadow-sm border border-secondary" style="print-color-adjust: exact;">
+                                                            {{ s.dias }}
+                                                        </span>
+                                                    </td>
+
+                                                    <td class="text-center border-start" style="print-color-adjust: exact;">
+                                                        <i class="bi {% if s.orcamento %}bi-check-circle-fill text-success{% else %}bi-x-circle-fill text-danger opacity-25{% endif %} fs-5"></i>
+                                                        {% if s.orcamento_numero %}<div class="text-muted fw-bold" style="font-size: 0.55rem; line-height: 1;">{{ s.orcamento_numero }}</div>{% endif %}
+                                                    </td>
+                                                    <td class="text-center" style="print-color-adjust: exact;">
+                                                        <i class="bi {% if s.solicitacao %}bi-check-circle-fill text-success{% else %}bi-x-circle-fill text-danger opacity-25{% endif %} fs-5"></i>
+                                                        {% if s.solicitacao_numero %}<div class="text-muted fw-bold" style="font-size: 0.55rem; line-height: 1;">{{ s.solicitacao_numero }}</div>{% endif %}
+                                                    </td>
+                                                    <td class="text-center" style="print-color-adjust: exact;">
+                                                        <i class="bi {% if s.cotacao %}bi-check-circle-fill text-success{% else %}bi-x-circle-fill text-danger opacity-25{% endif %} fs-5"></i>
+                                                        {% if s.cotacao_numero %}<div class="text-muted fw-bold" style="font-size: 0.55rem; line-height: 1;">{{ s.cotacao_numero }}</div>{% endif %}
+                                                    </td>
+                                                    <td class="text-center border-end" style="print-color-adjust: exact;">
+                                                        <i class="bi {% if s.pedido %}bi-check-circle-fill text-success{% else %}bi-x-circle-fill text-danger opacity-25{% endif %} fs-5"></i>
+                                                        {% if s.pedido_numero %}<div class="text-muted fw-bold" style="font-size: 0.55rem; line-height: 1;">{{ s.pedido_numero }}</div>{% endif %}
+                                                    </td>
+
+                                                    <td class="text-center fw-bold {% if not s.previsao_atual %}text-muted{% elif s.is_atrasada %}text-danger{% endif %}" style="print-color-adjust: exact;">
+                                                        {% if s.previsao_atual %}
+                                                            {{ s.previsao_atual[-2:] }}/{{ s.previsao_atual[5:7] }}/{{ s.previsao_atual[:4] }}
+                                                        {% else %}
+                                                            Sem Previsão
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        {% endfor %}
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="10" class="text-center py-4 text-muted fw-bold">
+                                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>Nenhum Serviço Externo Aberto.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="dashboard-pane" role="tabpanel" tabindex="0">
+                <div class="d-flex justify-content-end mb-2">
+                    <button class="btn btn-warning btn-sm fw-bold text-dark shadow-sm" onclick="baixarDashPDF()"><i class="bi bi-graph-up-arrow me-2"></i>Exportar Gráficos</button>
+                </div>
+                <div id="pdfDash" class="mb-5 bg-light pb-2 pt-2 px-3 rounded border border-2 border-white shadow-sm mx-auto">
+                    <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                        <h5 class="fw-bold text-dark m-0"><i class="bi bi-speedometer2 me-2"></i>Análise de Fornecedores e Tempo</h5>
+                        <span class="badge bg-secondary">Dados em tempo real</span>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <div class="card bg-white border-0 shadow-sm h-100">
+                                <div class="card-body py-2">
+                                    <h6 class="fw-bold text-secondary text-center mb-2" style="font-size: 0.9rem;">OFICINAS COM MAIS FROTAS</h6>
+                                    <div style="height: 220px; width: 100%;"><canvas id="chartFornecedoresVolume"></canvas></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-white border-0 shadow-sm h-100">
+                                <div class="card-body py-2">
+                                    <h6 class="fw-bold text-secondary text-center mb-2" style="font-size: 0.9rem;">OFICINAS MAIS LENTAS (DIAS)</h6>
+                                    <div style="height: 220px; width: 100%;"><canvas id="chartFornecedoresLentos"></canvas></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-7">
+                            <div class="card bg-white border-0 shadow-sm h-100">
+                                <div class="card-body py-2">
+                                    <h6 class="fw-bold text-secondary text-center mb-2" style="font-size: 0.9rem;">TEMPO PARADO POR SETOR</h6>
+                                    <div style="height: 220px; width: 100%;"><canvas id="chartEspecialidadesMedia"></canvas></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="card bg-white border-0 shadow-sm h-100">
+                                <div class="card-body py-2">
+                                    <h6 class="fw-bold text-secondary text-center mb-2" style="font-size: 0.9rem;">STATUS DE COMPRAS</h6>
+                                    <div style="height: 220px; width: 100%; position: relative;">
+                                        <canvas id="chartFunil"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="historico-pane" role="tabpanel" tabindex="0">
+                <div class="card shadow-sm border-0 bg-white mb-5 mx-auto">
+                    <div class="card-body p-0 table-responsive bg-white rounded">
+                        <div class="p-3 bg-secondary text-white border-bottom mb-0 d-flex justify-content-between align-items-center">
+                            <h5 class="fw-bold mb-0 m-0"><i class="bi bi-archive-fill me-2"></i>Frotas Encerradas (Histórico)</h5>
+                            <span class="badge bg-light text-dark shadow-sm">Últimos 150 Registros</span>
+                        </div>
+                        <table class="table table-hover table-custom align-middle mb-0 bg-white" style="table-layout: fixed; word-wrap: break-word;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width: 10%;">Nro OS</th>
+                                    <th class="text-center" style="width: 25%;">Frota</th>
+                                    <th style="width: 30%;">Fornecedor Utilizado</th>
+                                    <th class="text-center" style="width: 10%;">Abertura</th>
+                                    <th class="text-center text-success" style="width: 10%;">Encerramento</th>
+                                    <th class="text-center" style="width: 15%;">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if historico_finalizadas %}
+                                    {% for h in historico_finalizadas %}
+                                        <tr class="text-secondary">
+                                            <td class="text-center fw-bold text-muted">{{ h.nro_os }}</td>
+                                            <td class="text-center">
+                                                <span class="fw-bold text-dark d-block">{{ h.frota }}</span>
+                                                <span class="text-muted d-block" style="font-size: 0.65rem; line-height: 1;">{{ h.descricao }}</span>
+                                            </td>
+                                            <td class="fw-bold text-muted" style="font-size: 0.70rem;">{{ h.fornecedor }}</td>
+                                            <td class="text-center fw-bold">{{ h.data_abertura }}</td>
+                                            <td class="text-center fw-bold text-success">{{ h.data_fechamento }}</td>
+                                            <td class="text-center">
+                                                <button class="btn btn-outline-secondary btn-sm fw-bold shadow-sm" onclick='abrirModalLogsH({{ h.logs | tojson | safe }}, "{{ h.nro_os }}", "{{ h.frota }}")'>
+                                                    <i class="bi bi-clock-history me-1"></i>Ver Logs
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="text-center py-4 text-muted fw-bold">
+                                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>Nenhum serviço encerrado ainda.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="modal fade no-print" id="modalDetalhesKpi" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-dark text-white border-bottom-0 d-flex flex-column align-items-start">
+                    <div class="d-flex justify-content-between w-100">
+                        <h5 id="kpiModalTitulo" class="modal-title fw-bold">Detalhes</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div id="kpiPaginacao" class="d-flex justify-content-between align-items-center w-100 mt-3 pt-2 border-top border-secondary" style="display: none !important;">
+                        <button class="btn btn-sm btn-outline-light fw-bold" id="btnPrevWeek" onclick="mudarSemanaModal(-1)"><i class="bi bi-chevron-left me-1"></i>Anterior</button>
+                        <span class="fw-bold fs-6 text-warning" id="labelSemanaModal">Esta Semana</span>
+                        <button class="btn btn-sm btn-outline-light fw-bold" id="btnNextWeek" onclick="mudarSemanaModal(1)">Próxima<i class="bi bi-chevron-right ms-1"></i></button>
+                    </div>
+                </div>
+                <div class="modal-body p-0 bg-light">
+                    <div class="table-responsive" style="max-height: 400px;">
+                        <table class="table table-hover table-striped align-middle mb-0 bg-white">
+                            <thead class="table-dark" style="position: sticky; top: 0;">
+                                <tr>
+                                    <th class="text-center">Nro OS</th>
+                                    <th>Frota</th>
+                                    <th>Fornecedor</th>
+                                    <th class="text-center">Dias Parado</th>
+                                    <th class="text-center">Data Previsão</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kpiModalTbody">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-top-0 d-flex justify-content-between">
+                    <button type="button" class="btn btn-danger fw-bold shadow-sm" id="btnPdfModal" onclick="baixarModalKpiPDF()"><i class="bi bi-file-earmark-pdf-fill me-2"></i>Exportar este Relatório (A4)</button>
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade no-print" id="modalEdicaoExterna" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-primary border-2">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i>Atualizar Controlo</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4 border-bottom pb-2">
+                        <span class="text-muted d-block small fw-bold">NRO OS</span>
+                        <h3 class="fw-bold text-primary m-0" id="modOs">0000</h3>
+                        <span class="badge bg-secondary mt-1" id="modFrota">FROTA</span>
+                    </div>
+
+                    <h6 class="fw-bold text-secondary mb-3"><i class="bi bi-ui-checks me-2"></i>Etapas do Processo</h6>
+                    <div class="row g-2 mb-4">
+                        <div class="col-6">
+                            <div class="form-check form-switch fs-5"><input class="form-check-input" type="checkbox" id="chkOrc"><label class="form-check-label fs-6 fw-bold mt-1 ms-1" for="chkOrc">Orçamento</label></div>
+                            <input type="text" id="numOrc" class="form-control form-control-sm mt-1" placeholder="Nº Orçamento">
+                        </div>
+                        <div class="col-6">
+                            <div class="form-check form-switch fs-5"><input class="form-check-input" type="checkbox" id="chkSol"><label class="form-check-label fs-6 fw-bold mt-1 ms-1" for="chkSol">Solicitação</label></div>
+                            <input type="text" id="numSol" class="form-control form-control-sm mt-1" placeholder="Nº Solicitação">
+                        </div>
+                        <div class="col-6">
+                            <div class="form-check form-switch fs-5"><input class="form-check-input" type="checkbox" id="chkCot"><label class="form-check-label fs-6 fw-bold mt-1 ms-1" for="chkCot">Cotação</label></div>
+                            <input type="text" id="numCot" class="form-control form-control-sm mt-1" placeholder="Nº Cotação">
+                        </div>
+                        <div class="col-6">
+                            <div class="form-check form-switch fs-5"><input class="form-check-input" type="checkbox" id="chkPed"><label class="form-check-label fs-6 fw-bold mt-1 ms-1" for="chkPed">Pedido</label></div>
+                            <input type="text" id="numPed" class="form-control form-control-sm mt-1" placeholder="Nº Pedido">
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold text-secondary border-top pt-3 mb-2"><i class="bi bi-calendar-event me-2"></i>Previsão de Entrega</h6>
+                    <input type="date" id="modPrevisao" class="form-control border-primary fw-bold text-primary mb-3">
+
+                    <h6 class="fw-bold text-secondary mb-2"><i class="bi bi-chat-left-text me-2"></i>Observação</h6>
+                    <textarea id="modObservacao" class="form-control border-secondary mb-3" rows="2" placeholder="Ex: Aguardando peça importada, avaria adicional..."></textarea>
+
+                    <div id="areaHistorico" style="display: none;">
+                        <h6 class="fw-bold text-muted small mt-3 mb-2">Histórico de Previsões:</h6>
+                        <ul class="list-group list-group-flush small" id="listaHistorico"></ul>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between align-items-center bg-light">
+                    <div class="d-flex align-items-center gap-2 p-1 px-2 border border-success rounded bg-success bg-opacity-10 shadow-sm">
+                        <label class="form-label fw-bold small text-success m-0" style="white-space: nowrap;" for="modDataFechamento">Data:</label>
+                        <input type="date" id="modDataFechamento" class="form-control form-control-sm border-success text-success fw-bold shadow-sm" style="width: 125px;">
+                        <button type="button" class="btn btn-success btn-sm fw-bold shadow-sm" onclick="liberarOS()"><i class="bi bi-check-all me-1"></i>Encerrado</button>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-secondary btn-sm fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm fw-bold shadow-sm" id="btnSalvarModal" onclick="salvarAtualizacao()"><i class="bi bi-save me-1"></i>Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade no-print" id="modalLerLogs" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-secondary text-white">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-journal-text me-2"></i>Logs da OS <span id="logOsTitle"></span></h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div class="text-center mb-2"><span class="badge bg-dark" id="logFrotaTitle"></span></div>
+                    <ul class="list-group list-group-flush small" id="listaLogsPuro"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="pdfKpiContainer" style="position: absolute; left: -9999px; top: 0; width: 760px;" class="no-print">
+        <div id="pdfKpiContent" class="bg-white p-0 pdf-mode" style="width: 760px; max-width: 760px; margin: 0; border: none; box-shadow: none;">
+            <div class="p-3 text-center border-bottom mb-2">
+                <h5 class="fw-bold mb-0" id="pdfKpiTitle">Relatório</h5>
+                <span class="small text-muted" id="pdfKpiSubtitle"></span>
+            </div>
+            <table class="table table-custom align-middle mb-0 bg-white" style="table-layout: fixed; word-wrap: break-word;">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="text-center" style="width: 8%;">Nro OS</th>
+                        <th class="text-center" style="width: 15%;">Frota</th>
+                        <th style="width: 23%;">Fornecedor</th>
+                        <th class="text-center" style="width: 9%;">Abertura</th>
+                        <th class="text-center" style="width: 6%;">Dias</th>
+                        <th class="text-center border-start border-end" style="width: 24%;" colspan="4">Controlo</th>
+                        <th class="text-center" style="width: 15%;">Previsão</th>
+                    </tr>
+                    <tr class="bg-secondary text-white">
+                        <th></th><th></th><th></th><th></th><th></th>
+                        <th class="text-center border-start" style="width: 6%;">Orç</th>
+                        <th class="text-center" style="width: 6%;">Sol</th>
+                        <th class="text-center" style="width: 6%;">Cot</th>
+                        <th class="text-center border-end" style="width: 6%;">Ped</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="pdfKpiTbody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if os_fechar %}
+    <div class="modal fade no-print" id="modalFechamentoLote" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-warning border-3 shadow-lg">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Atenção: Frotas Entregues!</h5>
+                </div>
+                <form action="/api/confirmar_fechamento" method="POST">
+                    <div class="modal-body bg-light">
+                        <div class="alert alert-info border-info small mb-3 shadow-sm">
+                            <i class="bi bi-info-circle-fill me-1"></i> As OS abaixo não constam mais na sua planilha do Excel. O sistema identificou que os serviços foram concluídos. Por favor, <b>confirme a data de entrega</b> de cada uma para atualizar o histórico de forma precisa.
+                        </div>
+                        <div class="table-responsive rounded shadow-sm border">
+                            <table class="table table-hover align-middle mb-0 bg-white">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th class="text-center" style="width: 20%;">Nro OS</th>
+                                        <th class="text-center" style="width: 40%;">Frota</th>
+                                        <th class="text-center" style="width: 40%;">Data de Fecho (Entrega)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for os in os_fechar %}
+                                    <tr>
+                                        <td class="text-center fw-bold">{{ os.nro_os }}</td>
+                                        <td class="text-center text-primary fw-bold">{{ os.frota }}</td>
+                                        <td class="text-center">
+                                            <input type="date" name="data_fecho_{{ os.nro_os }}" class="form-control form-control-sm mx-auto fw-bold text-success border-success" style="width: 150px;" required value="{{ data_hoje }}">
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Lembrar Depois</button>
+                        <button type="submit" class="btn btn-success fw-bold shadow-sm" onclick="this.innerHTML='<i class=\'bi bi-hourglass-split me-2\'></i>A Guardar...';"><i class="bi bi-check-all me-2"></i>Confirmar Encerramentos</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var modalConf = new bootstrap.Modal(document.getElementById('modalFechamentoLote'));
+            modalConf.show();
+        });
+    </script>
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const USUARIO_ADMIN = {{ 'true' if usuario_admin else 'false' }};
+        const PODE_PROGRAMACAO = {{ 'true' if (usuario_admin or perm_programacao) else 'false' }};
+
+        function validarPermissaoLink(destino) {
+            if (USUARIO_ADMIN) return true;
+            if (destino === 'programacao' && !PODE_PROGRAMACAO) {
+                alert('Seu perfil não tem permissão para acessar Programação.');
+                return false;
+            }
+            return true;
+        }
+
+        const modalUI = new bootstrap.Modal(document.getElementById('modalEdicaoExterna'));
+        const modalLogsUI = new bootstrap.Modal(document.getElementById('modalLerLogs'));
+
+        function formatDataBr(dataDb) {
+            if(!dataDb) return '';
+            let partes = dataDb.split('-');
+            return `${partes[2]}/${partes[1]}/${partes[0]}`;
+        }
+
+        function abrirModal(os, frota, orc, sol, cot, ped, previsao, historico, observacao, orcNum, solNum, cotNum, pedNum) {
+            document.getElementById('modOs').innerText = os;
+            document.getElementById('modFrota').innerText = frota;
+
+            document.getElementById('chkOrc').checked = (orc === '1');
+            document.getElementById('chkSol').checked = (sol === '1');
+            document.getElementById('chkCot').checked = (cot === '1');
+            document.getElementById('chkPed').checked = (ped === '1');
+
+            document.getElementById('numOrc').value = orcNum || '';
+            document.getElementById('numSol').value = solNum || '';
+            document.getElementById('numCot').value = cotNum || '';
+            document.getElementById('numPed').value = pedNum || '';
+
+            document.getElementById('modPrevisao').value = previsao;
+            document.getElementById('modObservacao').value = observacao || '';
+            document.getElementById('modDataFechamento').value = new Date().toISOString().split('T')[0];
+
+            let areaHist = document.getElementById('areaHistorico');
+            let listaHist = document.getElementById('listaHistorico');
+            listaHist.innerHTML = '';
+
+            if(historico && historico.length > 0) {
+                areaHist.style.display = 'block';
+                historico.forEach(h => {
+                    let li = document.createElement('li');
+                    li.className = 'list-group-item px-2 py-1 bg-transparent';
+                    li.innerHTML = `<i class="bi bi-clock-history me-2"></i>Alterado em ${h.data} para: <b>${formatDataBr(h.previsao)}</b>`;
+                    listaHist.appendChild(li);
+                });
+            } else {
+                areaHist.style.display = 'none';
+            }
+            modalUI.show();
+        }
+
+        function abrirModalLogsH(logs, os, frota) {
+            document.getElementById('logOsTitle').innerText = os;
+            document.getElementById('logFrotaTitle').innerText = frota;
+            let listaHist = document.getElementById('listaLogsPuro');
+            listaHist.innerHTML = '';
+            if(logs && logs.length > 0) {
+                logs.forEach(h => {
+                    let li = document.createElement('li');
+                    li.className = 'list-group-item px-2 py-2 fw-bold text-secondary';
+                    li.innerHTML = `<i class="bi bi-calendar-event text-dark me-2"></i>${h.data} <i class="bi bi-arrow-right mx-1"></i> <span class="text-primary">${formatDataBr(h.previsao)}</span>`;
+                    listaHist.appendChild(li);
+                });
+            } else {
+                listaHist.innerHTML = '<li class="list-group-item text-center text-muted">Sem alterações registradas.</li>';
+            }
+            modalLogsUI.show();
+        }
+
+        function salvarAtualizacao() {
+            let btn = document.getElementById('btnSalvarModal');
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>A Guardar...';
+            btn.disabled = true;
+
+            let dados = {
+                nro_os: document.getElementById('modOs').innerText,
+                orcamento: document.getElementById('chkOrc').checked,
+                solicitacao: document.getElementById('chkSol').checked,
+                cotacao: document.getElementById('chkCot').checked,
+                pedido: document.getElementById('chkPed').checked,
+                previsao: document.getElementById('modPrevisao').value,
+                observacao: document.getElementById('modObservacao').value,
+                orcamento_numero: document.getElementById('numOrc').value,
+                solicitacao_numero: document.getElementById('numSol').value,
+                cotacao_numero: document.getElementById('numCot').value,
+                pedido_numero: document.getElementById('numPed').value
+            };
+
+            fetch('/api/atualizar_externo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dados)
+            }).then(response => response.json()).then(data => {
+                if(data.status === 'sucesso') window.location.reload();
+            });
+        }
+
+        function liberarOS() {
+            let dataFecho = document.getElementById('modDataFechamento').value;
+            if(!dataFecho) {
+                alert("Por favor, selecione ou digite a data de encerramento!");
+                return;
+            }
+
+            let dataFormatada = formatDataBr(dataFecho);
+
+            if(confirm("Tem certeza que deseja marcar esta OS como ENCERRADA no dia " + dataFormatada + "\nEla sairá da Fila e ficará guardada no Histórico!")) {
+                let os = document.getElementById('modOs').innerText;
+                fetch('/api/atualizar_externo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nro_os: os, acao: 'liberar', data_fechamento: dataFecho })
+                }).then(r => r.json()).then(d => {
+                    if(d.status === 'sucesso') window.location.reload();
+                });
+            }
+        }
+
+        const detalhesKpi = {{ stats.detalhes | tojson | safe }};
+        const modalKpiUI = new bootstrap.Modal(document.getElementById('modalDetalhesKpi'));
+
+        let currentKpiTipo = '';
+        let currentWeekOffset = 0;
+
+        function abrirModalKpi(tipo, titulo, corClass) {
+            currentKpiTipo = tipo;
+            currentWeekOffset = 0;
+
+            let tituloEl = document.getElementById('kpiModalTitulo');
+            tituloEl.innerHTML = `<i class="bi bi-list-check me-2"></i>${titulo}`;
+            tituloEl.className = 'modal-title fw-bold ' + corClass;
+
+            let paginacao = document.getElementById('kpiPaginacao');
+            if (tipo === 'entregas') paginacao.style.setProperty('display', 'flex', 'important');
+            else paginacao.style.setProperty('display', 'none', 'important');
+
+            renderizarListaModal();
+            modalKpiUI.show();
+        }
+
+        function mudarSemanaModal(delta) {
+            currentWeekOffset += delta;
+            if (currentWeekOffset < 0) currentWeekOffset = 0;
+            renderizarListaModal();
+        }
+
+        function renderizarListaModal() {
+            let listaOriginal = detalhesKpi[currentKpiTipo] || [];
+            let lista = [];
+
+            if (currentKpiTipo === 'entregas') {
+                lista = listaOriginal.filter(item => item.offset_semana === currentWeekOffset);
+                let labelSemana = document.getElementById('labelSemanaModal');
+                if (currentWeekOffset === 0) labelSemana.innerText = "Entregas Desta Semana";
+                else if (currentWeekOffset === 1) labelSemana.innerText = "Entregas Próxima Semana (+1)";
+                else labelSemana.innerText = `Entregas em ${currentWeekOffset} Semanas`;
+
+                document.getElementById('btnPrevWeek').disabled = (currentWeekOffset === 0);
+                let maxOffset = Math.max(...listaOriginal.map(i => i.offset_semana), 0);
+                document.getElementById('btnNextWeek').disabled = (currentWeekOffset >= maxOffset);
+            } else {
+                lista = listaOriginal;
+            }
+
+            let tbody = document.getElementById('kpiModalTbody');
+            tbody.innerHTML = '';
+
+            if(lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-5 fw-bold"><i class="bi bi-inbox fs-1 d-block mb-3 text-secondary opacity-50"></i>Nenhuma frota programada para esta seleção.</td></tr>';
+            } else {
+                lista.forEach(item => {
+                    let corPrev = item.previsao_vencida ? 'text-danger fw-bold' : 'fw-bold text-success';
+                    tbody.innerHTML += `
+                        <tr>
+                            <td class="text-center fw-bold bg-light">${item.os}</td>
+                            <td class="fw-bold text-primary">${item.frota}</td>
+                            <td><small class="fw-bold text-secondary">${item.fornecedor}</small></td>
+                            <td class="text-center"><span class="badge border border-secondary text-dark">${item.dias} Dias</span></td>
+                            <td class="text-center align-middle ${corPrev}">${item.previsao}</td>
+                        </tr>
+                    `;
+                });
+            }
+        }
+
+        function baixarModalKpiPDF() {
+            let btn = document.getElementById('btnPdfModal');
+            let txtOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Gerando...';
+            btn.disabled = true;
+
+            let listaOriginal = detalhesKpi[currentKpiTipo] || [];
+            let tbody = document.getElementById('pdfKpiTbody');
+            tbody.innerHTML = '';
+
+            let titulos = {
+                'todas': 'Relatório: Total de Frotas em Oficinas',
+                'atrasadas': 'Relatório: Previsões Vencidas',
+                'sem_pedido': 'Relatório: Frotas sem Pedido de Compra',
+                'entregas': 'Relatório: Previsões de Entrega Programadas',
+                'sem_previsao': 'Relatório: Frotas Sem Previsão de Entrega'
+            };
+            document.getElementById('pdfKpiTitle').innerText = titulos[currentKpiTipo] || 'Relatório de Serviços Externos';
+
+            let dt = new Date();
+            document.getElementById('pdfKpiSubtitle').innerText = `Gerado às ${dt.toLocaleDateString()} ${dt.toLocaleTimeString()}`;
+
+            let renderizarLinhaA4 = (item) => {
+                let corPrev = item.previsao_vencida ? 'text-danger fw-bold' : 'text-dark fw-bold';
+                let check = '<i class="bi bi-check-circle-fill text-success fs-5"></i>';
+                let uncheck = '<i class="bi bi-x-circle-fill text-danger opacity-25 fs-5"></i>';
+                return `
+                    <tr>
+                        <td class="text-center fw-bold">${item.os}</td>
+                        <td class="text-center">
+                            <span class="fw-bold text-primary d-block">${item.frota}</span>
+                            <span class="text-muted d-block" style="font-size: 0.65rem; line-height: 1;">${item.descricao}</span>
+                        </td>
+                        <td class="fw-bold" style="font-size: 0.70rem;">${item.fornecedor}</td>
+                        <td class="text-center">${item.data_abertura}</td>
+                        <td class="text-center"><span class="badge border border-secondary text-dark">${item.dias}</span></td>
+                        <td class="text-center border-start">${item.orcamento ? check : uncheck}</td>
+                        <td class="text-center">${item.solicitacao ? check : uncheck}</td>
+                        <td class="text-center">${item.cotacao ? check : uncheck}</td>
+                        <td class="text-center border-end">${item.pedido ? check : uncheck}</td>
+                        <td class="text-center ${corPrev}">${item.previsao}</td>
+                    </tr>
+                `;
+            };
+
+            if (currentKpiTipo === 'entregas') {
+                let s0 = listaOriginal.filter(i => i.offset_semana === 0);
+                let s1 = listaOriginal.filter(i => i.offset_semana === 1);
+                let sFuturo = listaOriginal.filter(i => i.offset_semana > 1);
+
+                if (s0.length) {
+                    tbody.innerHTML += `<tr><td colspan="10" class="macro-header bg-dark text-white"><i class="bi bi-calendar-check me-2"></i>Entregas Esta Semana</td></tr>`;
+                    s0.forEach(i => tbody.innerHTML += renderizarLinhaA4(i));
+                }
+                if (s1.length) {
+                    tbody.innerHTML += `<tr><td colspan="10" class="macro-header bg-secondary text-white"><i class="bi bi-calendar-plus me-2"></i>Entregas Próxima Semana (+1)</td></tr>`;
+                    s1.forEach(i => tbody.innerHTML += renderizarLinhaA4(i));
+                }
+                if (sFuturo.length) {
+                    tbody.innerHTML += `<tr><td colspan="10" class="macro-header text-dark" style="background-color: #dee2e6;"><i class="bi bi-calendar-range me-2"></i>Semanas Seguintes</td></tr>`;
+                    sFuturo.forEach(i => tbody.innerHTML += renderizarLinhaA4(i));
+                }
+            } else {
+                listaOriginal.forEach(i => tbody.innerHTML += renderizarLinhaA4(i));
+            }
+
+            let container = document.getElementById('pdfKpiContent');
+
+            let opt = {
+                margin:       15,
+                filename:     titulos[currentKpiTipo].replace(/ /g, '_') + '.pdf',
+                image:        { type: 'jpeg', quality: 1.0 },
+                html2canvas:  { scale: 2, useCORS: true, scrollX: 0, scrollY: 0 },
+                jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' },
+                pagebreak:    { mode: ['css', 'legacy'] }
+            };
+
+            setTimeout(() => {
+                html2pdf().set(opt).from(container).save().then(() => {
+                    btn.innerHTML = txtOriginal;
+                    btn.disabled = false;
+                });
+            }, 500);
+        }
+
+        Chart.register(ChartDataLabels);
+        Chart.defaults.set('plugins.datalabels', { color: '#000', font: { weight: 'bold', size: 10 } });
+
+        const stats = {{ stats | tojson | safe }};
+        let graficosRenderizados = false;
+
+        function renderizarGraficos() {
+            let fornVolLabels = stats.forn_volume.map(f => f.fornecedor);
+            let fornVolData = stats.forn_volume.map(f => f.volume);
+
+            new Chart(document.getElementById('chartFornecedoresVolume'), {
+                type: 'bar',
+                data: {
+                    labels: fornVolLabels,
+                    datasets: [{ label: 'Quantidade de OS', data: fornVolData, backgroundColor: '#0d6efd', borderRadius: 4 }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'top' } },
+                    layout: { padding: { top: 20, bottom: 10 } },
+                    scales: {
+                        y: { display: false, suggestedMax: Math.max(...(fornVolData.length ? fornVolData : [0])) * 1.2 },
+                        x: {
+                            ticks: {
+                                font: {size: 10, weight: 'bold'},
+                                maxRotation: 45, minRotation: 45,
+                                callback: function(val, index) {
+                                    let label = this.getLabelForValue(val);
+                                    return label.length > 15 ? label.substring(0, 15) + '...' : label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            let fornLenLabels = stats.forn_lentos.map(f => f.fornecedor);
+            let fornLenData = stats.forn_lentos.map(f => f.media);
+
+            new Chart(document.getElementById('chartFornecedoresLentos'), {
+                type: 'bar',
+                data: {
+                    labels: fornLenLabels,
+                    datasets: [{ label: 'Média de Dias', data: fornLenData, backgroundColor: '#dc3545', borderRadius: 4 }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'top' } },
+                    layout: { padding: { top: 20, bottom: 10 } },
+                    scales: {
+                        y: { display: false, suggestedMax: Math.max(...(fornLenData.length ? fornLenData : [0])) * 1.2 },
+                        x: {
+                            ticks: {
+                                font: {size: 10, weight: 'bold'},
+                                maxRotation: 45, minRotation: 45,
+                                callback: function(val, index) {
+                                    let label = this.getLabelForValue(val);
+                                    return label.length > 15 ? label.substring(0, 15) + '...' : label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            let espLabels = stats.esp_media.map(e => e.especialidade);
+            let espData = stats.esp_media.map(e => e.media);
+
+            new Chart(document.getElementById('chartEspecialidadesMedia'), {
+                type: 'bar',
+                data: {
+                    labels: espLabels,
+                    datasets: [{ label: 'Dias Médios', data: espData, backgroundColor: '#ffc107', borderRadius: 4 }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, datalabels: { anchor: 'end', align: 'top', color: '#000' } },
+                    layout: { padding: { top: 20, bottom: 10 } },
+                    scales: {
+                        y: { display: false, suggestedMax: Math.max(...(espData.length ? espData : [0])) * 1.2 },
+                        x: {
+                            ticks: {
+                                font: {size: 10, weight: 'bold'},
+                                maxRotation: 25, minRotation: 25,
+                                callback: function(val, index) {
+                                    let label = this.getLabelForValue(val);
+                                    return label.length > 15 ? label.substring(0, 15) + '...' : label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            let funilLabels = Object.keys(stats.funil);
+            let funilData = Object.values(stats.funil);
+
+            new Chart(document.getElementById('chartFunil'), {
+                type: 'doughnut',
+                data: {
+                    labels: funilLabels,
+                    datasets: [{ data: funilData, backgroundColor: ['#dc3545', '#ffc107', '#198754'], borderWidth: 2, borderColor: '#fff' }]
+                },
+                options: {
+                    maintainAspectRatio: false, cutout: '55%', layout: { padding: 10 },
+                    plugins: {
+                        legend: { position: 'bottom', labels: {boxWidth: 12, font:{size:10, weight:'bold'}} },
+                        datalabels: {
+                            backgroundColor: function(context) { return context.dataset.backgroundColor[context.dataIndex]; },
+                            borderRadius: 4, padding: 4, color: function(ctx) { return ctx.dataIndex === 1 ? '#000' : '#fff'; }, font: { weight: 'bold', size: 11 }, anchor: 'center', align: 'center',
+                            formatter: (val) => { return val > 0 ? val : ''; }
+                        }
+                    }
+                }
+            });
+        }
+
+        document.getElementById('dashboard-tab').addEventListener('shown.bs.tab', function (event) {
+            if(!graficosRenderizados) {
+                renderizarGraficos();
+                graficosRenderizados = true;
+            }
+        });
+
+        function forceElementVisibleForPrint(elId) {
+            let el = document.getElementById(elId);
+            let tabPane = el.closest('.tab-pane');
+            let wasHidden = false;
+            if (tabPane && !tabPane.classList.contains('active')) {
+                wasHidden = true;
+                tabPane.classList.add('active', 'show');
+            }
+            return { element: el, tabPane: tabPane, wasHidden: wasHidden };
+        }
+
+        function restoreElementVisibility(state) {
+            if (state.wasHidden && state.tabPane) state.tabPane.classList.remove('active', 'show');
+        }
+
+        function baixarDashPDF() {
+            let btn = document.getElementById('btnPdfDash');
+            let txtOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>A Gerar PDF...';
+            btn.disabled = true;
+
+            let visibilityState = forceElementVisibleForPrint('pdfDash');
+            let container = visibilityState.element;
+
+            if(!graficosRenderizados) {
+                renderizarGraficos();
+                graficosRenderizados = true;
+            }
+
+            let oldBg = container.style.backgroundColor;
+            let oldWidth = container.style.width;
+            let oldMaxWidth = container.style.maxWidth;
+            let hasMxAuto = container.classList.contains('mx-auto');
+
+            if (hasMxAuto) container.classList.remove('mx-auto');
+            container.style.marginLeft = '0px';
+            container.style.backgroundColor = '#ffffff';
+            container.style.width = '760px';
+            container.style.maxWidth = '760px';
+
+            let opt = {
+                margin:       15,
+                filename:     'Dashboard_Oficinas_Externas.pdf',
+                image:        { type: 'jpeg', quality: 1.0 },
+                html2canvas:  { scale: 2, useCORS: true, scrollX: 0, scrollY: 0 },
+                jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' }
+            };
+
+            setTimeout(() => {
+                html2pdf().set(opt).from(container).save().then(() => {
+                    btn.innerHTML = txtOriginal;
+                    btn.disabled = false;
+                    container.style.backgroundColor = oldBg;
+                    container.style.width = oldWidth;
+                    container.style.maxWidth = oldMaxWidth;
+                    container.style.marginLeft = '';
+                    if (hasMxAuto) container.classList.add('mx-auto');
+                    restoreElementVisibility(visibilityState);
+                });
+            }, 500);
+        }
+
+        function selecionarTodasEsp(val) {
+            document.querySelectorAll('.esp-pdf-check').forEach(cb => cb.checked = val);
+        }
+
+        function baixarListaPDF() {
+            let btn = document.getElementById('btnPdfLista');
+            let txtOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>A Gerar PDF...';
+            btn.disabled = true;
+
+            // Coletar especialidades selecionadas
+            let checkboxes = document.querySelectorAll('.esp-pdf-check');
+            let selecionadas = new Set();
+            checkboxes.forEach(cb => { if (cb.checked) selecionadas.add(cb.value); });
+            let todasSelecionadas = (selecionadas.size === checkboxes.length);
+
+            let hiddenEls = [];
+            let tableBody = document.querySelector('#pdfLista tbody');
+
+            if (!todasSelecionadas && checkboxes.length > 0) {
+                // Ocultar linhas de especialidades não selecionadas (header + serviços)
+                tableBody.querySelectorAll('tr[data-esp]').forEach(row => {
+                    if (!selecionadas.has(row.getAttribute('data-esp'))) {
+                        row.style.display = 'none';
+                        hiddenEls.push(row);
+                    }
+                });
+                // Ocultar cabeçalho de macro se todas as suas especialidades estiverem ocultas
+                tableBody.querySelectorAll('tr[data-grp]:not([data-esp])').forEach(macroRow => {
+                    let grp = macroRow.getAttribute('data-grp');
+                    let espRows = tableBody.querySelectorAll(`tr[data-type="esp-header"][data-grp="${CSS.escape(grp)}"]`);
+                    let todasOcultas = Array.from(espRows).every(r => r.style.display === 'none');
+                    if (todasOcultas && espRows.length > 0) {
+                        macroRow.style.display = 'none';
+                        hiddenEls.push(macroRow);
+                    }
+                });
+            }
+
+            let visibilityState = forceElementVisibleForPrint('pdfLista');
+            let container = visibilityState.element;
+            let header = container.querySelector('.print-only-header');
+            header.classList.remove('d-none');
+
+            container.classList.add('pdf-mode');
+
+            let oldWidth = container.style.width;
+            let oldMaxWidth = container.style.maxWidth;
+            let hasMxAuto = container.classList.contains('mx-auto');
+
+            if (hasMxAuto) container.classList.remove('mx-auto');
+            container.style.marginLeft = '0px';
+            container.style.width = '760px';
+            container.style.maxWidth = '760px';
+
+            let espSelecionadasNome = selecionadas.size === checkboxes.length || selecionadas.size === 0
+                ? 'Completa'
+                : Array.from(selecionadas).join(', ');
+            let filename = selecionadas.size === checkboxes.length || checkboxes.length === 0
+                ? 'Lista_OS_Externas.pdf'
+                : `Lista_OS_Externas_[${Array.from(selecionadas).join('-')}].pdf`;
+
+            let opt = {
+                margin:       15,
+                filename:     filename,
+                image:        { type: 'jpeg', quality: 1.0 },
+                html2canvas:  { scale: 2, useCORS: true, scrollX: 0, scrollY: 0 },
+                jsPDF:        { unit: 'px', format: [794, 1123], orientation: 'portrait' },
+                pagebreak:    { mode: ['css', 'legacy'] }
+            };
+
+            setTimeout(() => {
+                html2pdf().set(opt).from(container).save().then(() => {
+                    btn.innerHTML = txtOriginal;
+                    btn.disabled = false;
+                    header.classList.add('d-none');
+                    container.classList.remove('pdf-mode');
+                    container.style.width = oldWidth;
+                    container.style.maxWidth = oldMaxWidth;
+                    container.style.marginLeft = '';
+                    if (hasMxAuto) container.classList.add('mx-auto');
+                    restoreElementVisibility(visibilityState);
+                    hiddenEls.forEach(r => r.style.display = '');
+                });
+            }, 500);
+        }
+    </script>
+    </div>
+</body>
+</html>
+

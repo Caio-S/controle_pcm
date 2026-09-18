@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Admin - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+    <style>
+        /* ── Design system ──────────────────────────────────────────────── */
+        :root {
+            --sb-w: 244px;
+            --sb-bg: #0f172a;
+            --sb-bg-soft: #1e293b;
+            --sb-text: #94a3b8;
+            --sb-text-hi: #f1f5f9;
+            --accent: #1E4B9A;
+            --accent-hi: #3D77D6;
+            --brand: #1E4B9A;
+            --shell-bg: #f6f8fb;
+            --card-bg: #ffffff;
+            --card-bd: #e8edf3;
+            --txt-mute: #8a97a8;
+            --ease: cubic-bezier(.16,.84,.44,1);
+        }
+        [data-bs-theme="dark"] {
+            --shell-bg: #14181d;
+            --card-bg: #2b3035;
+            --card-bd: #3a424b;
+            --txt-mute: #9aa6b4;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Calibri', Arial, sans-serif;
+            background-color: var(--shell-bg) !important;
+            transition: background-color .3s, color .3s;
+        }
+
+        /* ── Sidebar ────────────────────────────────────────────────────── */
+        .app-sidebar {
+            position: fixed; top: 0; left: 0; bottom: 0; width: var(--sb-w);
+            background: var(--sb-bg);
+            display: flex; flex-direction: column;
+            z-index: 1040;
+            transition: transform .32s var(--ease);
+        }
+        .sb-brand {
+            display: flex; flex-direction: column; align-items: stretch; gap: 11px;
+            padding: 16px 14px 14px; flex-shrink: 0;
+            border-bottom: 1px solid rgba(255,255,255,.07);
+        }
+        .sb-logo-img {
+            width: 100%; height: auto; display: block;
+            background: #fff; border-radius: 9px; padding: 7px 9px;
+            box-shadow: 0 2px 10px rgba(0,0,0,.28);
+        }
+        .sb-brand-txt { line-height: 1.2; min-width: 0; padding-left: 2px; }
+        .sb-brand-txt strong {
+            color: var(--sb-text-hi); font-size: .82rem; display: block;
+            letter-spacing: 1.6px; font-weight: 600; text-transform: uppercase;
+        }
+        .sb-brand-txt span { color: #64748b; font-size: .71rem; }
+
+        .sb-nav { flex: 1; overflow-y: auto; padding: 4px 10px 10px; }
+        .sb-nav::-webkit-scrollbar { width: 5px; }
+        .sb-nav::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .sb-nav::-webkit-scrollbar-track { background: transparent; }
+
+        .sb-section {
+            color: #64748b; font-size: .64rem; font-weight: 700;
+            letter-spacing: 1.4px; text-transform: uppercase;
+            padding: 16px 12px 7px;
+        }
+
+        /* Reescreve os nav-link do Bootstrap dentro da sidebar */
+        .app-sidebar .nav-link {
+            display: flex; align-items: center; gap: 11px;
+            width: 100%; text-align: left;
+            padding: 9px 12px; margin-bottom: 2px;
+            border: 0 !important; border-radius: 9px;
+            background: transparent !important;
+            color: var(--sb-text) !important;
+            font-size: .845rem; font-weight: 500;
+            position: relative; overflow: hidden;
+            transition: color .18s, background-color .18s, transform .18s var(--ease);
+        }
+        /* Ícones uniformes: mesmo tamanho, mesma cor, mesmo peso visual */
+        .app-sidebar .nav-link i {
+            font-size: 1.02rem; width: 20px; flex-shrink: 0;
+            text-align: center; line-height: 1;
+            color: inherit; opacity: .72;
+            transition: opacity .18s;
+        }
+        .app-sidebar .nav-link:hover i,
+        .app-sidebar .nav-link.active i { opacity: 1; }
+        .app-sidebar .nav-link:hover:not(.disabled) {
+            background: rgba(255,255,255,.055) !important;
+            color: var(--sb-text-hi) !important;
+            transform: translateX(3px);
+        }
+        .app-sidebar .nav-link.active {
+            background: linear-gradient(90deg, rgba(61,119,214,.28), rgba(61,119,214,.06)) !important;
+            color: #fff !important; font-weight: 600;
+        }
+        .app-sidebar .nav-link.active::before {
+            content: ''; position: absolute; left: 0; top: 18%; bottom: 18%;
+            width: 3px; border-radius: 0 3px 3px 0; background: var(--accent-hi);
+            animation: barIn .3s var(--ease);
+        }
+        @keyframes barIn { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+        .app-sidebar .nav-link.disabled { opacity: .34; cursor: not-allowed; }
+        .sb-sep { height: 1px; background: rgba(255,255,255,.07); margin: 10px 12px; }
+
+        .sb-user {
+            flex-shrink: 0; padding: 12px; border-top: 1px solid rgba(255,255,255,.07);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .sb-avatar {
+            width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+            background: var(--sb-bg-soft); color: var(--accent-hi);
+            display: grid; place-items: center; font-weight: 700; font-size: .85rem;
+        }
+        .sb-user-txt { line-height: 1.2; min-width: 0; flex: 1; }
+        .sb-user-txt strong { color: var(--sb-text-hi); font-size: .8rem; display: block;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .sb-user-txt span { color: #64748b; font-size: .68rem; text-transform: uppercase; letter-spacing: .5px; }
+
+        /* ── Shell / Topbar ─────────────────────────────────────────────── */
+        .app-shell { margin-left: var(--sb-w); min-height: 100vh; transition: margin-left .32s var(--ease); }
+        .app-topbar {
+            position: sticky; top: 0; z-index: 1030;
+            background: var(--card-bg);
+            border-bottom: 1px solid var(--card-bd);
+            padding: 13px 26px;
+            display: flex; align-items: center; gap: 16px;
+        }
+        .tb-crumb { color: var(--txt-mute); font-size: .64rem; font-weight: 700;
+            letter-spacing: 1.3px; text-transform: uppercase; }
+        .tb-title { font-size: 1.16rem; font-weight: 600; margin: 0; line-height: 1.25; }
+        .tb-spacer { flex: 1; }
+        .app-main { padding: 26px; }
+
+        .btn-icon {
+            width: 36px; height: 36px; border-radius: 9px;
+            border: 1px solid var(--card-bd); background: transparent;
+            display: grid; place-items: center; color: var(--txt-mute);
+            transition: all .18s var(--ease);
+        }
+        .btn-icon:hover { background: var(--shell-bg); color: var(--brand); transform: translateY(-1px); }
+
+        .sb-toggle { display: none; }
+
+        /* ── Cards de estatística (uniformes) ───────────────────────────── */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+            gap: 14px; margin-bottom: 26px;
+        }
+        .card-filtro {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--card-bd);
+            border-radius: 13px; padding: 16px 18px !important;
+            cursor: pointer; position: relative; overflow: hidden;
+            display: flex; flex-direction: column; justify-content: space-between;
+            min-height: 96px;
+            box-shadow: 0 1px 2px rgba(16,24,40,.05);
+            transition: transform .22s var(--ease), box-shadow .22s var(--ease), border-color .22s;
+            animation: cardIn .42s var(--ease) both;
+        }
+        .card-filtro::after {
+            content: ''; position: absolute; inset: 0 auto 0 0; width: 3px;
+            background: var(--accent-hi); transform: scaleY(0); transform-origin: bottom;
+            transition: transform .25s var(--ease);
+        }
+        .card-filtro:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(16,24,40,.10) !important; }
+        .card-filtro:hover::after { transform: scaleY(1); }
+        /* O card ativo mantem fundo, tamanho e sombra identicos aos demais.
+           A selecao e indicada so pela borda teal, a barra lateral e a cor do numero. */
+        .card-filtro.ativo {
+            border-color: var(--accent-hi) !important;
+            background: var(--card-bg) !important;
+            box-shadow: 0 1px 2px rgba(16,24,40,.05) !important;
+            transform: none;
+        }
+        .card-filtro.ativo:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(16,24,40,.10) !important; }
+        .card-filtro.ativo::after { transform: scaleY(1); }
+        .card-filtro h6 {
+            color: var(--txt-mute) !important; font-size: .66rem !important;
+            font-weight: 700 !important; letter-spacing: 1px; text-transform: uppercase;
+            margin-bottom: 10px !important; line-height: 1.3;
+        }
+        .card-filtro h3 { font-size: 1.95rem !important; margin: 0 !important; letter-spacing: -1px; }
+        .card-filtro.ativo h3 { color: var(--accent) !important; }
+        @keyframes cardIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+        .tab-pane.show.active { animation: paneIn .34s var(--ease); }
+        @keyframes paneIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+        .panel {
+            background: var(--card-bg); border: 1px solid var(--card-bd);
+            border-radius: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.05);
+        }
+
+        /* ── Responsivo ─────────────────────────────────────────────────── */
+        @media (max-width: 991.98px) {
+            .app-sidebar { transform: translateX(-100%); box-shadow: 0 0 40px rgba(0,0,0,.4); }
+            .app-sidebar.open { transform: none; }
+            .app-shell { margin-left: 0; }
+            .sb-toggle { display: grid; }
+            .app-main { padding: 16px; }
+            .app-topbar { padding: 12px 16px; }
+        }
+        .sb-backdrop {
+            position: fixed; inset: 0; background: rgba(15,23,42,.5);
+            z-index: 1035; opacity: 0; pointer-events: none; transition: opacity .3s;
+        }
+        .sb-backdrop.show { opacity: 1; pointer-events: auto; }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+        }
+        /* ── Consulta Rápida: cartão por frota + linha do tempo ao expandir ── */
+        .hist-topo { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+        .hist-titulo { font-size: 1.15rem; font-weight: 600; margin: 0; color: var(--pcm-text); }
+        .hist-busca { flex: 0 1 320px; }
+        .hist-lista { display: flex; flex-direction: column; gap: 8px; }
+
+        .hist-card {
+            display: flex; align-items: center; gap: 14px;
+            background: var(--pcm-surface);
+            border: 1px solid var(--pcm-border);
+            border-left: 3px solid var(--pcm-pendente);
+            border-radius: var(--pcm-r);
+            padding: 12px 16px; cursor: pointer;
+            box-shadow: var(--pcm-shadow-1);
+            transition: transform var(--pcm-fast) var(--pcm-ease),
+                        box-shadow var(--pcm-fast) var(--pcm-ease),
+                        border-color var(--pcm-fast);
+        }
+        .hist-card:hover { transform: translateX(3px); box-shadow: var(--pcm-shadow-2); }
+        .hist-card.esta-na-oficina { border-left-color: var(--pcm-bloqueada); }
+        .hist-card:not(.esta-na-oficina) { border-left-color: var(--pcm-realizada); }
+        .hist-card[aria-expanded="true"] { border-color: var(--pcm-brand-hi); }
+        .hist-card[aria-expanded="true"] .hist-seta { transform: rotate(180deg); }
+
+        .hist-frota {
+            font-size: 1.05rem; font-weight: 700; color: var(--pcm-brand);
+            min-width: 74px; flex-shrink: 0;
+        }
+        .hist-desc { flex: 1; min-width: 0; line-height: 1.35; }
+        .hist-desc .descricao-frota {
+            display: block; font-size: .87rem; color: var(--pcm-text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .hist-meta { font-size: .72rem; color: var(--pcm-text-mute); }
+        .hist-seta { color: var(--pcm-text-mute); transition: transform var(--pcm-med) var(--pcm-ease); }
+
+        /* Linha do tempo: um fio vertical ligando as passagens pela oficina. */
+        .hist-timeline {
+            position: relative; margin: 4px 0 10px 30px;
+            padding: 14px 0 6px 22px;
+            border-left: 2px solid var(--pcm-border);
+        }
+        .hist-evento { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; }
+        .hist-evento + .hist-evento { border-top: 1px dashed var(--pcm-border); }
+        .hist-ponto {
+            position: absolute; left: -29px; top: 15px;
+            width: 11px; height: 11px; border-radius: 50%;
+            background: var(--pcm-realizada);
+            box-shadow: 0 0 0 3px var(--pcm-surface);
+        }
+        .hist-evento.aberto .hist-ponto {
+            background: var(--pcm-bloqueada);
+            animation: pulsoOficina 2s ease-in-out infinite;
+        }
+        @keyframes pulsoOficina {
+            0%, 100% { box-shadow: 0 0 0 3px var(--pcm-surface), 0 0 0 3px rgba(220,53,69,.35); }
+            50%      { box-shadow: 0 0 0 3px var(--pcm-surface), 0 0 0 8px rgba(220,53,69,0); }
+        }
+        .hist-corpo { flex: 1; min-width: 0; }
+        .hist-linha1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+        .hist-linha1 strong { font-size: .88rem; color: var(--pcm-text); }
+        .hist-situacao {
+            font-size: .67rem; font-weight: 700; letter-spacing: .3px;
+            background: rgba(125,135,150,.16); color: var(--pcm-text-mute);
+            border-radius: 20px; padding: 2px 9px; text-transform: uppercase;
+        }
+        .hist-linha2 {
+            display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+            font-size: .76rem; color: var(--pcm-text-mute);
+        }
+        .hist-linha2 i { margin-right: 4px; opacity: .8; }
+        .hist-linha2 .saida-ok { color: var(--pcm-realizada); font-weight: 600; }
+        .hist-linha2 .saida-aberta { color: var(--pcm-bloqueada); font-weight: 700; }
+        .hist-obs { font-style: italic; }
+        .hist-excluir {
+            flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+            display: grid; place-items: center; color: var(--pcm-text-mute);
+            text-decoration: none; transition: all var(--pcm-fast);
+        }
+        .hist-excluir:hover { background: rgba(220,53,69,.12); color: var(--pcm-bloqueada); }
+
+        @media (max-width: 575.98px) {
+            .hist-busca { flex: 1 1 100%; }
+            .hist-card { flex-wrap: wrap; gap: 8px; padding: 11px 13px; }
+            .hist-desc { flex: 1 1 100%; order: 3; }
+            .hist-timeline { margin-left: 8px; padding-left: 18px; }
+            .hist-ponto { left: -25px; }
+        }
+
+        .table-excel th { border-bottom: 2px solid #000; color: #00509E; user-select: none; }
+        .table-excel th:hover { background-color: rgba(0,0,0,0.05); }
+        .linha-frota:hover { background-color: rgba(0,0,0,0.05) !important; transition: 0.2s; }
+        .accordion-button:not(.collapsed) { background-color: #00509E; color: white; }
+        .accordion-button { font-weight: bold; font-size: 1.1rem; }
+
+        [data-bs-theme="dark"] body { background-color: #212529; }
+        [data-bs-theme="dark"] .card, [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .table-excel th { color: #6ea8fe; border-bottom: 2px solid #6ea8fe; }
+        [data-bs-theme="dark"] .table-striped>tbody>tr:nth-of-type(odd)>* { background-color: #2b3035; color: #fff; }
+        [data-bs-theme="dark"] .table-striped>tbody>tr:nth-of-type(even)>* { background-color: #343a40; color: #fff; }
+        [data-bs-theme="dark"] .table td { color: #f8f9fa; border-color: #495057; }
+        [data-bs-theme="dark"] .nav-pills .nav-link { color: #dee2e6; }
+        [data-bs-theme="dark"] .bg-light { background-color: #343a40 !important; }
+        [data-bs-theme="dark"] .accordion-item { background-color: #2b3035; border-color: #495057; }
+        [data-bs-theme="dark"] .accordion-button { background-color: #343a40; color: #fff; }
+        [data-bs-theme="dark"] .accordion-button:not(.collapsed) { background-color: #00509E; color: white; }
+    </style>
+</head>
+<body class="pcm-app">
+
+    {# A seção Oficina agora é fixa em _pcm_shell.html (aparece em qualquer
+       página, não só aqui) e navega com ?aba=. Os ids das abas (id="tab-bloqueados"
+       etc.) continuam existindo como <a> lá; o JS abaixo ativa o pane certo
+       ao carregar, conforme o parâmetro da URL. #}
+    {% include '_pcm_shell.html' %}
+
+    <div class="pcm-shell">
+        <header class="pcm-topbar">
+            <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+            <div>
+                <div class="pcm-tb-crumb">Gestão</div>
+                <h1 class="pcm-tb-title">Painel de Controle</h1>
+            </div>
+            <div class="pcm-tb-spacer"></div>
+            <div class="pcm-tb-actions">
+                <button id="btnDarkMode" class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema">
+                    <i class="bi bi-moon-fill" data-icone-tema></i>
+                </button>
+                <button type="button" class="btn btn-sm fw-semibold text-white shadow-sm"
+                   style="background:var(--pcm-brand);border-radius:9px;padding:8px 15px;border:none;"
+                   data-bs-toggle="modal" data-bs-target="#modalRelatorioPdf">
+                    <i class="bi bi-file-earmark-pdf-fill me-1"></i>Relatório PDF
+                </button>
+            </div>
+        </header>
+
+    <div class="pcm-main">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm">
+                <i class="bi bi-check-circle-fill me-2"></i> {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div>
+            <div>
+                <div class="tab-content panel p-4" id="v-pills-tabContent">
+
+                    <div class="tab-pane fade show active" id="bloqueados">
+
+                        <div class="stat-grid">
+                            <div class="card-filtro ativo" style="animation-delay:0ms" onclick="filtrarPorMotivo('TODOS', this)">
+                                <h6>Total Bloqueada</h6>
+                                <h3 class="fw-bold" data-contador="{{ total }}">0</h3>
+                            </div>
+                            {% for motivo, qtd in contagem.items() %}
+                            <div class="card-filtro" style="animation-delay:{{ loop.index * 60 }}ms" onclick="filtrarPorMotivo('{{ motivo }}', this)">
+                                <h6>{{ motivo }}</h6>
+                                <h3 class="fw-bold" data-contador="{{ qtd }}">0</h3>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="text-primary mb-0" id="tituloTabelaAtivos"><i class="bi bi-tools me-2"></i>Frotas na Oficina</h4>
+                            <div class="input-group w-50 shadow-sm">
+                                <span class="input-group-text bg-white text-primary border-secondary"><i class="bi bi-search"></i></span>
+                                <input type="text" id="buscaAtivos" class="form-control border-start-0 border-secondary bg-white text-body" placeholder="Pesquisar frota..." onkeyup="pesquisarTabelaGeral('buscaAtivos')">
+                            </div>
+                        </div>
+
+                        <div id="avisoFiltroVazio" class="text-center text-body-secondary py-5" style="display:none;">
+                            <i class="bi bi-funnel d-block mb-2" style="font-size:1.8rem;opacity:.4;"></i>
+                            Nenhuma frota para este filtro.
+                        </div>
+
+                        <div class="accordion" id="accordionEspecialidades">
+                            {% for esp, frotas_lista in ativos.items() %}
+                            <div class="accordion-item mb-3 shadow-sm border rounded">
+                                <h2 class="accordion-header" id="heading-{{ loop.index }}">
+                                    <button class="accordion-button rounded" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ loop.index }}">
+                                        <i class="bi bi-tags-fill me-2"></i> {{ esp }}
+                                        <span class="badge bg-light text-dark ms-2 shadow-sm">{{ frotas_lista|length }}</span>
+                                    </button>
+                                </h2>
+                                <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse show" aria-labelledby="heading-{{ loop.index }}">
+                                    <div class="accordion-body p-0 table-responsive">
+                                        <table class="table table-hover align-middle table-excel mb-0" id="tabelaAtivos-{{ loop.index }}" data-ordem="asc">
+                                            <thead>
+                                                <tr class="bg-light">
+                                                    <th style="cursor: pointer; width: 15%; padding-left: 15px;" onclick="ordenarTabelaGeral('tabelaAtivos-{{ loop.index }}', 0, 'numero')">FROTA <i class="bi bi-arrow-down-up small"></i></th>
+                                                    <th style="width: 35%">DESCRIÇÃO</th>
+                                                    <th style="width: 25%">MOTIVO(S)</th>
+                                                    <th style="cursor: pointer; width: 10%" onclick="ordenarTabelaGeral('tabelaAtivos-{{ loop.index }}', 3, 'data')">ENTRADA <i class="bi bi-arrow-down-up small"></i></th>
+                                                    <th class="text-center" style="width: 15%">AÇÕES</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for item in frotas_lista %}
+                                                <tr class="linha-dados-ativo">
+                                                    <td class="fw-bold fs-6 frota-id-coluna" style="padding-left: 15px;">
+                                                        <a href="#" class="text-decoration-none"
+                                                           onclick="abrirDetalheFrota('{{ item.id_frota }}'); return false;"
+                                                           title="Ver histórico desta frota">{{ item.id_frota }}</a>
+                                                    </td>
+                                                    {% if item.descricao %}
+                                                        <td>{{ item.descricao }}</td>
+                                                    {% else %}
+                                                        <td class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i>SEM CADASTRO</td>
+                                                    {% endif %}
+                                                    <td class="motivo-texto text-danger fw-bold">{{ item.motivo }}</td>
+                                                    <td>{{ item.data_bloqueio }}</td>
+                                                    <td class="text-center">
+                                                        {% if usuario_admin or perm_bloqueios %}
+                                                        <button type="button" class="btn btn-warning btn-sm fw-bold me-1" data-bs-toggle="modal" data-bs-target="#modalEditar{{ item.id_frota }}"><i class="bi bi-pencil-square"></i></button>
+                                                        <button type="button" class="btn btn-success btn-sm fw-bold me-1" data-bs-toggle="modal" data-bs-target="#modalLiberar{{ item.id_frota }}"><i class="bi bi-unlock-fill"></i></button>
+                                                        <a href="/excluir_bloqueio_ativo/{{ item.ids }}" class="btn btn-outline-danger btn-sm fw-bold"
+                                                           title="Excluir este bloqueio permanentemente"
+                                                           onclick="return confirm('ATENÇÃO: isso vai apagar o bloqueio da frota {{ item.id_frota }} permanentemente, sem passar por \'desbloquear\'. Deseja continuar?')">
+                                                            <i class="bi bi-trash3-fill"></i>
+                                                        </a>
+                                                        {% else %}
+                                                        <button type="button" class="btn btn-warning btn-sm fw-bold me-1" disabled title="Sem permissão"><i class="bi bi-pencil-square"></i></button>
+                                                        <button type="button" class="btn btn-success btn-sm fw-bold me-1" disabled title="Sem permissão"><i class="bi bi-unlock-fill"></i></button>
+                                                        <button type="button" class="btn btn-outline-danger btn-sm fw-bold" disabled title="Sem permissão"><i class="bi bi-trash3-fill"></i></button>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+
+                                                <div class="modal fade" id="modalEditar{{ item.id_frota }}" tabindex="-1">
+                                                    <div class="modal-dialog modal-dialog-centered">
+                                                        <div class="modal-content">
+                                                            <div class="modal-header bg-warning">
+                                                                <h5 class="modal-title text-dark"><i class="bi bi-pencil-square me-2"></i>Editar Registro - {{ item.id_frota }}</h5>
+                                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                            </div>
+                                                            <form action="/editar" method="POST">
+                                                                <div class="modal-body text-dark">
+                                                                    <input type="hidden" name="id_bloqueio" value="{{ item.ids }}">
+                                                                    <label class="form-label fw-bold small mt-2">Motivo do Bloqueio</label>
+                                                                    <input type="text" name="novo_motivo" class="form-control mb-3" value="{{ item.motivo }}" required>
+                                                                    <label class="form-label fw-bold small">Data de Entrada Oficial</label>
+                                                                    <input type="text" name="nova_data" class="form-control" value="{{ item.data_bloqueio }}" required>
+                                                                </div>
+                                                                <div class="modal-footer"><button type="submit" class="btn btn-warning fw-bold text-dark">Salvar Alterações</button></div>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="modal fade" id="modalLiberar{{ item.id_frota }}" tabindex="-1">
+                                                    <div class="modal-dialog modal-dialog-centered">
+                                                        <div class="modal-content">
+                                                            <div class="modal-header bg-success text-white">
+                                                                <h5 class="modal-title"><i class="bi bi-unlock-fill me-2"></i>Liberar Frota - {{ item.id_frota }}</h5>
+                                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                                            </div>
+                                                            <form action="/desbloquear" method="POST">
+                                                                <div class="modal-body text-dark">
+                                                                    <input type="hidden" name="id_bloqueio" value="{{ item.ids }}">
+                                                                    <textarea name="observacao" class="form-control" rows="3" placeholder="Observação Geral (Opcional)"></textarea>
+                                                                </div>
+                                                                <div class="modal-footer"><button type="submit" class="btn btn-success fw-bold">Confirmar</button></div>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <p class="text-center text-muted mt-5">Nenhuma frota bloqueada na oficina.</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="novo">
+                        <h4 class="mb-4 text-primary"><i class="bi bi-lock-fill me-2"></i>Registrar Novo Bloqueio</h4>
+                        <form action="/bloquear" method="POST" id="formBloqueio">
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Código da Frota</label>
+                                    <input type="text" name="frota" class="form-control" list="listaFrotasBloqueio" required placeholder="Digite a frota...">
+                                    <datalist id="listaFrotasBloqueio">
+                                        {% for f in frotas_cadastradas %}
+                                            <option value="{{ f.id_frota }}">{{ f.descricao }}</option>
+                                        {% endfor %}
+                                    </datalist>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Status (Oficina)</label>
+                                    <select name="status" class="form-select" required>
+                                        <option value="AGUARDANDO EQUIP.">AGUARDANDO EQUIP.</option>
+                                        <option value="REFORMA">REFORMA</option>
+                                        <option value="REVISÃO GERAL">REVISÃO GERAL</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row mb-4">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Motivo Principal</label>
+                                    <select name="motivo1" id="selectMotivo1" class="form-select" onchange="verificarNovo('selectMotivo1', 'inputMotivo1')" required>
+                                        <option value="PREVENTIVA">PREVENTIVA</option>
+                                        <option value="TROCA DE OLEO">TROCA DE OLEO</option>
+                                        <option value="ANALISE DE OLEO">ANALISE DE OLEO</option>
+                                        <option value="PENDÊNCIA NO RASTREADOR">PENDÊNCIA NO RASTREADOR</option>
+                                        <option value="NOVO" class="fw-bold text-primary">+ ADICIONAR MOTIVO</option>
+                                    </select>
+                                    <input type="text" name="motivo1_novo" id="inputMotivo1" class="form-control mt-2 d-none" placeholder="Digite o novo motivo...">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold">Motivo Adicional</label>
+                                    <select name="motivo2" id="selectMotivo2" class="form-select" onchange="verificarNovo('selectMotivo2', 'inputMotivo2')">
+                                        <option value="NENHUM">NENHUM</option>
+                                        <option value="PREVENTIVA">PREVENTIVA</option>
+                                        <option value="TROCA DE OLEO">TROCA DE OLEO</option>
+                                        <option value="NOVO" class="fw-bold text-primary">+ ADICIONAR MOTIVO</option>
+                                    </select>
+                                    <input type="text" name="motivo2_novo" id="inputMotivo2" class="form-control mt-2 d-none" placeholder="Digite o novo motivo...">
+                                </div>
+                            </div>
+                            <button type="submit" id="btnSubmit" class="btn btn-danger fw-bold"><i class="bi bi-lock-fill me-2"></i>BLOQUEAR FROTA</button>
+                        </form>
+                    </div>
+
+                    <div class="tab-pane fade" id="historico">
+                        {% if usuario_admin or perm_bloqueios %}
+                        {# Cada frota vira um cartão que se abre numa linha do tempo,
+                           em vez de tabela dentro de tabela. O que importa - está
+                           na oficina ou já saiu - aparece antes de expandir. #}
+                        <div class="hist-topo">
+                            <div>
+                                <div class="pcm-tb-crumb">Oficina</div>
+                                <h4 class="hist-titulo"><i class="bi bi-clock-history me-2"></i>Consulta Rápida</h4>
+                            </div>
+                            <div class="pcm-tb-spacer"></div>
+                            <div class="pcm-search hist-busca">
+                                <i class="bi bi-search"></i>
+                                <input type="text" id="inputPesquisa" placeholder="Buscar frota ou descrição..."
+                                       autocomplete="off" onkeyup="filtrarTabela()">
+                            </div>
+                        </div>
+
+                        <div id="tabelaHistorico" class="hist-lista">
+                            {% for frota, dados in historico_agrupado.items() %}
+                            {% set abertos = dados.eventos | selectattr('data_desbloqueio', 'none') | list | length %}
+                            <div class="hist-card linha-frota {{ 'esta-na-oficina' if abertos else '' }}"
+                                 data-bs-toggle="collapse" data-bs-target="#hist-{{ frota }}">
+                                <div class="hist-frota">{{ frota }}</div>
+                                <div class="hist-desc">
+                                    <span class="descricao-frota">{{ dados.descricao }}</span>
+                                    <span class="hist-meta">{{ dados.eventos|length }} passagem(ns) pela oficina</span>
+                                </div>
+                                {% if abertos %}
+                                <span class="pcm-status pcm-status--bloqueada">Aguardando equipamento</span>
+                                {% else %}
+                                <span class="pcm-status pcm-status--realizada">Liberada</span>
+                                {% endif %}
+                                <i class="bi bi-chevron-down hist-seta"></i>
+                            </div>
+
+                            <div class="collapse linha-detalhe" id="hist-{{ frota }}">
+                                <div class="hist-timeline pcm-abre">
+                                    {% for ev in dados.eventos %}
+                                    <div class="hist-evento {{ 'aberto' if not ev.data_desbloqueio else '' }}">
+                                        <div class="hist-ponto"></div>
+                                        <div class="hist-corpo">
+                                            <div class="hist-linha1">
+                                                <strong>{{ ev.motivo }}</strong>
+                                                {% if ev.status_oficina %}
+                                                <span class="hist-situacao">{{ ev.status_oficina }}</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="hist-linha2">
+                                                <span><i class="bi bi-box-arrow-in-right"></i>Entrada {{ ev.data_bloqueio }}</span>
+                                                {% if ev.data_desbloqueio %}
+                                                <span class="saida-ok"><i class="bi bi-box-arrow-right"></i>Saída {{ ev.data_desbloqueio }}</span>
+                                                {% else %}
+                                                <span class="saida-aberta"><i class="bi bi-hourglass-split"></i>Ainda na oficina</span>
+                                                {% endif %}
+                                                {% if ev.observacao %}
+                                                <span class="hist-obs"><i class="bi bi-chat-left-text"></i>{{ ev.observacao }}</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <a href="/excluir_historico/{{ ev.id }}" class="hist-excluir"
+                                           title="Apagar este registro"
+                                           onclick="return confirm('ATENÇÃO: Deseja APAGAR este registo histórico permanentemente?')">
+                                            <i class="bi bi-trash3"></i>
+                                        </a>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                            <div id="histSemResultado" class="pcm-table-empty" style="display:none;">
+                                Nenhuma frota encontrada para essa busca.
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-lock-fill fs-1 d-block mb-3"></i>
+                            Seu perfil não tem permissão para consultar o histórico de bloqueios.
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="tab-pane fade" id="gestao-frota">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-3">
+                                <div class="card bg-white border-0 shadow-sm h-100 kpi-card" style="border-left-color: #0d6efd;">
+                                    <div class="card-body text-center py-3">
+                                        <h6 class="text-muted fw-bold small mb-1">TOTAL DE FROTAS</h6>
+                                        <h2 class="fw-bold text-primary mb-0">{{ frotas_cadastradas|length }}</h2>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-9 d-flex align-items-center justify-content-end gap-3">
+                                <input type="text" id="buscaBancoFrota" class="form-control border-secondary fw-bold text-primary w-50 shadow-sm" placeholder="Pesquisar placa, modelo, setor..." onkeyup="filtrarFrotasBanco()">
+                            </div>
+                        </div>
+
+                        <div class="card shadow-sm border-0 mb-5">
+                            <div class="card-header bg-primary text-white fw-bold"><i class="bi bi-plus-circle me-2"></i>Inserir ou Atualizar Máquina</div>
+                            <div class="card-body bg-light">
+                                <form id="formCadastroFrota" action="/cadastrar_frota" method="POST">
+                                    <div class="row mb-3">
+                                        <div class="col-md-2">
+                                            <label class="form-label fw-bold">ID / Placa</label>
+                                            <input type="text" name="frota" id="inputCadFrota" class="form-control fw-bold" required placeholder="Ex: 60817">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Descrição Completa</label>
+                                            <input type="text" name="descricao" id="inputCadDesc" class="form-control" required placeholder="Ex: TRATOR JOHN DEERE">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Grupo (Macro)</label>
+                                            <input type="text" name="agrupamento" id="inputCadAgrup" class="form-control" list="listaAgrupamentos" placeholder="Ex: TRATOR">
+                                            <datalist id="listaAgrupamentos">
+                                                {% for a in agrupamentos_unicos %} <option value="{{ a.agrupamento }}"></option> {% endfor %}
+                                            </datalist>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold text-success">Especialidade (Micro)</label>
+                                            <input type="text" name="especialidade" id="inputCadEsp" class="form-control border-success" list="listaEspecialidades" placeholder="Ex: TRATOR PNEU">
+                                            <datalist id="listaEspecialidades">
+                                                {% for e in especialidades_unicas %} <option value="{{ e.especialidade }}"></option> {% endfor %}
+                                            </datalist>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Setor</label>
+                                            <input type="text" name="setor" id="inputCadSetor" class="form-control" list="listaSetores" placeholder="Ex: PREPARO">
+                                            <datalist id="listaSetores">
+                                                {% for s in setores_unicos %} <option value="{{ s.setor }}"></option> {% endfor %}
+                                            </datalist>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-primary fw-bold" onclick="prepararConfirmacaoFrota()"><i class="bi bi-save-fill me-2"></i>Salvar / Atualizar Equipamento</button>
+                                    <button type="button" class="btn btn-outline-secondary fw-bold ms-2" onclick="limparFormFrota()"><i class="bi bi-eraser-fill me-2"></i>Limpar Campos</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <h5 class="mb-3 text-secondary"><i class="bi bi-card-list me-2"></i>Base de Dados Atual</h5>
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-sm table-striped table-hover align-middle table-excel" id="tabelaBancoFrotas" data-pcm-sort>
+                                <thead class="table-dark" style="position: sticky; top: 0; z-index: 1;">
+                                    <tr>
+                                        <th class="ps-2" style="width: 10%;" data-sort>FROTA</th>
+                                        <th style="width: 30%;" data-sort>DESCRIÇÃO</th>
+                                        <th style="width: 20%;" data-sort>MACRO</th>
+                                        <th style="width: 20%;" data-sort>MICRO</th>
+                                        <th style="width: 10%;" data-sort>SETOR</th>
+                                        <th class="text-center" style="width: 10%;">AÇÃO</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for f in frotas_cadastradas %}
+                                    <tr class="linha-banco-frota">
+                                        <td class="fw-bold ps-2">{{ f.id_frota }}</td>
+                                        <td>{{ f.descricao }}</td>
+                                        <td><span class="badge bg-secondary">{{ f.agrupamento if f.agrupamento else 'GERAL' }}</span></td>
+                                        <td class="text-success fw-bold">{{ f.especialidade if f.especialidade else 'OUTROS' }}</td>
+                                        <td>{{ f.setor }}</td>
+                                        <td class="text-center">
+                                            <button class="btn btn-sm btn-outline-primary border-0" title="Editar" onclick='abrirEdicaoFrota("{{ f.id_frota }}", "{{ f.descricao }}", "{{ f.agrupamento }}", "{{ f.especialidade }}", "{{ f.setor }}")'><i class="bi bi-pencil-fill"></i></button>
+                                            <button class="btn btn-sm btn-outline-danger border-0" title="Excluir" onclick="confirmarExclusaoFrota('{{ f.id_frota }}')"><i class="bi bi-trash-fill"></i></button>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="6" class="text-center text-muted py-4">Base de dados vazia.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {% if usuario_admin %}
+                    <div class="tab-pane fade" id="gestao-perfis">
+                        <h4 class="mb-4 text-primary"><i class="bi bi-person-badge-fill me-2"></i>Gestão de Perfis de Acesso</h4>
+
+                        <div class="card shadow-sm border-0 mb-4">
+                            <div class="card-header bg-primary text-white fw-bold"><i class="bi bi-shield-check me-2"></i>Criar / Atualizar Perfil</div>
+                            <div class="card-body bg-light">
+                                <form action="/api/perfis/salvar" method="POST">
+                                    <input type="hidden" name="perfil_id" id="perfilIdEdicao">
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Nome do Perfil</label>
+                                            <input type="text" name="nome_perfil" id="nomePerfil" class="form-control fw-bold" placeholder="Ex: OPERADOR, PCM, SUPERVISOR" required>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold">Senha do Perfil</label>
+                                            <div class="input-group">
+                                                <input type="password" name="senha_perfil" id="senhaPerfil" class="form-control" minlength="4" placeholder="Defina a senha do perfil">
+                                                <button type="button" class="btn btn-outline-secondary" onclick="toggleSenhaPerfil()" tabindex="-1" title="Mostrar/ocultar senha">
+                                                    <i class="bi bi-eye-fill" id="iconeOlhoSenha"></i>
+                                                </button>
+                                            </div>
+                                            <small class="text-muted" id="hintSenhaPerfil">Ao atualizar, deixe em branco para manter a senha atual.</small>
+                                        </div>
+                                        <div class="col-md-12">
+                                            <label class="form-label fw-bold">Permissões</label>
+                                            <div class="d-flex flex-wrap gap-3 p-3 bg-white rounded border shadow-sm">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_bloqueios" id="permBloqueios" checked>
+                                                    <label class="form-check-label fw-bold" for="permBloqueios">Bloqueios</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_programacao" id="permProgramacao" checked>
+                                                    <label class="form-check-label fw-bold" for="permProgramacao">Programação</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_lavagem" id="permLavagem" checked>
+                                                    <label class="form-check-label fw-bold" for="permLavagem">Lavagem / Lubrificação</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_analises" id="permAnalises" checked>
+                                                    <label class="form-check-label fw-bold" for="permAnalises">Análises</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_abastecimentos" id="permAbastecimentos" checked>
+                                                    <label class="form-check-label fw-bold" for="permAbastecimentos">Abastecimentos</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_externos" id="permExternos" checked>
+                                                    <label class="form-check-label fw-bold" for="permExternos">Serviços Externos</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_ferramentaria" id="permFerramentaria">
+                                                    <label class="form-check-label fw-bold" for="permFerramentaria">Ferramentaria</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="acesso_compras" id="permCompras">
+                                                    <label class="form-check-label fw-bold" for="permCompras">Compras & Pedidos</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3">
+                                        <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-save-fill me-2"></i>Guardar Perfil</button>
+                                        <button type="button" class="btn btn-outline-secondary fw-bold ms-2" onclick="limparEdicaoPerfil()"><i class="bi bi-eraser-fill me-2"></i>Novo Perfil</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card shadow-sm border-0">
+                            <div class="card-header bg-dark text-white fw-bold"><i class="bi bi-list-check me-2"></i>Perfis Cadastrados</div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table align-middle mb-0">
+                                        <thead class="table-secondary">
+                                            <tr>
+                                                <th style="width: 20%;">Perfil</th>
+                                                <th style="width: 15%;">Senha</th>
+                                                <th style="width: 50%;">Acessos</th>
+                                                <th class="text-center" style="width: 15%;">Ação</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for p in perfis %}
+                                            <tr>
+                                                <td class="fw-bold text-primary">{{ p.nome }}</td>
+                                                <td>
+                                                    {% if p.senha_txt %}
+                                                    <div class="d-flex align-items-center gap-1">
+                                                        <code class="senha-mask">••••••</code>
+                                                        <code class="senha-txt d-none text-success fw-bold">{{ p.senha_txt }}</code>
+                                                        <button type="button" class="btn btn-link p-0 btn-sm text-muted" onclick="toggleSenhaLista(this)" title="Ver/ocultar senha">
+                                                            <i class="bi bi-eye-fill"></i>
+                                                        </button>
+                                                    </div>
+                                                    {% elif p.senha_hash %}
+                                                    <span class="badge bg-success">Definida</span>
+                                                    {% else %}
+                                                    <span class="badge bg-danger">Nao definida</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if p.acesso_bloqueios %}<span class="badge bg-primary me-1">Bloqueios</span>{% endif %}
+                                                    {% if p.acesso_programacao %}<span class="badge bg-success me-1">Programação</span>{% endif %}
+                                                    {% if p.acesso_lavagem %}<span class="badge bg-info me-1">Lavagem</span>{% endif %}
+                                                    {% if p.acesso_analises %}<span class="badge bg-warning text-dark me-1">Análises</span>{% endif %}
+                                                    {% if p.acesso_abastecimentos %}<span class="badge bg-info text-dark me-1">Abastecimentos</span>{% endif %}
+                                                    {% if p.acesso_externos %}<span class="badge bg-secondary me-1">Externos</span>{% endif %}
+                                                    {% if p.acesso_ferramentaria %}<span class="badge bg-dark me-1">Ferramentaria</span>{% endif %}
+                                                    {% if p.acesso_compras %}<span class="badge bg-primary me-1"><i class="bi bi-cart3 me-1"></i>Compras</span>{% endif %}
+                                                    {% if not p.acesso_bloqueios and not p.acesso_programacao and not p.acesso_lavagem and not p.acesso_analises and not p.acesso_abastecimentos and not p.acesso_externos and not p.acesso_ferramentaria and not p.acesso_compras %}
+                                                    <span class="text-muted">Sem acesso definido</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="text-center">
+                                                    <div class="d-flex justify-content-center gap-1">
+                                                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                                            data-id="{{ p.id }}"
+                                                            data-nome="{{ p.nome }}"
+                                                            data-bloqueios="{{ p.acesso_bloqueios }}"
+                                                            data-programacao="{{ p.acesso_programacao }}"
+                                                            data-lavagem="{{ p.acesso_lavagem }}"
+                                                            data-analises="{{ p.acesso_analises }}"
+                                                            data-abastecimentos="{{ p.acesso_abastecimentos }}"
+                                                            data-externos="{{ p.acesso_externos }}"
+                                                            data-ferramentaria="{{ p.acesso_ferramentaria }}"
+                                                            data-compras="{{ p.acesso_compras or 0 }}"
+                                                            data-compras-criar="{{ p.compras_criar if p.compras_criar is not none else 1 }}"
+                                                            data-compras-editar="{{ p.compras_editar if p.compras_editar is not none else 1 }}"
+                                                            data-compras-status="{{ p.compras_alterar_status if p.compras_alterar_status is not none else 1 }}"
+                                                            onclick="editarPerfil(this)">
+                                                            <i class="bi bi-pencil-fill"></i>
+                                                        </button>
+                                                        <form action="/api/perfis/excluir/{{ p.id }}" method="POST" onsubmit="return confirm('Deseja excluir o perfil {{ p.nome }}?')">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash-fill"></i></button>
+                                                        </form>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% else %}
+                                            <tr><td colspan="4" class="text-center text-muted py-4">Nenhum perfil cadastrado ainda.</td></tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                </div>
+            </div>
+        </div>
+    </div><!-- /.app-main -->
+    </div><!-- /.app-shell -->
+
+    <div class="modal fade" id="modalRelatorioPdf" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background:linear-gradient(135deg,#14181d,var(--accent));color:#fff;">
+                    <h5 class="modal-title fw-bold m-0"><i class="bi bi-file-earmark-pdf-fill me-2"></i>Gerar Relatório PDF</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">Escolha se o relatório traz todas as frotas bloqueadas ou só um tipo específico de bloqueio.</p>
+                    <label class="form-label fw-bold small">Tipo de bloqueio</label>
+                    <select id="selectMotivoRelatorio" class="form-select fw-bold">
+                        <option value="TODOS">Todas as frotas bloqueadas</option>
+                        <option value="PREVENTIVA">Somente Preventiva</option>
+                        <option value="TROCA DE OLEO">Somente Troca de Óleo</option>
+                        <option value="ANALISE DE OLEO">Somente Análise de Óleo</option>
+                        <option value="PIT STOP">Somente Pit Stop</option>
+                        <option value="SOPRAGEM DE FILTROS">Somente Sopragem de Filtros</option>
+                    </select>
+                    <p class="small text-muted mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Uma frota bloqueada por mais de um motivo entra no filtro se qualquer um deles bater com o tipo escolhido.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn fw-bold text-white" style="background:var(--accent);" onclick="abrirRelatorioPdfFiltrado()"><i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar PDF</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalConfirmaFrota" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="bi bi-check-circle-fill me-2"></i>Confirmar Cadastro</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-dark">
+                    <div class="p-3 border rounded text-center shadow-sm mb-2" style="background-color: #e9ecef;">
+                        <h4 class="text-primary fw-bold mb-1" id="previewFrota"></h4>
+                        <span class="badge bg-secondary mb-2" id="previewMacro"></span> <i class="bi bi-arrow-right small text-muted mx-1"></i> <span class="badge bg-success mb-2" id="previewMicro"></span>
+                        <h6 class="text-muted mb-0" id="previewDesc"></h6>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary fw-bold" onclick="document.getElementById('formCadastroFrota').submit()">Confirmar e Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detalhe da frota: histórico completo de passagens pela oficina -->
+    <div class="modal fade" id="modalDetalheFrota" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content" style="border:none;border-radius:16px;overflow:hidden;">
+                <div class="modal-header text-white" style="background:linear-gradient(135deg,#14181d,var(--pcm-brand));">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-truck me-2"></i>Frota <span id="detalheFrotaId"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="pcm-tb-crumb">Equipamento</div>
+                        <div class="fw-semibold" id="detalheFrotaDescricao">—</div>
+                    </div>
+                    <div class="pcm-kpi-grid mb-3">
+                        <div class="pcm-kpi pcm-kpi--brand">
+                            <div class="pcm-kpi-label"><i class="bi bi-clock-history"></i>Passagens</div>
+                            <div class="pcm-kpi-value" id="detalheFrotaTotal">0</div>
+                            <div class="pcm-kpi-foot">registros na oficina</div>
+                        </div>
+                        <div class="pcm-kpi pcm-kpi--bloqueada">
+                            <div class="pcm-kpi-label"><i class="bi bi-tools"></i>Em aberto</div>
+                            <div class="pcm-kpi-value" id="detalheFrotaAberto">0</div>
+                            <div class="pcm-kpi-foot">sem liberação</div>
+                        </div>
+                    </div>
+                    <div class="pcm-table-wrap">
+                        <table class="pcm-table">
+                            <thead>
+                                <tr>
+                                    <th>Motivo</th><th>Entrada</th><th>Saída</th><th>Situação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detalheFrotaCorpo"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const DETALHES_FROTAS = {{ detalhes_frotas | tojson | safe }};
+        let modalDetalheFrotaUI = null;
+
+        function abrirDetalheFrota(frota) {
+            const dados = DETALHES_FROTAS[frota];
+            document.getElementById('detalheFrotaId').textContent = frota;
+            document.getElementById('detalheFrotaDescricao').textContent =
+                (dados && dados.descricao) ? dados.descricao : 'Sem cadastro';
+
+            const eventos = (dados && dados.eventos) ? dados.eventos : [];
+            const abertos = eventos.filter(e => e.aberto).length;
+            document.getElementById('detalheFrotaTotal').textContent = eventos.length;
+            document.getElementById('detalheFrotaAberto').textContent = abertos;
+
+            const corpo = document.getElementById('detalheFrotaCorpo');
+            corpo.innerHTML = eventos.length
+                ? eventos.map(e => `
+                    <tr>
+                        <td class="fw-semibold">${escapeHtmlDetalhe(e.motivo) || '—'}</td>
+                        <td>${escapeHtmlDetalhe(e.entrada) || '—'}</td>
+                        <td>${escapeHtmlDetalhe(e.saida) || '—'}</td>
+                        <td>
+                            <span class="pcm-status pcm-status--${e.aberto ? 'bloqueada' : 'realizada'}">
+                                ${e.aberto ? (escapeHtmlDetalhe(e.status) || 'Aguardando equipamento') : 'Liberada'}
+                            </span>
+                        </td>
+                    </tr>`).join('')
+                : '<tr><td colspan="4" class="pcm-table-empty">Nenhum registro de oficina para esta frota.</td></tr>';
+
+            if (!modalDetalheFrotaUI) modalDetalheFrotaUI = new bootstrap.Modal(document.getElementById('modalDetalheFrota'));
+            modalDetalheFrotaUI.show();
+        }
+
+        function escapeHtmlDetalhe(v) {
+            return String(v == null ? '' : v).replace(/[&<>"']/g, c =>
+                ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+        }
+
+        const USUARIO_ADMIN = {{ 'true' if usuario_admin else 'false' }};
+        const PODE_BLOQUEIOS = {{ 'true' if (usuario_admin or perm_bloqueios) else 'false' }};
+        const PODE_PROGRAMACAO = {{ 'true' if (usuario_admin or perm_programacao) else 'false' }};
+        const PODE_LAVAGEM = {{ 'true' if (usuario_admin or perm_lavagem) else 'false' }};
+        const PODE_EXTERNOS = {{ 'true' if (usuario_admin or perm_externos) else 'false' }};
+        const PODE_ABASTECIMENTOS = {{ 'true' if (usuario_admin or perm_abastecimentos) else 'false' }};
+        const PODE_ANALISES = {{ 'true' if (usuario_admin or perm_analises) else 'false' }};
+        const PODE_FERRAMENTARIA = {{ 'true' if (usuario_admin or perm_ferramentaria) else 'false' }};
+
+        const htmlElement = document.documentElement;
+        const btnDarkMode = document.getElementById('btnDarkMode');
+
+        // ── Sidebar (mobile) ──────────────────────────────────────────────
+        function toggleSidebar() {
+            document.getElementById('appSidebar').classList.toggle('open');
+            document.getElementById('sbBackdrop').classList.toggle('show');
+        }
+
+        // ── Contador animado nos cards ────────────────────────────────────
+        function animarContadores() {
+            PCM.iniciarContadores(document);
+        }
+        document.addEventListener('DOMContentLoaded', animarContadores);
+
+        function abrirRelatorioPdfFiltrado() {
+            let motivo = document.getElementById('selectMotivoRelatorio').value;
+            let url = '/relatorio';
+            if (motivo && motivo !== 'TODOS') url += '?motivo=' + encodeURIComponent(motivo);
+            window.open(url, '_blank');
+            const modalEl = document.getElementById('modalRelatorioPdf');
+            const inst = bootstrap.Modal.getInstance(modalEl);
+            if (inst) inst.hide();
+        }
+
+        function avisoPermissao(msg) {
+            alert(msg || 'Você não tem permissão para esta ação.');
+            return false;
+        }
+
+        function validarPermissaoLink(destino) {
+            if (USUARIO_ADMIN) return true;
+            if (destino === 'programacao' && !PODE_PROGRAMACAO) return avisoPermissao('Seu perfil não tem permissão para acessar Programação.');
+            if (destino === 'lavagem' && !PODE_LAVAGEM) return avisoPermissao('Seu perfil não tem permissão para acessar Lavagem / Lubrificação.');
+            if (destino === 'externos' && !PODE_EXTERNOS) return avisoPermissao('Seu perfil não tem permissão para acessar Serviços Externos.');
+            if (destino === 'dash_turno' && !PODE_EXTERNOS) return avisoPermissao('Seu perfil não tem permissão para acessar Dashboard por Turno.');
+            if (destino === 'abastecimentos' && !PODE_ABASTECIMENTOS) return avisoPermissao('Seu perfil não tem permissão para acessar Abastecimentos.');
+            if (destino === 'analises' && !PODE_ANALISES) return avisoPermissao('Seu perfil não tem permissão para acessar Análises.');
+            if (destino === 'ferramentaria' && !PODE_FERRAMENTARIA) return avisoPermissao('Seu perfil não tem permissão para acessar Ferramentaria.');
+            return true;
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const tabNovo = document.getElementById('tab-novo');
+            if (tabNovo && !PODE_BLOQUEIOS && !USUARIO_ADMIN) {
+                tabNovo.removeAttribute('data-bs-toggle');
+                tabNovo.removeAttribute('data-bs-target');
+                tabNovo.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    avisoPermissao('Seu perfil não tem permissão para abrir Novo Bloqueio.');
+                    return false;
+                }, true);
+            }
+
+            const tabHistorico = document.getElementById('tab-historico');
+            if (tabHistorico && !PODE_BLOQUEIOS && !USUARIO_ADMIN) {
+                tabHistorico.removeAttribute('data-bs-toggle');
+                tabHistorico.removeAttribute('data-bs-target');
+                tabHistorico.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    avisoPermissao('Seu perfil não tem permissão para consultar o histórico de bloqueios.');
+                    return false;
+                }, true);
+            }
+
+            // A seção Oficina do menu agora é um link normal (?aba=...), não
+            // mais um pill que troca de aba sozinho ao clicar - então quem
+            // ativa o pane certo ao carregar a página é este bloco. O nome da
+            // aba na URL já é o próprio id do pane (id="bloqueados" etc.).
+            const abaPedida = new URLSearchParams(location.search).get('aba');
+            const painel = document.getElementById(abaPedida);
+            if (abaPedida && painel && painel.classList.contains('tab-pane')) {
+                document.querySelectorAll('#v-pills-tabContent > .tab-pane').forEach(p => p.classList.remove('show', 'active'));
+                painel.classList.add('show', 'active');
+            }
+        });
+
+        // O modo escuro é o compartilhado do design system (PCM.alternarTema,
+        // chave de localStorage 'pcm-tema'). Esta página tinha o próprio toggle
+        // com uma chave diferente ('theme') - por isso o tema não se mantinha
+        // entre páginas, cada uma lendo uma chave diferente. O ícone do botão
+        // (data-icone-tema) já é aplicado sozinho por PCM.aplicarTemaSalvo(),
+        // que roda ao carregar pcm-ui.js, antes deste script.
+
+        // Esconde os grupos de especialidade que ficaram sem nenhuma linha visivel
+        // e atualiza o contador de cada grupo conforme o filtro aplicado.
+        function sincronizarGruposEspecialidade() {
+            const acordeao = document.getElementById('accordionEspecialidades');
+            if (!acordeao) return;
+            let visiveisTotal = 0;
+            acordeao.querySelectorAll('.accordion-item').forEach(grupo => {
+                const linhas = grupo.querySelectorAll('.linha-dados-ativo');
+                const visiveis = Array.from(linhas).filter(tr => tr.style.display !== 'none').length;
+                visiveisTotal += visiveis;
+                grupo.style.display = visiveis ? '' : 'none';
+                const badge = grupo.querySelector('.accordion-button .badge');
+                if (badge) badge.textContent = visiveis;
+            });
+            const vazio = document.getElementById('avisoFiltroVazio');
+            if (vazio) vazio.style.display = visiveisTotal ? 'none' : '';
+        }
+
+        function filtrarPorMotivo(motivoSelecionado, elementoClicado) {
+            let cards = document.getElementsByClassName("card-filtro");
+            for (let i = 0; i < cards.length; i++) cards[i].classList.remove("ativo");
+            elementoClicado.classList.add("ativo");
+
+            const busca = document.getElementById('buscaAtivos');
+            if (busca) busca.value = '';
+
+            let trs = document.getElementsByClassName("linha-dados-ativo");
+            for (let i = 0; i < trs.length; i++) {
+                let celula = trs[i].getElementsByClassName("motivo-texto")[0];
+                let textoMotivo = celula ? celula.innerText.toUpperCase() : '';
+                if (motivoSelecionado === 'TODOS') trs[i].style.display = "";
+                else trs[i].style.display = textoMotivo.includes(motivoSelecionado.toUpperCase()) ? "" : "none";
+            }
+
+            const titulo = document.getElementById('tituloTabelaAtivos');
+            if (titulo) {
+                titulo.innerHTML = (motivoSelecionado === 'TODOS')
+                    ? '<i class="bi bi-tools me-2"></i>Frotas na Oficina'
+                    : '<i class="bi bi-funnel-fill me-2"></i>Frotas na Oficina <span class="fs-6 fw-normal text-body-secondary">— ' + motivoSelecionado + '</span>';
+            }
+
+            sincronizarGruposEspecialidade();
+        }
+
+        function pesquisarTabelaGeral(inputId) {
+            let input = document.getElementById(inputId).value.toUpperCase();
+            let trs = document.getElementsByClassName("linha-dados-ativo");
+            for (let i = 0; i < trs.length; i++) {
+                let textoLinha = trs[i].innerText.toUpperCase();
+                trs[i].style.display = textoLinha.includes(input) ? "" : "none";
+            }
+            if (inputId === 'buscaAtivos') sincronizarGruposEspecialidade();
+        }
+
+        function ordenarTabelaGeral(tabelaId, colunaIndex, tipo) {
+            let table = document.getElementById(tabelaId);
+            let tbody = table.querySelector("tbody");
+            let rows = Array.from(tbody.querySelectorAll("tr:not(.modal-dialog tr)"));
+            let modais = rows.filter(r => r.cells.length === 1 || r.innerHTML.includes('modal fade'));
+            let linhasDados = rows.filter(r => r.cells.length > 1 && !r.innerHTML.includes('modal fade'));
+
+            let asc = table.getAttribute("data-ordem") === "asc";
+            table.setAttribute("data-ordem", asc ? "desc" : "asc");
+
+            linhasDados.sort((a, b) => {
+                let valA = a.cells[colunaIndex].innerText.trim();
+                let valB = b.cells[colunaIndex].innerText.trim();
+                if (tipo === 'data') { valA = valA.split('/').reverse().join(''); valB = valB.split('/').reverse().join(''); }
+                else if (tipo === 'numero') { valA = parseInt(valA) || 0; valB = parseInt(valB) || 0; }
+                if (valA < valB) return asc ? 1 : -1;
+                if (valA > valB) return asc ? -1 : 1;
+                return 0;
+            });
+            linhasDados.forEach(row => tbody.appendChild(row));
+            modais.forEach(row => tbody.appendChild(row));
+        }
+
+        function verificarNovo(selectId, inputId) {
+            let select = document.getElementById(selectId);
+            let input = document.getElementById(inputId);
+            if(select.value === 'NOVO') { input.classList.remove('d-none'); input.required = true; input.focus(); }
+            else { input.classList.add('d-none'); input.required = false; }
+        }
+
+        // A Consulta Rápida deixou de ser tabela e virou lista de cartões: a busca
+        // percorre os cartões e leva junto o painel de detalhe de cada um.
+        function filtrarTabela() {
+            const termo = document.getElementById('inputPesquisa').value.trim().toUpperCase();
+            const lista = document.getElementById('tabelaHistorico');
+            if (!lista) return;
+            const cartoes = lista.getElementsByClassName('hist-card');
+            const detalhes = lista.getElementsByClassName('linha-detalhe');
+            let visiveis = 0;
+
+            for (let i = 0; i < cartoes.length; i++) {
+                const texto = cartoes[i].innerText.toUpperCase();
+                const bate = !termo || texto.includes(termo);
+                cartoes[i].style.display = bate ? '' : 'none';
+                if (detalhes[i]) detalhes[i].style.display = bate ? '' : 'none';
+                if (bate) visiveis++;
+            }
+
+            const vazio = document.getElementById('histSemResultado');
+            if (vazio) vazio.style.display = visiveis ? 'none' : '';
+        }
+
+        // ==========================================
+        // NOVAS FUNÇÕES: GESTÃO DE FROTAS
+        // ==========================================
+        function abrirEdicaoFrota(id, desc, agrup, esp, setor) {
+            document.getElementById('inputCadFrota').value = id;
+            document.getElementById('inputCadFrota').readOnly = true;
+            document.getElementById('inputCadDesc').value = desc !== 'None' ? desc : '';
+            document.getElementById('inputCadAgrup').value = agrup !== 'None' ? agrup : '';
+            document.getElementById('inputCadEsp').value = esp !== 'None' ? esp : '';
+            document.getElementById('inputCadSetor').value = setor !== 'None' ? setor : '';
+
+            // Fazer scroll suave para o form
+            document.getElementById('formCadastroFrota').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function limparFormFrota() {
+            document.getElementById('inputCadFrota').readOnly = false;
+            document.getElementById('inputCadFrota').value = '';
+            document.getElementById('inputCadDesc').value = '';
+            document.getElementById('inputCadAgrup').value = '';
+            document.getElementById('inputCadEsp').value = '';
+            document.getElementById('inputCadSetor').value = '';
+        }
+
+        function prepararConfirmacaoFrota() {
+            let frota = document.getElementById('inputCadFrota').value.trim().toUpperCase();
+            let desc = document.getElementById('inputCadDesc').value.trim().toUpperCase();
+            let macro = document.getElementById('inputCadAgrup').value.trim().toUpperCase() || 'GERAL';
+            let micro = document.getElementById('inputCadEsp').value.trim().toUpperCase() || 'OUTROS';
+
+            if(frota === '' || desc === '') { alert('Por favor, preencha o código (ID) e a descrição da frota.'); return; }
+
+            document.getElementById('previewFrota').innerText = frota;
+            document.getElementById('previewDesc').innerText = desc;
+            document.getElementById('previewMacro').innerText = macro;
+            document.getElementById('previewMicro').innerText = micro;
+
+            new bootstrap.Modal(document.getElementById('modalConfirmaFrota')).show();
+        }
+
+        function confirmarExclusaoFrota(id) {
+            if(confirm('ATENÇÃO: Tem a certeza que pretende APAGAR a frota ' + id + ' do sistema?\n\nIsto não será possível se a frota já tiver manutenções gravadas no histórico ou na programação.')) {
+                window.location.href = '/excluir_frota/' + id;
+            }
+        }
+
+        function filtrarFrotasBanco() {
+            let input = document.getElementById("buscaBancoFrota").value.toUpperCase();
+            let trs = document.getElementsByClassName("linha-banco-frota");
+            for (let i = 0; i < trs.length; i++) {
+                let texto = trs[i].innerText.toUpperCase();
+                trs[i].style.display = texto.includes(input) ? "" : "none";
+            }
+        }
+
+        function editarPerfil(btn) {
+            document.getElementById('perfilIdEdicao').value = btn.dataset.id || '';
+            document.getElementById('nomePerfil').value = btn.dataset.nome || '';
+            document.getElementById('senhaPerfil').value = '';
+            document.getElementById('permBloqueios').checked = btn.dataset.bloqueios === '1';
+            document.getElementById('permProgramacao').checked = btn.dataset.programacao === '1';
+            document.getElementById('permLavagem').checked = btn.dataset.lavagem === '1';
+            document.getElementById('permAnalises').checked = btn.dataset.analises === '1';
+            document.getElementById('permAbastecimentos').checked = btn.dataset.abastecimentos === '1';
+            document.getElementById('permExternos').checked = btn.dataset.externos === '1';
+            document.getElementById('permFerramentaria').checked = btn.dataset.ferramentaria === '1';
+            document.getElementById('permCompras').checked = btn.dataset.compras === '1';
+            document.getElementById('hintSenhaPerfil').innerText = 'Edicao: informe senha apenas se quiser alterar.';
+            document.getElementById('nomePerfil').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            document.getElementById('nomePerfil').focus();
+        }
+
+        function limparEdicaoPerfil() {
+            document.getElementById('perfilIdEdicao').value = '';
+            document.getElementById('nomePerfil').value = '';
+            document.getElementById('senhaPerfil').value = '';
+            document.getElementById('iconeOlhoSenha').className = 'bi bi-eye-fill';
+            document.getElementById('senhaPerfil').type = 'password';
+            document.getElementById('permBloqueios').checked = true;
+            document.getElementById('permProgramacao').checked = true;
+            document.getElementById('permLavagem').checked = true;
+            document.getElementById('permAnalises').checked = true;
+            document.getElementById('permAbastecimentos').checked = true;
+            document.getElementById('permExternos').checked = true;
+            document.getElementById('permFerramentaria').checked = false;
+            document.getElementById('permCompras').checked = false;
+            document.getElementById('hintSenhaPerfil').innerText = 'Ao atualizar, deixe em branco para manter a senha atual.';
+        }
+
+        function toggleSenhaPerfil() {
+            const input = document.getElementById('senhaPerfil');
+            const icon = document.getElementById('iconeOlhoSenha');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'bi bi-eye-slash-fill';
+            } else {
+                input.type = 'password';
+                icon.className = 'bi bi-eye-fill';
+            }
+        }
+
+        function toggleSenhaLista(btn) {
+            const td = btn.closest('td');
+            const mask = td.querySelector('.senha-mask');
+            const txt = td.querySelector('.senha-txt');
+            const icon = btn.querySelector('i');
+            if (txt.classList.contains('d-none')) {
+                txt.classList.remove('d-none');
+                mask.classList.add('d-none');
+                icon.className = 'bi bi-eye-slash-fill';
+            } else {
+                txt.classList.add('d-none');
+                mask.classList.remove('d-none');
+                icon.className = 'bi bi-eye-fill';
+            }
+        }
+
+    </script>
+</body>
+</html>

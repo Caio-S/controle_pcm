@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estrutura Operacional - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+    <style>
+        /* Dentro do iframe da aba "Arrastar" (Programação Semanal > Estrutura):
+           sem sidebar, então .pcm-main não precisa do respiro nem do teto de
+           largura pensados pra tela cheia. */
+        body.pcm-embutido .pcm-main { max-width: none; padding: 10px; }
+
+        /* ── Quadro de colunas (Kanban) ─────────────────────────────────── */
+        .estr-toolbar {
+            display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+            margin-bottom: 14px;
+        }
+        .estr-quadro {
+            display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px;
+            align-items: flex-start;
+        }
+        .estr-coluna {
+            flex: 0 0 250px; background: var(--pcm-surface); border: 1px solid var(--pcm-border);
+            border-radius: var(--pcm-r); display: flex; flex-direction: column;
+            max-height: calc(100vh - 260px); transition: box-shadow var(--pcm-fast) var(--pcm-ease), border-color var(--pcm-fast) var(--pcm-ease);
+        }
+        .estr-coluna.arraste-sobre { border-color: var(--pcm-brand-hi); box-shadow: 0 0 0 3px rgba(61,119,214,.16); }
+        .estr-coluna-h {
+            padding: 10px 12px; border-bottom: 1px solid var(--pcm-border);
+            display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+        }
+        .estr-coluna-h strong { font-size: .82rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .estr-coluna-h .badge { font-size: .68rem; }
+        .estr-coluna-corpo { flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+        .estr-coluna-vazia { text-align: center; color: var(--pcm-text-mute); font-size: .74rem; padding: 18px 6px; border: 1.5px dashed var(--pcm-border); border-radius: var(--pcm-r-sm); }
+
+        .estr-card {
+            background: var(--pcm-surface-2); border: 1px solid var(--pcm-border); border-radius: var(--pcm-r-sm);
+            padding: 7px 9px; cursor: grab; font-size: .76rem; line-height: 1.3;
+            transition: transform var(--pcm-fast) var(--pcm-ease), box-shadow var(--pcm-fast) var(--pcm-ease), opacity var(--pcm-fast) var(--pcm-ease);
+        }
+        .estr-card:hover { transform: translateY(-1px); box-shadow: var(--pcm-shadow-2); }
+        .estr-card.arrastando { opacity: .35; }
+        .estr-card.escondido { display: none; }
+        .estr-card b { display: block; font-size: .8rem; color: var(--pcm-text); }
+        .estr-card span { display: block; color: var(--pcm-text-mute); font-size: .68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .estr-card .estr-acoes { display: flex; justify-content: flex-end; margin-top: 3px; }
+        .estr-card .estr-editar {
+            border: none; background: transparent; color: var(--pcm-text-mute); padding: 1px 4px;
+            border-radius: 5px; font-size: .72rem; cursor: pointer; line-height: 1;
+        }
+        .estr-card .estr-editar:hover { color: var(--pcm-brand); background: var(--pcm-surface); }
+
+        @media (prefers-reduced-motion: reduce) {
+            .estr-card, .estr-coluna { transition: none; }
+        }
+    </style>
+</head>
+<body class="pcm-app{{ ' pcm-embutido' if embutido }}">
+{% if not embutido %}
+{% include '_pcm_shell.html' %}
+
+<div class="pcm-shell">
+<header class="pcm-topbar">
+    <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+    <div>
+        <div class="pcm-tb-crumb">PCM</div>
+        <h1 class="pcm-tb-title">Estrutura Operacional</h1>
+    </div>
+    <div class="pcm-tb-spacer"></div>
+    <div class="pcm-tb-actions">
+        <button class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+    </div>
+</header>
+{% endif %}
+
+<div class="pcm-main">
+
+    <div class="pcm-leitura pcm-leitura--neutro mb-3">
+        <i class="bi bi-info-circle-fill"></i>
+        <div>
+            Arraste uma frota de uma coluna para outra para reclassificá-la. Use o lápis no card
+            para editar os outros campos sem arrastar. A mudança é salva na hora - não tem botão de "salvar".
+        </div>
+    </div>
+
+    <div class="estr-toolbar">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Agrupar por">
+            <button type="button" class="btn btn-outline-primary fw-semibold" data-dim="setor" onclick="trocarDimensao('setor')">
+                <i class="bi bi-geo-alt-fill me-1"></i>Setor
+            </button>
+            <button type="button" class="btn btn-outline-primary fw-semibold" data-dim="especialidade" onclick="trocarDimensao('especialidade')">
+                <i class="bi bi-tags-fill me-1"></i>Especialidade
+            </button>
+            <button type="button" class="btn btn-outline-primary fw-semibold" data-dim="frente" onclick="trocarDimensao('frente')">
+                <i class="bi bi-diagram-3-fill me-1"></i>Frente
+            </button>
+        </div>
+        <div class="pcm-search" style="max-width:280px">
+            <i class="bi bi-search"></i>
+            <input type="text" id="estrBusca" placeholder="Buscar frota ou descrição..." oninput="filtrarCards()">
+        </div>
+        <button type="button" class="btn btn-outline-success btn-sm fw-semibold" onclick="abrirNovaColuna()">
+            <i class="bi bi-plus-lg me-1"></i>Nova coluna
+        </button>
+        <span class="text-muted small ms-auto" id="estrContagem"></span>
+    </div>
+
+    <div class="estr-quadro" id="estrQuadro"></div>
+</div>
+{% if not embutido %}
+</div>
+{% endif %}
+
+<!-- Editar os 3 campos de uma frota sem arrastar -->
+<div class="modal fade" id="modalEditarFrota" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title fw-bold mb-0"><i class="bi bi-pencil-fill me-2"></i><span id="editFrotaTitulo"></span></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold mb-1">Setor</label>
+                    <input type="text" id="editSetor" class="form-control form-control-sm text-uppercase" list="listaSetores">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold mb-1">Especialidade</label>
+                    <input type="text" id="editEspecialidade" class="form-control form-control-sm text-uppercase" list="listaEspecialidades">
+                </div>
+                <div class="mb-1">
+                    <label class="form-label small fw-semibold mb-1">Frente</label>
+                    <input type="text" id="editFrente" class="form-control form-control-sm text-uppercase" list="listaFrentes" placeholder="(sem frente)">
+                </div>
+                <datalist id="listaSetores">{% for s in setores %}<option value="{{ s }}">{% endfor %}</datalist>
+                <datalist id="listaEspecialidades">{% for e in especialidades %}<option value="{{ e }}">{% endfor %}</datalist>
+                <datalist id="listaFrentes">{% for f in frentes_existentes %}<option value="{{ f }}">{% endfor %}</datalist>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+                <button type="button" class="btn btn-primary btn-sm fw-bold" onclick="salvarEdicaoFrota()">
+                    <i class="bi bi-check2 me-1"></i>Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Cada frota carrega os 3 campos de uma vez: arrastar entre colunas de uma
+// dimensão não perde o valor das outras duas.
+const FROTAS = {{ frotas | tojson | safe }};
+const RES = { setor: 'SEM SETOR', especialidade: 'OUTROS', frente: '' };
+let dimensaoAtual = 'setor';
+let modalEditarUI = null;
+document.addEventListener('DOMContentLoaded', () => {
+    modalEditarUI = new bootstrap.Modal(document.getElementById('modalEditarFrota'));
+    PCM.iniciarTudo(document);
+    trocarDimensao('setor');
+});
+
+function colunasDe(dim) {
+    const vistos = new Map();
+    FROTAS.forEach(f => {
+        const v = (f[dim] || '').trim() || (dim === 'frente' ? 'SEM FRENTE' : RES[dim]);
+        if (!vistos.has(v)) vistos.set(v, []);
+        vistos.get(v).push(f);
+    });
+    // Coluna "SEM FRENTE" e "SEM SETOR"/"OUTROS" sempre por último - são a
+    // sobra, não o destino natural de quem está organizando a estrutura.
+    return [...vistos.entries()].sort((a, b) => {
+        const resA = a[0].startsWith('SEM') || a[0] === 'OUTROS';
+        const resB = b[0].startsWith('SEM') || b[0] === 'OUTROS';
+        if (resA !== resB) return resA ? 1 : -1;
+        return b[1].length - a[1].length;
+    });
+}
+
+function cardHtml(f) {
+    return `<div class="estr-card" draggable="true" data-frota="${f.id_frota}"
+                 ondragstart="aoIniciarArraste(event)" ondragend="aoTerminarArraste(event)">
+        <b>${f.id_frota}</b>
+        <span title="${(f.descricao||'').replace(/"/g,'')}">${f.descricao || ''}</span>
+        <div class="estr-acoes">
+            <button type="button" class="estr-editar" title="Editar" onclick="abrirEdicao('${f.id_frota}')">
+                <i class="bi bi-pencil-fill"></i>
+            </button>
+        </div>
+    </div>`;
+}
+
+function montarQuadro() {
+    const quadro = document.getElementById('estrQuadro');
+    const colunas = colunasDe(dimensaoAtual);
+    quadro.innerHTML = colunas.map(([nome, itens]) => `
+        <div class="estr-coluna" data-coluna="${nome}" ondragover="aoArrastarSobre(event)"
+             ondragleave="aoSairDoArraste(event)" ondrop="aoSoltar(event)">
+            <div class="estr-coluna-h">
+                <strong title="${nome}">${nome}</strong>
+                <span class="badge bg-secondary-subtle text-secondary-emphasis">${itens.length}</span>
+            </div>
+            <div class="estr-coluna-corpo">
+                ${itens.length ? itens.map(cardHtml).join('') : '<div class="estr-coluna-vazia">Arraste frotas aqui</div>'}
+            </div>
+        </div>
+    `).join('');
+    filtrarCards();
+}
+
+function trocarDimensao(dim) {
+    dimensaoAtual = dim;
+    document.querySelectorAll('[data-dim]').forEach(b => b.classList.toggle('active', b.dataset.dim === dim));
+    montarQuadro();
+}
+
+function filtrarCards() {
+    const termo = (document.getElementById('estrBusca').value || '').trim().toUpperCase();
+    let visiveis = 0, total = 0;
+    document.querySelectorAll('.estr-card').forEach(c => {
+        total++;
+        const frota = FROTAS.find(f => f.id_frota === c.dataset.frota);
+        const bate = !termo || c.dataset.frota.toUpperCase().includes(termo) ||
+                     (frota && (frota.descricao || '').toUpperCase().includes(termo));
+        c.classList.toggle('escondido', !bate);
+        if (bate) visiveis++;
+    });
+    document.getElementById('estrContagem').textContent =
+        termo ? `${visiveis} de ${total} frotas` : `${total} frotas`;
+}
+
+// ── Drag and drop ──────────────────────────────────────────────────────
+let arrastandoFrota = null;
+function aoIniciarArraste(ev) {
+    arrastandoFrota = ev.currentTarget.dataset.frota;
+    ev.currentTarget.classList.add('arrastando');
+    ev.dataTransfer.effectAllowed = 'move';
+    ev.dataTransfer.setData('text/plain', arrastandoFrota);
+}
+function aoTerminarArraste(ev) { ev.currentTarget.classList.remove('arrastando'); }
+function aoArrastarSobre(ev) { ev.preventDefault(); ev.currentTarget.classList.add('arraste-sobre'); }
+function aoSairDoArraste(ev) { ev.currentTarget.classList.remove('arraste-sobre'); }
+
+function aoSoltar(ev) {
+    ev.preventDefault();
+    const coluna = ev.currentTarget;
+    coluna.classList.remove('arraste-sobre');
+    const idFrota = ev.dataTransfer.getData('text/plain') || arrastandoFrota;
+    const destino = coluna.dataset.coluna;
+    if (!idFrota) return;
+
+    const frota = FROTAS.find(f => f.id_frota === idFrota);
+    const atual = (frota && frota[dimensaoAtual]) || '';
+    const atualNormalizado = atual.trim() || (dimensaoAtual === 'frente' ? 'SEM FRENTE' : RES[dimensaoAtual]);
+    if (atualNormalizado === destino) return;   // soltou na própria coluna
+
+    const valorGravar = (destino === 'SEM FRENTE') ? '' : destino;
+    moverFrota(idFrota, dimensaoAtual, valorGravar, () => {
+        if (frota) frota[dimensaoAtual] = valorGravar;
+        montarQuadro();
+    });
+}
+
+function moverFrota(idFrota, campo, valor, aoTerminar) {
+    if (window.PCM) PCM.loading.show('Atualizando estrutura...');
+    fetch('/api/mover_frota', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_frota: idFrota, campo, valor })
+    }).then(r => r.json()).then(d => {
+        if (window.PCM) PCM.loading.hide();
+        if (d.status === 'sucesso') {
+            if (window.PCM) PCM.toast(`${idFrota} atualizada`, 'ok', 1400);
+            if (aoTerminar) aoTerminar();
+        } else {
+            if (window.PCM) PCM.toast(d.msg || 'Não deu para mover essa frota.', 'erro');
+        }
+    }).catch(() => {
+        if (window.PCM) { PCM.loading.hide(); PCM.toast('Erro de conexão.', 'erro'); }
+    });
+}
+
+// ── Nova coluna (cria um setor/especialidade/frente vazio, mesmo sem frota
+// nenhuma ainda - útil para preparar a estrutura antes de arrastar) ───────
+function abrirNovaColuna() {
+    const rotulo = { setor: 'setor', especialidade: 'especialidade', frente: 'frente' }[dimensaoAtual];
+    const nome = prompt(`Nome do(a) novo(a) ${rotulo}:`);
+    if (!nome || !nome.trim()) return;
+    const valor = nome.trim().toUpperCase();
+    const quadro = document.getElementById('estrQuadro');
+    if (quadro.querySelector(`[data-coluna="${valor}"]`)) {
+        if (window.PCM) PCM.toast('Essa coluna já existe.', 'alerta');
+        return;
+    }
+    const div = document.createElement('div');
+    div.innerHTML = `<div class="estr-coluna" data-coluna="${valor}" ondragover="aoArrastarSobre(event)"
+             ondragleave="aoSairDoArraste(event)" ondrop="aoSoltar(event)">
+            <div class="estr-coluna-h"><strong title="${valor}">${valor}</strong>
+                <span class="badge bg-secondary-subtle text-secondary-emphasis">0</span></div>
+            <div class="estr-coluna-corpo"><div class="estr-coluna-vazia">Arraste frotas aqui</div></div>
+        </div>`;
+    quadro.appendChild(div.firstElementChild);
+}
+
+// ── Editar os 3 campos de uma frota pelo lápis ────────────────────────────
+let frotaEmEdicao = null;
+function abrirEdicao(idFrota) {
+    const f = FROTAS.find(x => x.id_frota === idFrota);
+    if (!f) return;
+    frotaEmEdicao = f;
+    document.getElementById('editFrotaTitulo').textContent = `${f.id_frota} — ${f.descricao || ''}`;
+    document.getElementById('editSetor').value = f.setor || '';
+    document.getElementById('editEspecialidade').value = f.especialidade || '';
+    document.getElementById('editFrente').value = f.frente || '';
+    modalEditarUI.show();
+}
+
+function salvarEdicaoFrota() {
+    if (!frotaEmEdicao) return;
+    const novos = {
+        setor: document.getElementById('editSetor').value.trim().toUpperCase(),
+        especialidade: document.getElementById('editEspecialidade').value.trim().toUpperCase(),
+        frente: document.getElementById('editFrente').value.trim().toUpperCase(),
+    };
+    // Só manda pro servidor o que realmente mudou.
+    const mudou = Object.keys(novos).filter(campo => (frotaEmEdicao[campo] || '') !== novos[campo]);
+    if (!mudou.length) { modalEditarUI.hide(); return; }
+
+    const aplicarProxima = () => {
+        if (!mudou.length) {
+            frotaEmEdicao.setor = novos.setor; frotaEmEdicao.especialidade = novos.especialidade; frotaEmEdicao.frente = novos.frente;
+            modalEditarUI.hide();
+            montarQuadro();
+            return;
+        }
+        const campo = mudou.shift();
+        moverFrota(frotaEmEdicao.id_frota, campo, novos[campo], aplicarProxima);
+    };
+    aplicarProxima();
+}
+</script>
+</body>
+</html>

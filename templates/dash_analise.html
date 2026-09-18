@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aderência - Análise de Óleo</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        :root{ --accent:#1E4B9A; --accent-hi:#3D77D6; }
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #e9edf3; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        #relatorioCompleto { width: 794px; height: 1123px; background-color: #fff; padding: 22px 24px; box-sizing: border-box; position: relative; border-radius: 16px; box-shadow: 0 18px 45px rgba(16,24,40,.22); display: flex; flex-direction: column; }
+        .header-top { background: linear-gradient(135deg,#14181d,var(--accent)); color: white; padding: 12px 18px; border-radius: 12px; box-shadow: 0 6px 16px rgba(30,75,154,.25); }
+        .box-title { background: linear-gradient(90deg,var(--accent),var(--accent-hi)); color: white; text-align: center; padding: 7px; font-weight: 800; font-size: 10.5px; margin-bottom: 0; text-transform: uppercase; letter-spacing: .6px; }
+        .dash-box { border: 1px solid #e8edf3; border-radius: 13px; height: 100%; display: flex; flex-direction: column; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(16,24,40,.06); }
+        .box-content { padding: 10px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
+        .chart-center-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; font-weight: 800; color: #1f2937; z-index: 3; pointer-events: none;}
+        .text-realizado { color: #198754; }
+        .text-nao-realizado { color: #dc3545; }
+        .info-box { border-radius: 10px; padding: 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; background: #f8f9fb; border-top: 3px solid var(--accent); }
+        .btn-print { position: fixed; top: 20px; right: 20px; z-index: 1000; border-radius: 9px; }
+        .canvas-container { position: relative; width: 100%; display: flex; justify-content: center; align-items: center; }
+        @media print {
+            body { background-color: #fff; padding: 0; }
+            #relatorioCompleto { box-shadow: none; width: 100%; height: 100%; page-break-inside: avoid; border: none; margin: 0; border-radius: 0; }
+            .box-title, .header-top { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .btn-print { display: none !important; }
+            @page { size: portrait; margin: 0; }
+        }
+    
+    /* Lista "nao realizadas": frota + motivo, em tamanho legivel no PDF impresso. */
+    .pend-esp-wrap{margin-top:4px}
+    .pend-esp-line{font-size:12px;line-height:1.45;margin-bottom:5px;word-break:break-word}
+    .pend-esp-tag{display:inline-block;background:#1E4B9A;color:#fff;border-radius:5px;padding:2px 7px;font-weight:700;margin-right:6px;font-size:11px;letter-spacing:.3px}
+    .pend-frota{display:inline-block;font-weight:800;font-size:12.5px;color:#1f2937;margin-right:3px}
+    .pend-motivo{display:inline-block;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:9px}
+    .pend-motivo.bloq{background:#fdeaec;color:#a3212e;border:1px solid #f3c6cb}
+    .pend-motivo.aguard{background:#fff4e0;color:#8a5a00;border:1px solid #f5d9a8}
+    .pend-motivo.sem{background:#eef1f4;color:#55606b;border:1px solid #dde3e9}
+    .pend-item{display:inline-block;margin:0 10px 4px 0;white-space:nowrap}
+    
+        /* Folha A4 tem largura fixa por natureza. No celular ela e reduzida
+           proporcionalmente pra caber na tela (a escala vem do script abaixo,
+           porque scale(calc()) nao e aceito por todos os motores). A impressao
+           continua em 794px. */
+        @media screen and (max-width: 820px) {
+            body { padding: 8px !important; display: block !important; overflow-x: hidden; }
+            #page, #relatorioCompleto { transform-origin: top left; }
+        }
+        @media print {
+            #page, #relatorioCompleto { transform: none !important; margin-bottom: 0 !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <button class="btn btn-lg btn-print fw-bold shadow text-white" style="background:var(--accent);border:none;" onclick="gerarPDF()">
+        <i class="bi bi-file-pdf-fill me-1"></i> Baixar Relatório Oficial (A4)
+    </button>
+
+    <div id="relatorioCompleto">
+        <div class="header-top d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0 fw-bold" style="font-size: 16px;"><i class="bi bi-eyedropper me-2"></i>ACOMPANHAMENTO - ANÁLISES DE ÓLEO</h5>
+            <div class="text-end" style="line-height: 1.2;">
+                <span class="fw-bold d-block" style="font-size: 14px;">CRV INDUSTRIAL</span>
+                <span style="font-size: 11px;">Período: {{ periodo }}</span><br>
+                <span style="font-size: 10px;">ATUALIZADO AS: {{ data_geracao }}</span>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-2" style="height: 214px;">
+            <div class="col-6">
+                <div class="dash-box">
+                    <div class="box-title">RESULTADOS DA PROGRAMAÇÃO</div>
+                    <div class="box-content">
+                        <div style="font-size: 10px; line-height: 1.4; text-align: center; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-bottom: 8px;">
+                            <span class="text-dark fw-bold">Programado:</span> O planejado. | 
+                            <span style="color: #00b050;" class="fw-bold">Realizado:</span> O feito. | 
+                            <span style="color: #ff0000;" class="fw-bold">Não Realizado:</span> A falha.
+                        </div>
+                        <div class="canvas-container" style="height: 155px;">
+                            <canvas id="chartProg" style="position: relative; z-index: 2;"></canvas>
+                            <div class="chart-center-text" id="lblTotalProgValido">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="dash-box" style="border-color: #0dcaf0;">
+                    <div class="box-title" style="background-color: #0dcaf0; color: #000;">RESULTADOS DOS LAUDOS (REALIZADOS)</div>
+                    <div class="box-content">
+                        <div style="font-size: 10px; line-height: 1.4; text-align: center; border-bottom: 1px dashed #ccc; padding-bottom: 5px; margin-bottom: 8px;">
+                            <span style="color: #198754" class="fw-bold">Normal:</span> Bom. | 
+                            <span style="color: #ffc107" class="fw-bold">Anomalia:</span> Atenção. | 
+                            <span style="color: #dc3545" class="fw-bold">Crítico:</span> Bloqueia a Frota.
+                        </div>
+                        <div class="canvas-container" style="height: 155px;">
+                            <canvas id="chartLaudos" style="position: relative; z-index: 2;"></canvas>
+                            <div class="chart-center-text" id="lblTotalLaudos">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-2" style="height: 186px;">
+            <div class="col-12">
+                <div class="dash-box">
+                    <div class="box-title">RESULTADOS DOS LAUDOS POR ESPECIALIDADE</div>
+                    <div class="box-content">
+                        <div class="canvas-container" style="height: 170px;">
+                            <canvas id="chartEspecialidadeLaudos"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-2" style="height: 158px;">
+            <div class="col-6">
+                <div class="dash-box">
+                    <div class="box-title">COLETAS POR LOCAL - CAMPO</div>
+                    <div class="box-content d-flex flex-row align-items-center p-2">
+                        <div class="canvas-container" style="height: 130px; flex-grow: 1;">
+                            <canvas id="chartCampo"></canvas>
+                        </div>
+                        <div class="ms-2" style="width: 100px; height: 100%;">
+                            <div class="info-box text-white h-100" style="background-color: #0d6efd; border-color: #0d6efd;">
+                                <span class="fw-bold" style="font-size: 9px;">FROTAS<br>COLETADAS</span>
+                                <span class="fw-bold fs-2 my-1" id="lblTotalCampo">0</span>
+                                <span class="fw-bold" style="font-size: 9px;">NO CAMPO</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="dash-box">
+                    <div class="box-title">ANÁLISES - POR LOCAL GERAL</div>
+                    <div class="box-content d-flex flex-row align-items-center p-2">
+                        <div class="canvas-container" style="height: 130px; flex-grow: 1;">
+                            <canvas id="chartLocais"></canvas>
+                        </div>
+                        <div class="ms-2" style="width: 100px; height: 100%;">
+                            <div class="info-box text-dark h-100" style="background-color: #0dcaf0; border-color: #0dcaf0;">
+                                <span class="fw-bold" style="font-size: 9px;">TOTAL DE</span>
+                                <span class="fw-bold fs-2 my-1" id="lblTotalGeral">0</span>
+                                <span class="fw-bold" style="font-size: 8px;">FROTAS REALIZADAS</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-2" style="height: 196px;">
+            <div class="col-12">
+                <div class="dash-box">
+                    <div class="box-title">MONITORAMENTO DE ANÁLISES NÃO REALIZADAS POR ESPECIALIDADE</div>
+                    <div class="box-content d-flex flex-row align-items-center p-2">
+                        <div class="canvas-container" style="height: 200px; flex-grow: 1; padding-right: 10px;">
+                            <canvas id="chartNaoRealizadasMotivos"></canvas>
+                        </div>
+                        <div style="width: 130px; height: 100%;">
+                            <div class="info-box text-white h-100 py-3 d-flex justify-content-center" style="background-color: #ff0000; border-color: #ff0000;">
+                                <span class="fw-bold" style="font-size: 10px;">ANÁLISES<br>FALHAS</span>
+                                <span class="fw-bold my-2" style="font-size: 45px; line-height: 1;" id="lblTotalNaoRealBox">0</span>
+                                <span class="fw-bold" style="font-size: 10px;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Atenção</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Quais frotas não tiveram a análise e por quê. #}
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="dash-box">
+                    <div class="box-title">NÃO REALIZADAS — FROTA E MOTIVO</div>
+                    <div class="box-content p-2">
+                        <div id="pendentesPorEsp" class="pend-esp-wrap" style="max-height:150px;overflow:auto"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const rawData = {{ dados | tojson | safe }};
+        const resumo = {{ resumo | tojson | safe }};
+
+        // ── Lista "não realizadas": frota + por que não foi feita ─────────────
+        document.addEventListener('DOMContentLoaded', function () {
+            const pendPorSetor = {};
+            rawData.forEach(r => {
+                if (r.status === 'REALIZADA') return;
+                const setor = (r.setor || 'SEM SETOR').trim();
+                if (!pendPorSetor[setor]) pendPorSetor[setor] = [];
+                const situacao = (r.situacao_oficina || '').trim();
+                const motivo = (r.motivo_bloqueio || '').trim();
+                let texto, classe;
+                if (r.status === 'QUEBRADA')       { texto = situacao || 'QUEBRADA'; classe = 'bloq'; }
+                else if (situacao || motivo)       { texto = situacao || motivo; classe = /AGUARD/i.test(texto) ? 'aguard' : 'bloq'; }
+                else if (r.status === 'BLOQUEADA') { texto = 'BLOQUEADA'; classe = 'bloq'; }
+                else                               { texto = 'SEM APONTAMENTO'; classe = 'sem'; }
+                pendPorSetor[setor].push({ frota: r.id_frota, texto: texto.toUpperCase(), classe });
+            });
+
+            const box = document.getElementById('pendentesPorEsp');
+            if (!box) return;
+            const linhas = Object.keys(pendPorSetor).sort().map(setor => {
+                const vistas = new Set();
+                const itens = pendPorSetor[setor].filter(p => {
+                    if (vistas.has(p.frota)) return false;
+                    vistas.add(p.frota); return true;
+                });
+                if (!itens.length) return '';
+                const corpo = itens.map(p =>
+                    `<span class="pend-item"><span class="pend-frota">${p.frota}</span></span>`
+                ).join('');
+                return `<div class="pend-esp-line"><span class="pend-esp-tag">${setor}</span>${corpo}</div>`;
+            }).filter(Boolean);
+            box.innerHTML = linhas.length ? linhas.join('')
+                : '<div class="pend-esp-line" style="color:#666;font-weight:700">Todas as análises do período foram realizadas.</div>';
+        });
+        
+        let tRealizado = 0; let tNaoRealizado = 0;
+        let tBloqueado = 0; let tPendente = 0;
+        let tCampo = 0; let tBase = 0; let tGarantia = 0;
+        const classificarLocal = (localBruto) => {
+            const local = (localBruto || 'BASE').toString().trim().toUpperCase();
+            if (local.includes('GARANTIA')) return 'GARANTIA';
+            if (local.includes('CAMPO')) return 'CAMPO';
+            return 'BASE';
+        };
+        
+        let rNormal = 0; let rAnomalia = 0; let rCritico = 0;
+        
+        let byEspNaoRealizado = {}; let campoByEsp = {};
+        let byEspPendente = {}; let byEspBloqueado = {}; let byEspQuebrado = {};
+        let laudosPorEsp = {};
+
+        const registrosMap = {};
+        rawData.forEach(r => {
+            if (r.status === 'QUEBRADA') return;
+            const localNormalizado = classificarLocal(r.local_execucao || 'BASE');
+            const chave = r.id ? `ID_${r.id}` : `${(r.id_frota || '').toString().trim().toUpperCase()}|${r.data_planejada || ''}|${r.status || ''}|${(r.tipo_servico || '').toString().trim().toUpperCase()}|${localNormalizado}`;
+            if (!registrosMap[chave]) registrosMap[chave] = { ...r, local_execucao: localNormalizado };
+        });
+        const registros = Object.values(registrosMap);
+
+        registros.forEach(r => {
+            let esp = r.especialidade || 'GERAL';
+            let loc = r.local_execucao || 'BASE';
+            let res = (r.resultado_analise || 'NORMAL').toString().trim().toUpperCase();
+            if(!res) res = 'NORMAL';
+
+            if(typeof laudosPorEsp[esp] === 'undefined') { 
+                laudosPorEsp[esp] = { normal: 0, anomalia: 0, critico: 0 };
+                byEspNaoRealizado[esp] = 0; campoByEsp[esp] = 0;
+                byEspPendente[esp] = 0; byEspBloqueado[esp] = 0; byEspQuebrado[esp] = 0;
+            }
+
+            if(r.status === 'REALIZADA') {
+                tRealizado++;
+                if(loc === 'CAMPO') {
+                    tCampo++;
+                    campoByEsp[esp]++;
+                } else if(loc === 'GARANTIA') {
+                    tGarantia++;
+                } else {
+                    tBase++;
+                }
+
+                if(res === 'NORMAL') { rNormal++; laudosPorEsp[esp].normal++; }
+                else if(res === 'ANOMALIA') { rAnomalia++; laudosPorEsp[esp].anomalia++; }
+                else if(res === 'CRÍTICO') { rCritico++; laudosPorEsp[esp].critico++; }
+            } else {
+                tNaoRealizado++;
+                byEspNaoRealizado[esp]++; 
+                if (r.status === 'BLOQUEADA') { tBloqueado++; byEspBloqueado[esp]++; }
+                else { tPendente++; byEspPendente[esp]++; } 
+            }
+        });
+
+        let tProgramado = tRealizado + tNaoRealizado;
+        document.getElementById('lblTotalProgValido').innerText = tProgramado;
+        document.getElementById('lblTotalLaudos').innerText = tRealizado;
+        document.getElementById('lblTotalCampo').innerText = tCampo;
+        document.getElementById('lblTotalGeral').innerText = tRealizado;
+        document.getElementById('lblTotalNaoRealBox').innerText = tNaoRealizado;
+
+        Chart.register(ChartDataLabels);
+        Chart.defaults.set('plugins.datalabels', { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (value) => value > 0 ? value : '' });
+
+        // 1. Gráfico de Programação
+        let progLabels = []; let progData = []; let progColors = [];
+        if(tRealizado > 0) { progLabels.push('Realizado'); progData.push(tRealizado); progColors.push('#00b050'); }
+        if(tNaoRealizado > 0) { progLabels.push('Não Realizado'); progData.push(tNaoRealizado); progColors.push('#ff0000'); }
+        if(progData.length === 0) { progLabels = ['Sem Dados']; progData = [1]; progColors = ['#ccc']; }
+
+        new Chart(document.getElementById('chartProg'), {
+            type: 'doughnut',
+            data: { labels: progLabels, datasets: [{ data: progData, backgroundColor: progColors, borderWidth: progData.length > 1 ? 2 : 0, borderColor: '#fff' }] },
+            options: { 
+                maintainAspectRatio: false, cutout: '64%', layout: { padding: 32 }, 
+                plugins: { 
+                    legend: {display: false}, 
+                    datalabels: { 
+                        backgroundColor: function(context) { return context.dataset.backgroundColor[context.dataIndex]; },
+                        borderRadius: 4, padding: 6, color: '#fff', font: { weight: 'bold', size: 11 }, anchor: 'end', align: 'end', offset: 4, clamp: true,
+                        formatter: (val, ctx) => { 
+                            if(progLabels[0] === 'Sem Dados') return '';
+                            let sum = ctx.chart.data.datasets[0].data.reduce((a,b) => a+b, 0);
+                            let perc = sum > 0 ? Math.round((val/sum)*100) : 0; 
+                            return val > 0 ? `${val}; ${perc}%` : ''; 
+                        } 
+                    } 
+                } 
+            }
+        });
+
+        // 2. Gráfico de Laudos
+        let laudosLabels = []; let laudosData = []; let laudosColors = [];
+        if(rNormal > 0) { laudosLabels.push('Normal'); laudosData.push(rNormal); laudosColors.push('#198754'); }
+        if(rAnomalia > 0) { laudosLabels.push('Anomalia'); laudosData.push(rAnomalia); laudosColors.push('#ffc107'); }
+        if(rCritico > 0) { laudosLabels.push('Crítico'); laudosData.push(rCritico); laudosColors.push('#dc3545'); }
+        if(laudosData.length === 0) { laudosLabels = ['Sem Dados']; laudosData = [1]; laudosColors = ['#ccc']; }
+
+        new Chart(document.getElementById('chartLaudos'), {
+            type: 'doughnut',
+            data: { labels: laudosLabels, datasets: [{ data: laudosData, backgroundColor: laudosColors, borderWidth: laudosData.length > 1 ? 2 : 0, borderColor: '#fff' }] },
+            options: { 
+                maintainAspectRatio: false, cutout: '64%', layout: { padding: 32 }, 
+                plugins: { 
+                    legend: {display: false},
+                    datalabels: { 
+                        backgroundColor: function(context) { return context.dataset.backgroundColor[context.dataIndex]; },
+                        borderRadius: 4,
+                        padding: 5,
+                        color: function(ctx) { return ctx.chart.data.labels[ctx.dataIndex] === 'Anomalia' ? '#000' : '#fff'; }, 
+                        font: { weight: 'bold', size: 10 },
+                        anchor: 'end',
+                        align: function(ctx) {
+                            const label = ctx.chart.data.labels[ctx.dataIndex];
+                            if(label === 'Anomalia') return 315;
+                            if(label === 'Crítico') return 45;
+                            return 'end';
+                        },
+                        offset: 8,
+                        clamp: true,
+                        formatter: (val, ctx) => { 
+                            if(laudosLabels[0] === 'Sem Dados') return '';
+                            let sum = ctx.chart.data.datasets[0].data.reduce((a,b) => a+b, 0);
+                            let perc = sum > 0 ? Math.round((val/sum)*100) : 0; 
+                            return val > 0 ? `${val}; ${perc}%` : ''; 
+                        } 
+                    }
+                } 
+            }
+        });
+
+        // 3. Gráfico de Laudos por Especialidade (Sem os zeros manchados)
+        let espLabelsReal = Object.keys(laudosPorEsp).filter(e => (laudosPorEsp[e].normal + laudosPorEsp[e].anomalia + laudosPorEsp[e].critico) > 0);
+        let dNormal = espLabelsReal.map(e => laudosPorEsp[e].normal);
+        let dAnomalia = espLabelsReal.map(e => laudosPorEsp[e].anomalia);
+        let dCritico = espLabelsReal.map(e => laudosPorEsp[e].critico);
+        
+        let datasetsEspLaudos = [];
+        if(dNormal.some(v => v > 0)) datasetsEspLaudos.push({ label: 'Normal', data: dNormal, backgroundColor: '#198754' });
+        if(dAnomalia.some(v => v > 0)) datasetsEspLaudos.push({ label: 'Anomalia', data: dAnomalia, backgroundColor: '#ffc107' });
+        if(dCritico.some(v => v > 0)) datasetsEspLaudos.push({ label: 'Crítico', data: dCritico, backgroundColor: '#dc3545' });
+
+        new Chart(document.getElementById('chartEspecialidadeLaudos'), {
+            type: 'bar',
+            data: { labels: espLabelsReal, datasets: datasetsEspLaudos },
+            options: { 
+                maintainAspectRatio: false, layout: { padding: { top: 20 } },
+                plugins: { 
+                    legend: { position: 'top', labels: {boxWidth: 10, font:{size:10, weight:'bold'}} }, 
+                    datalabels: { color: function(ctx) { return ctx.dataset.label === 'Anomalia' ? '#000' : '#fff'; }, anchor: 'center', align: 'center', formatter: (val) => val > 0 ? val : '' } 
+                }, 
+                scales: { x: { stacked: true, ticks: { maxRotation: 45, minRotation: 45, font: {size: 9, weight: 'bold'}} }, y: { stacked: true, beginAtZero: true, display: false } } 
+            }
+        });
+
+        // 4. Realizados Campo
+        let campoLabels = Object.keys(campoByEsp).filter(e => campoByEsp[e] > 0);
+        let campoData = campoLabels.map(e => campoByEsp[e]);
+        if (campoLabels.length === 0) { campoLabels = ['Nenhum no Campo']; campoData = [0]; }
+        new Chart(document.getElementById('chartCampo'), {
+            type: 'bar',
+            data: { labels: campoLabels, datasets: [{ data: campoData, backgroundColor: '#0d6efd' }] },
+            options: { indexAxis: 'y', maintainAspectRatio: false, layout: { padding: { left: 15, right: 30 } }, plugins: { legend: {display: false}, datalabels: {anchor: 'end', align: 'right', color: '#000'} }, scales: { x: { display: false }, y: { ticks: {font: {size: 10, weight: 'bold'}} } } }
+        });
+
+        // 5. Locais GERAIS
+        new Chart(document.getElementById('chartLocais'), {
+            type: 'bar',
+            data: { labels: ['Base', 'Campo', 'Garantia'], datasets: [{ data: [tBase, tCampo, tGarantia], backgroundColor: '#0dcaf0' }] },
+            options: { indexAxis: 'y', maintainAspectRatio: false, layout: { padding: { left: 15, right: 30 } }, plugins: { legend: {display: false}, datalabels: {anchor: 'end', align: 'right', color: '#000'} }, scales: { x: { display: false }, y: { ticks: {font: {size: 10, weight: 'bold'}} } } }
+        });
+
+        // 6. Não Realizadas por Especialidade
+        let nrLabels = Object.keys(byEspNaoRealizado).filter(e => byEspNaoRealizado[e] > 0);
+        let nrPendente = nrLabels.map(e => byEspPendente[e]);
+        let nrBloqueado = nrLabels.map(e => byEspBloqueado[e]);
+        let nrQuebrado = nrLabels.map(e => byEspQuebrado[e]);
+
+        let datasetsNR = [];
+        if (nrLabels.length === 0) {
+            nrLabels = ['Todas Foram Feitas!'];
+            datasetsNR.push({ label: 'OK', data: [0], backgroundColor: '#198754' });
+        } else {
+            if (nrPendente.some(v => v > 0)) datasetsNR.push({ label: 'Reprogramado', data: nrPendente, backgroundColor: '#0070c0' });
+            if (nrBloqueado.some(v => v > 0)) datasetsNR.push({ label: 'Bloqueado', data: nrBloqueado, backgroundColor: '#ffc000' });
+            // Quebrado ignorado por segurança.
+        }
+
+        new Chart(document.getElementById('chartNaoRealizadasMotivos'), {
+            type: 'bar',
+            data: { labels: nrLabels, datasets: datasetsNR },
+            options: { 
+                maintainAspectRatio: false, layout: { padding: { top: 20 } },
+                plugins: { legend: { position: 'top', labels: {boxWidth: 12, font:{size:10, weight:'bold'}} }, datalabels: { anchor: 'center', align: 'center', color: '#fff', formatter: (value) => value > 0 ? value : '' } }, 
+                scales: { x: { stacked: true, ticks: {maxRotation: 45, minRotation: 45, font: {size: 9, weight: 'bold'}} }, y: { stacked: true, display: false, beginAtZero: true } } 
+            }
+        });
+
+        // MÁQUINA DE PDF EXATA A4 RETRATO
+        function gerarPDF() {
+            // garante que o conteudo esta encaixado antes de renderizar a folha
+            if (window.caberEmUmaPagina) window.caberEmUmaPagina();
+            let btn = document.querySelector('.btn-print');
+            let txtOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>A Gerar PDF...'; btn.disabled = true;
+            let opt = { margin: 0, filename: 'Aderencia_Analise_Oleo_A4_{{ periodo|replace(" ", "")|replace("/", "-") }}.pdf', image: { type: 'jpeg', quality: 1.0 }, html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 }, jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' } };
+            setTimeout(() => { html2pdf().set(opt).from(document.getElementById('relatorioCompleto')).save().then(() => { btn.innerHTML = txtOriginal; btn.disabled = false; }); }, 300);
+        }
+    </script>
+<script>
+// A4 tem 794px fixos. Em tela estreita a folha inteira e reduzida pra caber,
+// em vez de obrigar a arrastar pro lado. Nao afeta a impressao nem o PDF.
+(function () {
+  function ajustarFolha() {
+    var folha = document.getElementById('page') || document.getElementById('relatorioCompleto');
+    if (!folha) return;
+    var largura = document.documentElement.clientWidth;
+    if (largura > 820) { folha.style.transform = ''; folha.style.marginBottom = ''; return; }
+    var escala = (largura - 16) / 794;
+    folha.style.transform = 'scale(' + escala + ')';
+    // O transform nao encolhe o espaco ocupado no fluxo: sem isso sobraria uma
+    // area vazia enorme abaixo da folha.
+    folha.style.marginBottom = -(folha.offsetHeight * (1 - escala)) + 'px';
+  }
+  window.addEventListener('resize', ajustarFolha);
+  window.addEventListener('load', ajustarFolha);
+  document.addEventListener('DOMContentLoaded', ajustarFolha);
+})();
+</script>
+<script>
+/* O relatório é uma folha A4 de 1123px. Se o conteúdo passar disso, o gerador
+   de PDF quebra no meio de um gráfico. Em vez de calibrar altura na mão a cada
+   mudança de conteúdo (a lista de frotas varia de tamanho), o conteúdo é medido
+   depois de pronto e reduzido só o necessário pra fechar em uma página. */
+(function () {
+  var ALTURA_A4 = 1123;
+
+  function folhaDoRelatorio() {
+    return document.getElementById('page') || document.getElementById('relatorioCompleto');
+  }
+
+  function envolverConteudo(folha) {
+    var wrap = folha.querySelector(':scope > .conteudo-folha');
+    if (wrap) return wrap;
+    wrap = document.createElement('div');
+    wrap.className = 'conteudo-folha';
+    while (folha.firstChild) wrap.appendChild(folha.firstChild);
+    folha.appendChild(wrap);
+    return wrap;
+  }
+
+  window.caberEmUmaPagina = function () {
+    var folha = folhaDoRelatorio();
+    if (!folha) return 1;
+    var wrap = envolverConteudo(folha);
+
+    // mede sem escala pra saber a altura real do conteúdo
+    wrap.style.transform = '';
+    wrap.style.width = '';
+    var cs = getComputedStyle(folha);
+    var disponivel = ALTURA_A4 - parseFloat(cs.paddingTop || 0) - parseFloat(cs.paddingBottom || 0);
+    var real = wrap.scrollHeight;
+    if (!real || real <= disponivel) { folha.style.height = ALTURA_A4 + 'px'; return 1; }
+
+    // Alargar o invólucro faz os gráficos se redesenharem maiores, e o conteúdo
+    // cresce de novo - uma passada só não fecha a conta. Então medimos e
+    // reaplicamos até caber, com teto de tentativas pra nunca entrar em laço.
+    var escala = disponivel / real;
+    wrap.style.transformOrigin = 'top left';
+    folha.style.height = ALTURA_A4 + 'px';
+    folha.style.overflow = 'hidden';
+
+    for (var passo = 0; passo < 4; passo++) {
+      wrap.style.width = (100 / escala) + '%';
+      wrap.style.transform = 'scale(' + escala + ')';
+      if (window.Chart && Chart.instances) {
+        Object.keys(Chart.instances).forEach(function (k) {
+          try { Chart.instances[k].resize(); } catch (e) {}
+        });
+      }
+      var alturaEscalada = wrap.scrollHeight * escala;
+      if (alturaEscalada <= disponivel + 1) break;
+      escala *= disponivel / alturaEscalada;
+    }
+    return escala;
+  };
+
+  function aplicar() { setTimeout(window.caberEmUmaPagina, 700); }
+  window.addEventListener('load', aplicar);
+  document.addEventListener('DOMContentLoaded', aplicar);
+})();
+</script>
+</body>
+</html>

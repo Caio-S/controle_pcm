@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Termo de Responsabilidade - Ferramentaria</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Calibri', Arial, sans-serif; background: #fff; color: #000; }
+        .sheet { max-width: 980px; margin: 24px auto; }
+        .termo-title { font-size: 22px; font-weight: 800; text-align: center; border: 2px solid #000; padding: 10px; }
+        .info-grid { display: grid; grid-template-columns: 140px 1fr 100px 1fr; border-left: 2px solid #000; border-right: 2px solid #000; }
+        .info-grid div { border-bottom: 2px solid #000; padding: 8px; min-height: 40px; }
+        .info-label { font-weight: 800; background: #f2f2f2; }
+        .table-termo { border: 2px solid #000; border-top: 0; }
+        .table-termo th, .table-termo td { border: 1px solid #000; padding: 6px 8px; }
+        .table-termo th { background: #f2f2f2; text-align: center; }
+        .signature { margin-top: 70px; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; }
+        .signature-line { border-top: 1px solid #000; text-align: center; padding-top: 8px; font-weight: 700; }
+        @media print {
+            @page { size: A4 portrait; margin: 12mm; }
+            .no-print { display: none !important; }
+            .sheet { margin: 0; max-width: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="sheet">
+        <div class="d-flex justify-content-end gap-2 mb-3 no-print">
+            <button class="btn btn-primary btn-sm fw-bold" onclick="window.print()">Imprimir</button>
+            <a href="/ferramentaria" class="btn btn-outline-secondary btn-sm fw-bold">Voltar</a>
+        </div>
+
+        <div class="termo-title">TERMO DE RESPONSABILIDADE DE FERRAMENTAS</div>
+        <div class="info-grid">
+            <div class="info-label">MECÂNICO:</div>
+            <div>{{ retirada.mecanico }}</div>
+            <div class="info-label">DATA:</div>
+            <div>{{ retirada.data_retirada[8:10] }}/{{ retirada.data_retirada[5:7] }}/{{ retirada.data_retirada[0:4] }}</div>
+            <div class="info-label">CAMINHÃO:</div>
+            <div>{{ retirada.frota if retirada.frota else '-' }}</div>
+            <div class="info-label">LOCAL:</div>
+            <div>{{ retirada.local if retirada.local else '-' }}</div>
+        </div>
+
+        <table class="table table-sm table-termo mb-0">
+            <thead>
+                <tr>
+                    <th style="width: 12%;">CÓD</th>
+                    <th>DESCRIÇÃO</th>
+                    <th style="width: 10%;">QTD</th>
+                    <th style="width: 16%;">VALOR UNT</th>
+                    <th style="width: 16%;">VALOR TOTAL</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in itens %}
+                <tr>
+                    <td class="text-center">{{ item.codigo }}</td>
+                    <td>{{ item.descricao }}</td>
+                    <td class="text-center">{{ item.quantidade_fmt }}</td>
+                    <td class="text-end">R$ {{ "%.2f"|format(item.valor_unitario or 0) }}</td>
+                    <td class="text-end">R$ {{ "%.2f"|format(item.valor_total or 0) }}</td>
+                </tr>
+                {% endfor %}
+                <tr>
+                    <td colspan="4" class="text-end fw-bold">TOTAL</td>
+                    <td class="text-end fw-bold">R$ {{ "%.2f"|format(total or 0) }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        {% if retirada.observacao %}
+        <div class="border border-2 border-top-0 border-dark p-2">
+            <strong>OBSERVAÇÃO:</strong> {{ retirada.observacao }}
+        </div>
+        {% endif %}
+
+        <p class="mt-4">
+            Declaro estar ciente da retirada das ferramentas descritas acima, responsabilizando-me pela guarda,
+            conservação e devolução quando solicitado.
+        </p>
+
+        <div class="signature">
+            <div class="signature-line">Assinatura do Mecânico</div>
+            <div class="signature-line">Ferramentaria / Responsável</div>
+        </div>
+    </div>
+</body>
+</html>

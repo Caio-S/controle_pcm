@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lavagem / Lubrificação - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+
+    <style>
+        /* Traz esta página, que ainda usava a barra de topo antiga, para o menu
+           lateral compartilhado sem reescrever o corpo inteiro: a barra vira
+           a "topbar" da página, só deslocada para depois do menu. */
+        body.pcm-app { margin-left: var(--pcm-sb-w); transition: margin-left var(--pcm-med) var(--pcm-ease); }
+        body.pcm-app > nav.navbar { border-radius: 0; }
+        @media (max-width: 991.98px) { body.pcm-app { margin-left: 0; } }
+        body { font-family: 'Calibri', Arial, sans-serif; background-color: #f4f6f9; transition: background-color 0.3s; }
+        /* Barras de aderencia (cards "Aderência da Semana"): comecam em 0% e enchem ate
+           o valor real quando a pagina carrega, em vez de aparecer ja no tamanho final. */
+        .progress-bar[data-aderencia-fill] { transition: width 1.1s cubic-bezier(.16,.84,.44,1); }
+        .calendario-wrapper { display: flex; flex-direction: column; width: 100%; }
+        .calendario-wrapper .col-dia { padding: 15px 10px; border-bottom: 2px dashed #dee2e6; width: 100%; min-height: 100px; transition: background-color 0.2s;}
+        .calendario-wrapper .col-dia:last-child { border-bottom: none; }
+        @media (min-width: 992px) {
+            .calendario-wrapper { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 10px;}
+            .calendario-wrapper .col-dia { flex: 1 1 0%; width: 14.28%; min-width: 180px; border-right: 1px dashed #dee2e6; border-bottom: none; padding: 10px; }
+            .calendario-wrapper .col-dia:last-child { border-right: none; }
+        }
+        .calendario-wrapper::-webkit-scrollbar { height: 8px; }
+        .calendario-wrapper::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+
+        .matriz-container { width: 100%; overflow-x: auto; padding-bottom: 10px; }
+        .matriz-container::-webkit-scrollbar { height: 8px; }
+        .matriz-container::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 4px; }
+        .matriz-scroll { min-width: 1000px; display: flex; flex-direction: column; }
+        .calendario-linha { display: flex; flex-direction: row; width: 100%; border-bottom: 1px dashed #dee2e6; }
+        .calendario-linha:last-child { border-bottom: none; }
+        .matriz-container .col-dia { flex: 1 1 0%; width: 14.28%; padding: 10px; border-right: 1px dashed #dee2e6; transition: background-color 0.2s;}
+        .matriz-container .col-dia:last-child { border-right: none; }
+
+        .macro-divisor { background-color: #212529; color: #fff; font-weight: bold; text-transform: uppercase; font-size: 1.1rem; }
+        .micro-divisor { background-color: #e9ecef; border-left: 6px solid #0d6efd; font-size: 1.05rem; color: #00509E !important; }
+
+        .col-dia.drag-over { background-color: rgba(13, 110, 253, 0.1); border-radius: 8px; border: 2px dashed #0d6efd;}
+        .card-tarefa { transition: transform 0.2s, background-color 0.3s; font-size: 0.85rem; cursor: grab; border-left: 4px solid rgba(0,0,0,0.2); }
+        .card-tarefa:active { cursor: grabbing; opacity: 0.7; transform: scale(0.95); }
+        .card-tarefa:hover { transform: scale(1.03); opacity: 0.95; box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+
+        [data-bs-theme="dark"] body { background-color: #212529; }
+        [data-bs-theme="dark"] .bg-white { background-color: #2b3035 !important; color: #f8f9fa !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .col-dia { border-color: #495057; }
+        [data-bs-theme="dark"] .text-muted { color: #adb5bd !important; }
+        [data-bs-theme="dark"] #divSincronizacao { background-color: #343a40 !important; border-color: #495057 !important;}
+        [data-bs-theme="dark"] .form-check-label { color: #f8f9fa !important; }
+        [data-bs-theme="dark"] .bg-light { background-color: #343a40 !important; color: #f8f9fa !important; border-color: #495057 !important; }
+        [data-bs-theme="dark"] .calendario-linha { border-bottom-color: #495057; }
+        [data-bs-theme="dark"] .macro-divisor { background-color: #1a1d20; color: #6ea8fe; border-color: #495057; }
+        [data-bs-theme="dark"] .micro-divisor { background-color: #343a40; border-left-color: #6ea8fe; color: #f8f9fa !important; border-bottom-color: #495057 !important; text-shadow: none; }
+    </style>
+</head>
+<body class="pcm-app">
+{% include '_pcm_shell.html' %}
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow">
+        <div class="container-fluid px-4">
+            <button class="pcm-btn-icon pcm-sb-toggle me-2" onclick="PCM.alternarSidebar()" title="Menu" style="color:#fff;border-color:rgba(255,255,255,.25)"><i class="bi bi-list"></i></button>
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-gear-fill me-2"></i>PCM | Lavagem / Lubrificação</span>
+            <div class="d-flex align-items-center gap-2">
+                <a href="/externos" class="btn btn-light btn-sm fw-bold shadow-sm" onclick="return validarPermissaoLink('externos')"><i class="bi bi-truck me-1"></i>Serviços Externos</a>
+                <a href="/admin" class="btn btn-outline-light btn-sm" onclick="return validarPermissaoLink('admin')"><i class="bi bi-arrow-left me-1"></i>Painel</a>
+                <button class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema" style="color:#fff;border-color:rgba(255,255,255,.25)"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+                <a href="/logout" class="btn btn-danger btn-sm fw-bold"><i class="bi bi-box-arrow-right me-1"></i>Sair</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4 px-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm">
+                <i class="bi bi-check-circle-fill me-2"></i> {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card shadow-sm border-0 mb-4 bg-white">
+            <div class="card-body p-3">
+                <form id="formAgendamento" action="/api/agendar_servico" method="POST" class="row align-items-end g-2">
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Equipamento</label>
+                        <input type="text" name="frota" class="form-control form-control-sm border-secondary" list="listaFrotas" placeholder="Frota..." autocomplete="off" required>
+                        <datalist id="listaFrotas">
+                            {% for f in frotas %}
+                                <option value="{{ f.id_frota }}">{{ f.descricao[:30] }}...</option>
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small mb-1">Tipo de Manutenção</label>
+                        <select name="tipo" class="form-select form-select-sm border-secondary" required>
+                            <option value="LAVAGEM">Lavagem</option>
+                            <option value="LUBRIFICACAO">Lubrificação</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Compartimento/Obs</label>
+                        <input type="text" name="observacao" class="form-control form-control-sm border-secondary" placeholder="Ex: Motor..." autocomplete="off">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Data</label>
+                        <input type="date" name="data" class="form-control form-control-sm border-secondary" required>
+                    </div>
+                    <div class="col-md-3 d-flex gap-2">
+                        <button id="btnAgendarManual" type="submit" class="btn btn-primary btn-sm w-50 fw-bold shadow-sm" title="Agendar esta frota"><i class="bi bi-plus-circle-fill me-1"></i>Agendar</button>
+                        <button id="btnAgendarLote" type="button" class="btn btn-warning btn-sm w-50 fw-bold shadow-sm text-dark" data-bs-toggle="modal" data-bs-target="#modalLote" title="Colar Lista do Excel"><i class="bi bi-list-ol me-1"></i>Lote</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3 bg-white p-3 rounded shadow-sm border flex-wrap gap-2">
+            <div class="d-flex align-items-center flex-grow-1 flex-wrap gap-2">
+                <div class="btn-group shadow-sm">
+                    <a href="?offset={{ offset - 1 }}" class="btn btn-outline-secondary btn-sm" title="Semana Anterior"><i class="bi bi-chevron-left"></i> Anterior</a>
+                    <h6 class="mb-0 text-primary fw-bold mx-3 text-center d-flex align-items-center">Semana: {{ data_inicio_db[-2:] }}/{{ data_inicio_db[5:7] }} a {{ data_fim_db[-2:] }}/{{ data_fim_db[5:7] }}</h6>
+                    <a href="?offset={{ offset + 1 }}" class="btn btn-outline-secondary btn-sm" title="Próxima Semana">Próxima <i class="bi bi-chevron-right"></i></a>
+                </div>
+                <select id="filtroEspecialidade" class="form-select form-select-sm border-primary fw-bold text-primary shadow-sm ms-md-2" style="display: none; width: auto; background-color: #e9ecef;" onchange="aplicarVisibilidadeGeral()">
+                    <option value="TODAS">Todas Especialidades</option>
+                    {% if especialidades_na_semana %}
+                        {% for esp in especialidades_na_semana %}
+                        <option value="{{ esp }}">{{ esp }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+                <select id="filtroSetor" class="form-select form-select-sm border-success fw-bold text-success shadow-sm ms-md-2" style="display: none; width: auto; background-color: #eefaf1;" onchange="aplicarVisibilidadeGeral()">
+                    <option value="TODOS">Todos Setores</option>
+                    {% if setores_na_semana %}
+                        {% for setor in setores_na_semana %}
+                        <option value="{{ setor }}">{{ setor }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+                <select id="modoVisualPreventiva" class="form-select form-select-sm border-success fw-bold text-success shadow-sm ms-md-2" style="display: none; width: auto; background-color: #eefaf1;" onchange="alternarModoPreventiva()">
+                    <option value="ESPECIALIDADE">Por Especialidade</option>
+                    <option value="SETOR">Por Setor</option>
+                </select>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center">
+                <div class="btn-group shadow-sm">
+                    <button type="button" class="btn btn-primary btn-sm btn-filtro fw-bold active" onclick="aplicarFiltro('TODOS', this)">TODOS</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltro('LAVAGEM', this)">LAVAGEM</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-filtro fw-bold" onclick="aplicarFiltro('LUBRIFICACAO', this)">LUBRIF.</button>
+                </div>
+                <button class="btn btn-danger btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalGerarPDF"><i class="bi bi-file-earmark-pdf-fill me-1"></i>Gerar PDF</button>
+                <button id="btnGerirSetores" class="btn btn-success btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalGerirSetores" style="display: none;" title="Cadastrar frotas em setores (agrupamentos)"><i class="bi bi-diagram-3-fill me-1"></i>Gerir Setores</button>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-white mb-5">
+            <div class="card-body p-0">
+
+                <div id="view-normal" class="calendario-wrapper">
+                    {% for dia in dias_semana %}
+                    <div class="col-dia" data-data-db="{{ dia.data_db }}" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, this)">
+                        <div class="text-center mb-3 border-bottom pb-2 pointer-events-none">
+                            <span class="d-block text-muted small fw-bold text-uppercase">{{ dia.nome_dia }}</span>
+                            <span class="fs-5 fw-bold {% if dia.data_db == hoje %}text-primary{% endif %}">{{ dia.data_br }}</span>
+                        </div>
+                        {% for item in programacao %}
+                            {% if item.data_planejada == dia.data_db %}
+                                {% set cor_bg = 'bg-secondary text-white border-secondary' %}
+                                {% set badge_bg = 'bg-white text-secondary' %}
+                                {% if item.status == 'REALIZADA' %} {% set cor_bg = 'bg-success text-white border-success' %} {% set badge_bg = 'bg-white text-success' %}
+                                {% elif item.status == 'BLOQUEADA' %} {% set cor_bg = 'bg-danger text-white border-danger' %} {% set badge_bg = 'bg-white text-danger' %}
+                                {% elif item.status == 'QUEBRADA' %} {% set cor_bg = 'bg-warning text-dark border-warning' %} {% set badge_bg = 'bg-white text-warning' %} {% endif %}
+
+                                <div class="card card-tarefa mb-2 shadow-sm {{ cor_bg }}"
+                                     draggable="true"
+                                     ondragstart="drag(event, '{{ item.ids }}')"
+                                     data-tipo="{{ item.tipo_servico }}"
+                                     data-frota="{{ item.id_frota }}"
+                                     id="card-{{ item.ids.split(',')[0] }}"
+                                     onclick="abrirModalPorTipo('{{ item.tipo_servico }}', '{{ item.dados_modal }}', '{{ item.ids }}', '{{ item.id_frota }}', '{{ item.status }}', '{{ item.local_execucao }}')">
+                                    <div class="card-body p-2 pointer-events-none">
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <span class="fw-bold fs-6"><i class="bi bi-grip-vertical me-1 opacity-50"></i>{{ item.id_frota }}</span>
+                                            <span class="badge {{ badge_bg }} shadow-sm status-badge" style="font-size: 0.65rem;">{{ item.status }}</span>
+                                        </div>
+                                        <div class="small fw-bold lh-sm mb-1" style="font-size: 0.80rem;">{{ item.tipo_servico }}</div>
+
+                                        {% if item.observacao_exibicao %}
+                                            <div class="small fw-bold text-dark mb-1" style="font-size: 0.75rem; background-color: rgba(255,255,255,0.6); padding: 2px 4px; border-radius: 3px;">
+                                                <i class="bi bi-gear-wide-connected me-1"></i>{{ item.observacao_exibicao }}
+                                            </div>
+                                        {% endif %}
+
+                                        {% if item.status == 'REALIZADA' %}
+                                            {% if 'ANALISE DE OLEO' in item.tipo_servico and item.resultado_analise_exibicao %}
+                                                {% set cor_analise = 'text-dark' %}
+                                                {% if 'NORMAL' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-success' %} {% endif %}
+                                                {% if 'ANOMALIA' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-warning text-dark' %} {% endif %}
+                                                {% if 'CRÍTICO' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-danger' %} {% endif %}
+                                                <div class="mt-2 border-top border-white border-opacity-25 pt-1">
+                                                    <span class="badge bg-light shadow-sm w-100 text-start {{ cor_analise }}" style="font-size: 0.65rem;">
+                                                        <i class="bi bi-eyedropper me-1"></i>Res: {{ item.resultado_analise_exibicao }}
+                                                    </span>
+                                                </div>
+                                            {% endif %}
+                                            <div class="mt-1 border-top border-white border-opacity-25 pt-1">
+                                                <span class="badge bg-light text-dark shadow-sm w-100 text-start" style="font-size: 0.65rem;">
+                                                    <i class="bi bi-geo-alt-fill text-success me-1"></i>Local: {{ item.local_execucao }}
+                                                </span>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div id="view-matriz" class="matriz-container" style="display: none;">
+                    <div id="matrizEspecialidade" class="matriz-scroll">
+                        <div class="calendario-linha bg-light border-bottom">
+                            {% for dia in dias_semana %}
+                            <div class="col-dia py-2 text-center pointer-events-none" style="min-height: auto; border-right: 1px solid #dee2e6;">
+                                <span class="d-block text-muted small fw-bold text-uppercase">{{ dia.nome_dia }}</span>
+                                <span class="fs-5 fw-bold {% if dia.data_db == hoje %}text-primary{% endif %}">{{ dia.data_br }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% if matriz_agrupada %}
+                            {% for macro, micros in matriz_agrupada.items() %}
+
+                            <div class="macro-divisor border-bottom p-2 px-3 fw-bold text-uppercase shadow-sm linha-macro" data-macro="{{ macro }}">
+                                <i class="bi bi-folder-fill me-2 opacity-75"></i>{{ macro }}
+                            </div>
+
+                            {% for micro in micros %}
+                            <div class="micro-divisor border-bottom p-2 px-4 fw-bold text-uppercase shadow-sm linha-micro" data-macro="{{ macro }}" data-micro="{{ micro }}">
+                                <i class="bi bi-arrow-return-right me-2 text-primary"></i>{{ micro }}
+                            </div>
+
+                            <div class="calendario-linha especialidade-linha" data-macro="{{ macro }}" data-micro="{{ micro }}">
+                                {% for dia in dias_semana %}
+                                <div class="col-dia" data-data-db="{{ dia.data_db }}" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, this)">
+                                    {% for item in programacao %}
+                                        {% if item.data_planejada == dia.data_db and item.especialidade == macro and item.especialidade_detalhe == micro %}
+                                            {% set cor_bg = 'bg-secondary text-white border-secondary' %}
+                                            {% set badge_bg = 'bg-white text-secondary' %}
+                                            {% if item.status == 'REALIZADA' %} {% set cor_bg = 'bg-success text-white border-success' %} {% set badge_bg = 'bg-white text-success' %}
+                                            {% elif item.status == 'BLOQUEADA' %} {% set cor_bg = 'bg-danger text-white border-danger' %} {% set badge_bg = 'bg-white text-danger' %}
+                                            {% elif item.status == 'QUEBRADA' %} {% set cor_bg = 'bg-warning text-dark border-warning' %} {% set badge_bg = 'bg-white text-warning' %} {% endif %}
+
+                                            <div class="card card-tarefa mb-2 shadow-sm {{ cor_bg }}"
+                                                 draggable="true"
+                                                 ondragstart="drag(event, '{{ item.ids }}')"
+                                                 data-tipo="{{ item.tipo_servico }}"
+                                                 data-frota="{{ item.id_frota }}"
+                                                 id="card-matriz-{{ item.ids.split(',')[0] }}"
+                                                 onclick="abrirModalPorTipo('{{ item.tipo_servico }}', '{{ item.dados_modal }}', '{{ item.ids }}', '{{ item.id_frota }}', '{{ item.status }}', '{{ item.local_execucao }}')">
+                                                <div class="card-body p-2 pointer-events-none">
+                                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                                        <span class="fw-bold fs-6"><i class="bi bi-grip-vertical me-1 opacity-50"></i>{{ item.id_frota }}</span>
+                                                        <span class="badge {{ badge_bg }} shadow-sm status-badge" style="font-size: 0.65rem;">{{ item.status }}</span>
+                                                    </div>
+                                                    <div class="small fw-bold lh-sm mb-1" style="font-size: 0.80rem;">{{ item.tipo_servico }}</div>
+
+                                                    {% if item.observacao_exibicao %}
+                                                        <div class="small fw-bold text-dark mb-1" style="font-size: 0.75rem; background-color: rgba(255,255,255,0.6); padding: 2px 4px; border-radius: 3px;">
+                                                            <i class="bi bi-gear-wide-connected me-1"></i>{{ item.observacao_exibicao }}
+                                                        </div>
+                                                    {% endif %}
+
+                                                    {% if item.status == 'REALIZADA' %}
+                                                        {% if 'ANALISE DE OLEO' in item.tipo_servico and item.resultado_analise_exibicao %}
+                                                            {% set cor_analise = 'text-dark' %}
+                                                            {% if 'NORMAL' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-success' %} {% endif %}
+                                                            {% if 'ANOMALIA' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-warning text-dark' %} {% endif %}
+                                                            {% if 'CRÍTICO' in item.resultado_analise_exibicao %} {% set cor_analise = 'text-danger' %} {% endif %}
+                                                            <div class="mt-2 border-top border-white border-opacity-25 pt-1">
+                                                                <span class="badge bg-light shadow-sm w-100 text-start {{ cor_analise }}" style="font-size: 0.65rem;">
+                                                                    <i class="bi bi-eyedropper me-1"></i>Res: {{ item.resultado_analise_exibicao }}
+                                                                </span>
+                                                            </div>
+                                                        {% endif %}
+                                                        <div class="mt-1 border-top border-white border-opacity-25 pt-1">
+                                                            <span class="badge bg-light text-dark shadow-sm w-100 text-start" style="font-size: 0.65rem;">
+                                                                <i class="bi bi-geo-alt-fill text-success me-1"></i>Local: {{ item.local_execucao }}
+                                                            </span>
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center p-5 text-muted fw-bold">
+                                <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>Nenhum serviço agendado para esta semana.
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div id="matrizSetor" class="matriz-scroll" style="display: none;">
+                        <div class="calendario-linha bg-light border-bottom">
+                            {% for dia in dias_semana %}
+                            <div class="col-dia py-2 text-center pointer-events-none" style="min-height: auto; border-right: 1px solid #dee2e6;">
+                                <span class="d-block text-muted small fw-bold text-uppercase">{{ dia.nome_dia }}</span>
+                                <span class="fs-5 fw-bold {% if dia.data_db == hoje %}text-primary{% endif %}">{{ dia.data_br }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% if matriz_setor %}
+                            {% for setor, micros in matriz_setor.items() %}
+                            <div class="macro-divisor border-bottom p-2 px-3 fw-bold text-uppercase shadow-sm linha-setor" data-setor="{{ setor }}">
+                                <i class="bi bi-diagram-3-fill me-2 opacity-75"></i>{{ setor }}
+                            </div>
+
+                            {% for micro in micros %}
+                            <div class="micro-divisor border-bottom p-2 px-4 fw-bold text-uppercase shadow-sm linha-subsetor" data-setor="{{ setor }}" data-micro="{{ micro }}">
+                                <i class="bi bi-arrow-return-right me-2 text-primary"></i>{{ micro }}
+                            </div>
+
+                            <div class="calendario-linha setor-linha" data-setor="{{ setor }}" data-micro="{{ micro }}">
+                                {% for dia in dias_semana %}
+                                <div class="col-dia" data-data-db="{{ dia.data_db }}" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, this)">
+                                    {% for item in programacao %}
+                                        {% if item.data_planejada == dia.data_db and item.setor == setor and item.especialidade_detalhe == micro %}
+                                            {% set cor_bg = 'bg-secondary text-white border-secondary' %}
+                                            {% set badge_bg = 'bg-white text-secondary' %}
+                                            {% if item.status == 'REALIZADA' %} {% set cor_bg = 'bg-success text-white border-success' %} {% set badge_bg = 'bg-white text-success' %}
+                                            {% elif item.status == 'BLOQUEADA' %} {% set cor_bg = 'bg-danger text-white border-danger' %} {% set badge_bg = 'bg-white text-danger' %}
+                                            {% elif item.status == 'QUEBRADA' %} {% set cor_bg = 'bg-warning text-dark border-warning' %} {% set badge_bg = 'bg-white text-warning' %} {% endif %}
+
+                                            <div class="card card-tarefa mb-2 shadow-sm {{ cor_bg }}"
+                                                 draggable="true"
+                                                 ondragstart="drag(event, '{{ item.ids }}')"
+                                                 data-tipo="{{ item.tipo_servico }}"
+                                                 data-frota="{{ item.id_frota }}"
+                                                 id="card-setor-{{ item.ids.split(',')[0] }}"
+                                                 onclick="abrirModalPorTipo('{{ item.tipo_servico }}', '{{ item.dados_modal }}', '{{ item.ids }}', '{{ item.id_frota }}', '{{ item.status }}', '{{ item.local_execucao }}')">
+                                                <div class="card-body p-2 pointer-events-none">
+                                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                                        <span class="fw-bold fs-6"><i class="bi bi-grip-vertical me-1 opacity-50"></i>{{ item.id_frota }}</span>
+                                                        <span class="badge {{ badge_bg }} shadow-sm status-badge" style="font-size: 0.65rem;">{{ item.status }}</span>
+                                                    </div>
+                                                    <div class="small fw-bold lh-sm mb-1" style="font-size: 0.80rem;">{{ item.tipo_servico }}</div>
+                                                    {% if item.observacao_exibicao %}
+                                                        <div class="small fw-bold text-dark mb-1" style="font-size: 0.75rem; background-color: rgba(255,255,255,0.6); padding: 2px 4px; border-radius: 3px;">
+                                                            <i class="bi bi-gear-wide-connected me-1"></i>{{ item.observacao_exibicao }}
+                                                        </div>
+                                                    {% endif %}
+                                                    {% if item.status == 'REALIZADA' %}
+                                                        <div class="mt-1 border-top border-white border-opacity-25 pt-1">
+                                                            <span class="badge bg-light text-dark shadow-sm w-100 text-start" style="font-size: 0.65rem;">
+                                                                <i class="bi bi-geo-alt-fill text-success me-1"></i>Local: {{ item.local_execucao }}
+                                                            </span>
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center p-5 text-muted fw-bold">
+                                <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>Nenhum serviço agendado para esta semana.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="card-footer bg-light border-top p-3 text-body">
+                <h6 class="fw-bold text-secondary mb-3"><i class="bi bi-bar-chart-fill me-2"></i>Aderência da Semana (Clique para expandir Dashboard)</h6>
+                <div class="row g-3">
+                    {% for tipo, dados in stats.items() %}
+                    <div class="col-md-4">
+                        <div class="border border-secondary-subtle rounded p-3 bg-white shadow-sm h-100 card-dash-hover" onclick="abrirMiniDash('{{ tipo }}')" style="cursor: pointer;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="small fw-bold text-uppercase text-dark">{{ tipo }}</span>
+                                {% set cor_barra = 'bg-danger' %}
+                                {% set cor_texto = 'text-danger' %}
+                                {% if dados.percentual >= 80 %} {% set cor_barra = 'bg-success' %} {% set cor_texto = 'text-success' %}
+                                {% elif dados.percentual >= 50 %} {% set cor_barra = 'bg-warning' %} {% set cor_texto = 'text-warning' %} {% endif %}
+                                <span class="fs-6 fw-bold {{ cor_texto }}">{{ dados.percentual }}%</span>
+                            </div>
+                            <div class="progress shadow-sm mb-3" style="height: 10px;">
+                                <div class="progress-bar {{ cor_barra }} progress-bar-striped progress-bar-animated" role="progressbar" data-aderencia-fill="{{ dados.percentual }}" style="width: 0%;"></div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span class="badge bg-secondary shadow-sm" style="font-size: 0.70rem;">{{ dados.total }} Prog.</span>
+                                <span class="badge bg-success shadow-sm" style="font-size: 0.70rem;">{{ dados.realizadas }} Feitas</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="col-12 text-center text-muted small py-2">Nenhum serviço agendado para esta semana.</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalLote" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-warning border-2 shadow-lg">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-magic me-2"></i>Agendamento em Lote (Distribuição Automática)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="/api/agendar_lote" method="POST">
+                    <div class="modal-body bg-light">
+                        <div class="alert alert-info border-info small mb-3 shadow-sm">
+                            <i class="bi bi-info-circle-fill me-1"></i> <strong>Como funciona?</strong> Cole a sua lista de frotas abaixo (copiada do Excel, Email ou Bloco de Notas). O sistema vai pegar nas frotas e <b>dividi-las de forma igual</b> pelos dias que você selecionar à direita!
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold text-secondary small">Lista de Frotas (Cole aqui)</label>
+                                <textarea name="frotas" class="form-control border-primary fw-bold text-primary" rows="8" placeholder="Ex:&#10;60817&#10;62200&#10;63001..." required></textarea>
+                            </div>
+                            <div class="col-md-7">
+                                <label class="form-label fw-bold text-secondary small">Tipo de Manutenção</label>
+                                <select name="tipo" class="form-select mb-3 border-secondary" required>
+                                    <option value="LAVAGEM">Lavagem</option>
+                                    <option value="LUBRIFICACAO">Lubrificação</option>
+                                </select>
+
+                                <label class="form-label fw-bold text-secondary small">Compartimento/Observação (Para todas as frotas)</label>
+                                <input type="text" name="observacao" class="form-control mb-3 border-secondary" placeholder="Ex: MOTOR">
+
+                                <label class="form-label fw-bold text-secondary small">Selecione os Dias para Distribuir</label>
+                                <div class="d-flex flex-wrap gap-2 p-3 border rounded bg-white shadow-sm border-secondary">
+                                    {% for dia in dias_semana %}
+                                    <div class="form-check form-check-inline m-0 p-0 pe-2">
+                                        <input class="btn-check" type="checkbox" name="datas" id="chkDia_{{ dia.data_db }}" value="{{ dia.data_db }}">
+                                        <label class="btn btn-outline-primary btn-sm fw-bold px-2 py-1" for="chkDia_{{ dia.data_db }}">{{ dia.nome_dia[:3] }} ({{ dia.data_br }})</label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-warning fw-bold text-dark shadow-sm" onclick="if(this.form.checkValidity()) { this.innerHTML='<i class=\'bi bi-hourglass-split me-2\'></i>A Distribuir...'; this.style.pointerEvents='none'; this.form.submit(); }"><i class="bi bi-shuffle me-2"></i>Distribuir Frotas</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalMiniDash" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="modal-title fw-bold m-0"><i class="bi bi-graph-up-arrow me-2"></i>DASHBOARD PARCIAL: <span id="dashTitulo" class="text-warning"></span></h5>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-warning btn-sm fw-bold border-2 text-dark shadow-sm" id="btnRelatorioOficial" onclick="abrirRelatorioOficial()" style="display: none;">
+                        <i class="bi bi-droplet-fill me-1"></i>Dash Óleo Oficial
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm fw-bold border-2 text-dark shadow-sm" id="btnRelatorioAnalise" onclick="abrirRelatorioAnalise()" style="display: none;">
+                        <i class="bi bi-eyedropper me-1"></i>Dash Análise Oficial
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm fw-bold border-2 text-white shadow-sm" id="btnRelatorioPreventiva" onclick="abrirRelatorioPreventiva()" style="display: none;">
+                        <i class="bi bi-gear-fill me-1"></i>Dash Preventiva Oficial
+                    </button>
+                    <button type="button" class="btn btn-warning btn-sm fw-bold border-2 text-dark shadow-sm" id="btnRelatorioPitStop" onclick="abrirRelatorioPitStop()" style="display: none;">
+                        <i class="bi bi-wrench-adjustable me-1"></i>Dash Pit Stop Oficial
+                    </button>
+                    <button type="button" class="btn btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+                <div class="modal-body bg-light" id="dashContentToPrint">
+
+                    <div id="dashFiltroArea" class="d-flex flex-column flex-md-row justify-content-between align-items-center bg-white p-3 border rounded shadow-sm mb-4">
+                        <div class="mb-2 mb-md-0">
+                            <h6 class="mb-0 fw-bold text-secondary"><i class="bi bi-calendar-range me-2"></i>Filtre as Datas se Desejar</h6>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="date" id="dashDataInicio" class="form-control form-control-sm border-secondary fw-bold text-secondary" style="width: 130px;" value="{{ data_inicio_db }}">
+                            <span class="small fw-bold text-muted">até</span>
+                            <input type="date" id="dashDataFim" class="form-control form-control-sm border-secondary fw-bold text-secondary" style="width: 130px;" value="{{ data_fim_db }}">
+                            <button type="button" id="btnAtualizarDash" class="btn btn-primary btn-sm fw-bold shadow-sm" onclick="filtrarDashModal()"><i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica</button>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-4 text-center d-flex justify-content-center">
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-primary border-4"><h6 class="small text-muted mb-0 fw-bold">TOTAL PROGRAMADO</h6><h3 class="mb-0 fw-bold text-primary" id="dashTotal">0</h3></div></div>
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-success border-4"><h6 class="small text-muted mb-0 fw-bold">REALIZADAS (V)</h6><h3 class="mb-0 fw-bold text-success" id="dashRealizadas">0</h3></div></div>
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-secondary border-4"><h6 class="small text-muted mb-0 fw-bold">PENDENTES (-)</h6><h3 class="mb-0 fw-bold text-secondary" id="dashPendentes">0</h3></div></div>
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-danger border-4"><h6 class="small text-muted mb-0 fw-bold">BLOQUEADAS (X)</h6><h3 class="mb-0 fw-bold text-danger" id="dashBloqueadas">0</h3></div></div>
+                        <div class="col"><div class="p-3 bg-white border rounded shadow-sm border-start border-warning border-4"><h6 class="small text-muted mb-0 fw-bold">QUEBRADAS (âš )</h6><h3 class="mb-0 fw-bold text-warning" id="dashQuebradas">0</h3></div></div>
+                    </div>
+
+                    <div class="bg-white p-3 border rounded shadow-sm mb-4">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="small fw-bold text-secondary">Aderência Geral do Período (Excluindo Quebradas)</span>
+                            <span class="small fw-bold" id="dashPercText">0%</span>
+                        </div>
+                        <div class="progress shadow-sm" style="height: 20px;">
+                            <div id="dashProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success fw-bold" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="bg-white p-3 border rounded shadow-sm h-100">
+                                <h6 class="small fw-bold text-center mb-3 text-secondary">Aderência</h6>
+                                <div style="height: 250px; position: relative; display: flex; align-items: center; justify-content: center;">
+                                    <canvas id="chartStatus" style="position: relative; z-index: 2;"></canvas>
+                                    <div id="chartCenterTotal" style="position: absolute; font-size: 2.5rem; font-weight: bold; color: #333; z-index: 1; margin-top: -15px;">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="bg-white p-3 border rounded shadow-sm h-100">
+                                <h6 class="small fw-bold text-center mb-3 text-secondary">Desempenho por Especialidade</h6>
+                                <div style="height: 250px; position: relative;"><canvas id="chartEspecialidades"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalGerarPDF" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-printer-fill me-2"></i>Exportar Lavagem / Lubrificação (PDF)</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="/relatorio_programacao" method="GET" target="_blank">
+                    <div class="modal-body">
+                        <input type="hidden" name="inicio" value="{{ dias_semana[0].data_db }}">
+                        <input type="hidden" name="fim" value="{{ dias_semana[6].data_db }}">
+                        <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">1. O que deseja imprimir?</h6>
+                        <div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" name="tipos" value="LAVAGEM" id="pdfLavagem" checked><label class="form-check-label fw-bold" for="pdfLavagem">Lavagem</label></div>
+                        <div class="form-check form-switch mb-4"><input class="form-check-input" type="checkbox" name="tipos" value="LUBRIFICACAO" id="pdfLubrificacao" checked><label class="form-check-label fw-bold" for="pdfLubrificacao">Lubrificação</label></div>
+
+                        <h6 class="fw-bold text-secondary border-bottom pb-2 mb-3">2. Escolha o Layout</h6>
+                        <div class="d-flex flex-column gap-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="layout" id="layoutAgrupada" value="agrupada" checked>
+                                <label class="form-check-label fw-bold" for="layoutAgrupada"><i class="bi bi-list-nested text-primary me-2"></i>Lista Agrupada (Com Local em Branco)</label>
+                            </div>
+                            <div class="form-check"><input class="form-check-input" type="radio" name="layout" id="layoutLista" value="lista"><label class="form-check-label fw-bold" for="layoutLista"><i class="bi bi-list-task text-primary me-2"></i>Em Lista (Vertical Simples)</label></div>
+                            <div class="form-check"><input class="form-check-input" type="radio" name="layout" id="layoutCalendario" value="calendario"><label class="form-check-label fw-bold" for="layoutCalendario"><i class="bi bi-calendar3 text-primary me-2"></i>Calendário Simples (1 Linha)</label></div>
+                            <div class="form-check"><input class="form-check-input" type="radio" name="layout" id="layoutMatriz" value="matriz"><label class="form-check-label fw-bold" for="layoutMatriz"><i class="bi bi-ui-checks-grid text-primary me-2"></i>Calendário Separado (Especialidades)</label></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger fw-bold"><i class="bi bi-file-pdf-fill me-1"></i>Gerar Documento</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalGestaoTarefa" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-sliders me-2"></i>Gestão de Serviço</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="modalIdProg">
+                    <div class="mb-3 text-center border-bottom pb-2">
+                        <h4 class="fw-bold text-primary mb-0" id="modalLabelFrota"></h4>
+                    </div>
+
+                    <div id="containerServicosModal"></div>
+
+                    <div class="mb-2 mt-3 p-2 border border-success rounded bg-success bg-opacity-10" id="divDataExecucao" style="display: none;">
+                        <label class="form-label fw-bold small text-success mb-1">Data de Conclusão</label>
+                        <input type="date" id="modalDataExecucao" class="form-control border-success mb-2">
+
+                        <div id="divLocalExecucao">
+                            <label class="form-label fw-bold small text-success mb-1">Local da Execução</label>
+                            <select id="modalLocalExecucao" class="form-select border-success fw-bold text-secondary">
+                                <option value="BASE">Base (Oficina)</option>
+                                <option value="CAMPO">Campo</option>
+                                <option value="GARANTIA">Garantia</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="divSincronizacao" class="mt-3 p-2 border border-warning rounded" style="display: none; background-color: #fff;">
+                        <div class="form-check form-switch" id="checkBloquearContainer" style="display: none;">
+                            <input class="form-check-input" type="checkbox" id="checkBloquear" checked>
+                            <label class="form-check-label small fw-bold text-danger lh-sm mt-1" for="checkBloquear">Inserir Frota na Lista de Bloqueios</label>
+                        </div>
+                        <div class="form-check form-switch" id="checkDesbloquearContainer" style="display: none;">
+                            <input class="form-check-input" type="checkbox" id="checkDesbloquear" checked>
+                            <label class="form-check-label small fw-bold text-success lh-sm mt-1" for="checkDesbloquear">Desbloquear Frota da Oficina</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="excluirServico()" title="Apagar do Calendário"><i class="bi bi-trash3-fill"></i></button>
+                    <div>
+                        <button type="button" class="btn btn-secondary btn-sm fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm fw-bold" id="btnSalvarModal" onclick="salvarAlteracoes()">Salvar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalGestaoPitStop" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-flag-fill me-2"></i>Gestão de Pit Stop</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="modalPitStopIdProg">
+                    <div class="mb-3 text-center border-bottom pb-2">
+                        <h4 class="fw-bold text-primary mb-0" id="modalPitStopLabelFrota"></h4>
+                    </div>
+
+                    <div id="containerServicosModalPitStop"></div>
+
+                    <div class="mb-2 mt-3 p-2 border border-success rounded bg-success bg-opacity-10" id="divDataExecucaoPitStop" style="display: none;">
+                        <label class="form-label fw-bold small text-success mb-1">Data de Conclusão</label>
+                        <input type="date" id="modalPitStopDataExecucao" class="form-control border-success mb-2">
+
+                        <div>
+                            <label class="form-label fw-bold small text-success mb-1">Local da Execução</label>
+                            <select id="modalPitStopLocalExecucao" class="form-select border-success fw-bold text-secondary">
+                                <option value="BASE">Base (Oficina)</option>
+                                <option value="CAMPO">Campo</option>
+                                <option value="GARANTIA">Garantia</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="divSincronizacaoPitStop" class="mt-3 p-2 border border-warning rounded" style="display: none; background-color: #fff;">
+                        <div class="form-check form-switch" id="checkBloquearContainerPitStop" style="display: none;">
+                            <input class="form-check-input" type="checkbox" id="checkBloquearPitStop" checked>
+                            <label class="form-check-label small fw-bold text-danger lh-sm mt-1" for="checkBloquearPitStop">Inserir Frota na Lista de Bloqueios</label>
+                        </div>
+                        <div class="form-check form-switch" id="checkDesbloquearContainerPitStop" style="display: none;">
+                            <input class="form-check-input" type="checkbox" id="checkDesbloquearPitStop" checked>
+                            <label class="form-check-label small fw-bold text-success lh-sm mt-1" for="checkDesbloquearPitStop">Desbloquear Frota da Oficina</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="excluirServicoPitStop()" title="Apagar do Calendário"><i class="bi bi-trash3-fill"></i></button>
+                    <div>
+                        <button type="button" class="btn btn-secondary btn-sm fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm fw-bold" id="btnSalvarModalPitStop" onclick="salvarAlteracoesPitStop()">Salvar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GERIR SETORES -->
+    <div class="modal fade" id="modalGerirSetores" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-success border-2 shadow-lg">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-diagram-3-fill me-2"></i>Gerir Setores â€” Agrupamento de Frotas</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body bg-light">
+                    <div class="alert alert-info border-info small mb-3 shadow-sm">
+                        <i class="bi bi-info-circle-fill me-1"></i>
+                        <strong>Como funciona?</strong> Escolha ou crie um <b>Setor/Agrupamento</b>, depois cole ou digite as frotas que pertencem a ele. Pode colocar várias frotas de uma vez (separadas por vírgula, espaço ou linha). Se a frota já existir no sistema, apenas o setor dela será atualizado.
+                    </div>
+
+                    <div class="row g-3">
+                        <!-- Coluna Esquerda: Setor + Frotas -->
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold text-secondary small">Setor / Agrupamento</label>
+                                <input type="text" id="inputSetor" class="form-control border-success fw-bold text-success text-uppercase"
+                                    list="listaSetoresExistentes"
+                                    placeholder="Ex: PLANTIO, COLHEITA, PREPARO..."
+                                    autocomplete="off"
+                                    oninput="this.value = this.value.toUpperCase(); sincronizarSetorDigitado()"
+                                    onchange="aplicarSetorSeExistir()">
+                                <datalist id="listaSetoresExistentes">
+                                    {% for setor in setores_cadastrados %}
+                                    <option value="{{ setor.nome }}">{{ setor.nome }}</option>
+                                    {% endfor %}
+                                </datalist>
+                                <div class="form-text">Digite um nome novo ou selecione um existente.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold text-secondary small">Frotas (Cole ou digite)</label>
+                                <textarea id="inputFrotas" class="form-control border-primary fw-bold text-primary font-monospace" rows="9"
+                                    placeholder="Ex:&#10;60817&#10;62200, 63001&#10;66050 66158"
+                                    oninput="previewFrotas()"></textarea>
+                                <div class="form-text">Separe por vÃ­rgula, espaÃ§o ou linha â€” como preferir.</div>
+                            </div>
+                        </div>
+
+                        <!-- Coluna Direita: Setores existentes + Preview -->
+                        <div class="col-md-6 d-flex flex-column">
+                            <label class="form-label fw-bold text-secondary small">Setores já cadastrados</label>
+                            <div id="listaSetoresCadastrados" class="border rounded bg-white shadow-sm mb-3 p-2" style="min-height: 130px; max-height: 190px; overflow-y: auto;">
+                                {% if setores_cadastrados %}
+                                    {% for setor in setores_cadastrados %}
+                                    <button type="button"
+                                            class="btn btn-outline-success btn-sm fw-bold text-start w-100 mb-2 setor-existente-btn"
+                                            data-setor="{{ setor.nome }}"
+                                            onclick='carregarSetorExistente({{ setor.nome|tojson }})'>
+                                        <span>{{ setor.nome }}</span>
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle float-end">{{ setor.frotas|length }} frota(s)</span>
+                                    </button>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted small d-block text-center mt-4">Nenhum setor cadastrado ainda.</span>
+                                {% endif %}
+                            </div>
+                            <label class="form-label fw-bold text-secondary small">Preview das Frotas</label>
+                            <div id="previewFrotasDiv" class="flex-grow-1 border rounded bg-white p-2 shadow-sm d-flex flex-wrap align-content-start gap-1" style="min-height: 200px; max-height: 340px; overflow-y: auto;">
+                                <span class="text-muted small w-100 text-center mt-4">Nenhuma frota digitada ainda.</span>
+                            </div>
+                            <div class="mt-2">
+                                <span class="badge bg-primary shadow-sm" id="contadorFrotas">0 frotas</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Resultado após salvar -->
+                    <div id="resultadoSetor" class="mt-3" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-danger fw-bold me-auto" id="btnExcluirSetor" onclick="excluirSetorFrotas()">
+                        <i class="bi bi-trash3-fill me-1"></i>Excluir Setor
+                    </button>
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-success fw-bold shadow-sm" id="btnSalvarSetor" onclick="salvarSetorFrotas()">
+                        <i class="bi bi-save-fill me-1"></i>Salvar Setor
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const USUARIO_ADMIN = {{ 'true' if usuario_admin else 'false' }};
+        const PODE_LAVAGEM = {{ 'true' if (usuario_admin or perm_lavagem) else 'false' }};
+        const PODE_EXTERNOS = {{ 'true' if (usuario_admin or perm_externos) else 'false' }};
+
+        function avisarSemPermissao(msg) {
+            alert(msg || 'Você não tem permissão para esta ação.');
+            return false;
+        }
+
+        function validarPermissaoLink(destino) {
+            if (USUARIO_ADMIN) return true;
+            if (destino === 'externos' && !PODE_EXTERNOS) return avisarSemPermissao('Seu perfil não tem permissão para acessar Serviços Externos.');
+            return true;
+        }
+
+        let filtroAtivoBotoes = 'TODOS';
+        let setoresCadastrados = {{ setores_cadastrados | tojson }};
+        const htmlElement = document.documentElement;
+        const STORAGE_FILTRO_TIPO = 'lavagem_filtro_tipo';
+        const STORAGE_FILTRO_ESP = 'lavagem_filtro_esp';
+        const STORAGE_FILTRO_SETOR = 'lavagem_filtro_setor';
+        const STORAGE_MODO_PREVENTIVA = 'lavagem_modo_visual';
+        // Modo escuro: PCM.alternarTema() compartilhado (chave 'pcm-tema'),
+        // aplicado sozinho por pcm-ui.js ao carregar - nada a fazer aqui.
+        document.addEventListener('DOMContentLoaded', function () {
+            if (!PODE_LAVAGEM && !USUARIO_ADMIN) {
+                const formAgendamento = document.getElementById('formAgendamento');
+                if (formAgendamento) formAgendamento.addEventListener('submit', function (e) { e.preventDefault(); avisarSemPermissao('Seu perfil não tem permissão para alterar Lavagem / Lubrificação.'); });
+                const formLote = document.querySelector('form[action="/api/agendar_lote"]');
+                if (formLote) formLote.addEventListener('submit', function (e) { e.preventDefault(); avisarSemPermissao('Seu perfil não tem permissão para alterar Lavagem / Lubrificação.'); });
+                const btnManual = document.getElementById('btnAgendarManual');
+                if (btnManual) btnManual.addEventListener('click', function (e) { e.preventDefault(); avisarSemPermissao('Seu perfil não tem permissão para alterar Lavagem / Lubrificação.'); });
+                const btnLote = document.getElementById('btnAgendarLote');
+                if (btnLote) btnLote.addEventListener('click', function (e) { e.preventDefault(); avisarSemPermissao('Seu perfil não tem permissão para alterar Lavagem / Lubrificação.'); });
+            }
+        });
+
+        function drag(ev, idsStr) {
+            if (!PODE_LAVAGEM && !USUARIO_ADMIN) return avisarSemPermissao('Seu perfil não tem permissão para alterar Lavagem / Lubrificação.');
+            ev.dataTransfer.setData("ids", idsStr); setTimeout(() => { ev.target.style.opacity = "0.5"; }, 10);
+        }
+        function allowDrop(ev) { ev.preventDefault(); let coluna = ev.target.closest('.col-dia'); if(coluna) coluna.classList.add('drag-over'); }
+        function dragLeave(ev) { let coluna = ev.target.closest('.col-dia'); if(coluna) coluna.classList.remove('drag-over'); }
+        function drop(ev, colunaElement) {
+            if (!PODE_LAVAGEM && !USUARIO_ADMIN) return avisarSemPermissao('Seu perfil não tem permissão para alterar Lavagem / Lubrificação.');
+            ev.preventDefault(); colunaElement.classList.remove('drag-over');
+            let idsStr = ev.dataTransfer.getData("ids"); let colunaDestino = ev.target.closest('.col-dia');
+            if (!colunaDestino) return;
+            let novaData = colunaDestino.getAttribute("data-data-db");
+            let dateParts = novaData.split('-'); let fDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+            if (confirm(`Tem a certeza que deseja alterar o dia desta programação para ${fDate}?`)) {
+                fetch('/api/mover_servico/' + idsStr, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nova_data: novaData }) })
+                .then(response => response.json()).then(data => { if(data.status === 'sucesso') window.location.reload(); });
+            } else { window.location.reload(); }
+        }
+
+        document.getElementById('formAgendamento').addEventListener('submit', function(e) {
+            let frotaInput = document.querySelector('input[name="frota"]').value.trim().toUpperCase();
+            let dataInput = document.querySelector('input[name="data"]');
+            let existingCard = document.querySelector(`.card-tarefa[data-frota="${frotaInput}"]`);
+            let existingDate = existingCard ? existingCard.closest('.col-dia').getAttribute('data-data-db') : null;
+            if (existingDate && dataInput.value !== existingDate) {
+                e.preventDefault();
+                let dateParts = existingDate.split('-'); let fDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+                if (confirm(`A frota ${frotaInput} já tem serviço agendado para ${fDate}.\nDeseja AGRUPAR este novo serviço no mesmo dia?`)) { dataInput.value = existingDate; }
+                let btn = this.querySelector('button[type="submit"]'); btn.disabled = true; btn.innerHTML = 'A Agendar...'; this.submit();
+            } else { let btn = this.querySelector('button[type="submit"]'); btn.disabled = true; btn.innerHTML = 'A Agendar...'; }
+        });
+
+        document.addEventListener("DOMContentLoaded", function() {
+            let urlParams = new URLSearchParams(window.location.search);
+            let espSalvo = localStorage.getItem(STORAGE_FILTRO_ESP) || urlParams.get('esp');
+            if (espSalvo) { let selectEsp = document.getElementById('filtroEspecialidade'); if(selectEsp) selectEsp.value = espSalvo; }
+            let setorSalvo = localStorage.getItem(STORAGE_FILTRO_SETOR) || urlParams.get('setor');
+            if (setorSalvo) { let selectSetor = document.getElementById('filtroSetor'); if(selectSetor) selectSetor.value = setorSalvo; }
+            let modoSalvo = localStorage.getItem(STORAGE_MODO_PREVENTIVA);
+            if (modoSalvo) {
+                let selectModo = document.getElementById('modoVisualPreventiva');
+                if (selectModo) selectModo.value = modoSalvo;
+            }
+            let filtroSalvo = localStorage.getItem(STORAGE_FILTRO_TIPO) || urlParams.get('filtro');
+            if (filtroSalvo) { let botaoParaClicar = Array.from(document.querySelectorAll('.btn-filtro')).find(b => b.getAttribute('onclick').includes(filtroSalvo)); if (botaoParaClicar) botaoParaClicar.click(); }
+        });
+
+        function aplicarFiltro(tipo, btnClicado) {
+            filtroAtivoBotoes = tipo;
+            localStorage.setItem(STORAGE_FILTRO_TIPO, tipo);
+            document.querySelectorAll('.btn-filtro').forEach(b => { b.classList.remove('active', 'btn-primary'); b.classList.add('btn-outline-primary'); });
+            btnClicado.classList.remove('btn-outline-primary'); btnClicado.classList.add('btn-primary', 'active');
+            let url = new URL(window.location); url.searchParams.set('filtro', tipo); window.history.replaceState({}, '', url);
+            let viewNormal = document.getElementById('view-normal'); let viewMatriz = document.getElementById('view-matriz'); let selectEsp = document.getElementById('filtroEspecialidade');
+            let selectSetor = document.getElementById('filtroSetor');
+            let modoPreventiva = document.getElementById('modoVisualPreventiva');
+            let btnSetores = document.getElementById('btnGerirSetores');
+            if (tipo === 'LAVAGEM' || tipo === 'LUBRIFICACAO') {
+                if(viewNormal) viewNormal.style.setProperty('display', 'none', 'important');
+                if(viewMatriz) viewMatriz.style.setProperty('display', 'block', 'important');
+                if(modoPreventiva) modoPreventiva.style.display = 'inline-block';
+                alternarModoPreventiva();
+                if(btnSetores) btnSetores.style.display = 'inline-block';
+            } else {
+                if(viewNormal) viewNormal.style.setProperty('display', 'flex', 'important');
+                if(viewMatriz) viewMatriz.style.setProperty('display', 'none', 'important');
+                if(selectEsp) { selectEsp.style.display = 'none'; selectEsp.value = 'TODAS'; }
+                if(selectSetor) { selectSetor.style.display = 'none'; selectSetor.value = 'TODOS'; }
+                if(modoPreventiva) { modoPreventiva.style.display = 'none'; modoPreventiva.value = 'ESPECIALIDADE'; }
+                if(btnSetores) btnSetores.style.display = 'none';
+                localStorage.setItem(STORAGE_MODO_PREVENTIVA, 'ESPECIALIDADE');
+            }
+            aplicarVisibilidadeGeral();
+        }
+
+        function alternarModoPreventiva() {
+            let modo = document.getElementById('modoVisualPreventiva');
+            let selectEsp = document.getElementById('filtroEspecialidade');
+            let selectSetor = document.getElementById('filtroSetor');
+            let matrizEspecialidade = document.getElementById('matrizEspecialidade');
+            let matrizSetor = document.getElementById('matrizSetor');
+            if (!modo || modo.style.display === 'none') return;
+
+            let porSetor = modo.value === 'SETOR';
+            localStorage.setItem(STORAGE_MODO_PREVENTIVA, modo.value);
+            if (matrizEspecialidade) matrizEspecialidade.style.display = porSetor ? 'none' : 'flex';
+            if (matrizSetor) matrizSetor.style.display = porSetor ? 'flex' : 'none';
+            if (selectEsp) {
+                selectEsp.style.display = porSetor ? 'none' : 'inline-block';
+                if (porSetor) {
+                    selectEsp.value = 'TODAS';
+                    localStorage.setItem(STORAGE_FILTRO_ESP, 'TODAS');
+                }
+            }
+            if (selectSetor) {
+                selectSetor.style.display = porSetor ? 'inline-block' : 'none';
+                if (!porSetor) {
+                    selectSetor.value = 'TODOS';
+                    localStorage.setItem(STORAGE_FILTRO_SETOR, 'TODOS');
+                }
+            }
+            aplicarVisibilidadeGeral();
+        }
+
+        function aplicarVisibilidadeGeral() {
+            try {
+                let inputEl = document.getElementById("buscaPublica");
+                let input = inputEl ? inputEl.value.toUpperCase() : "";
+                let selectEsp = document.getElementById('filtroEspecialidade');
+                let selectSetor = document.getElementById('filtroSetor');
+                let filtroEsp = (selectEsp && selectEsp.style.display !== 'none') ? selectEsp.value : 'TODAS';
+                let filtroSetor = (selectSetor && selectSetor.style.display !== 'none') ? selectSetor.value : 'TODOS';
+                localStorage.setItem(STORAGE_FILTRO_ESP, filtroEsp);
+                localStorage.setItem(STORAGE_FILTRO_SETOR, filtroSetor);
+                let url = new URL(window.location);
+                if(filtroEsp !== 'TODAS') { url.searchParams.set('esp', filtroEsp); } else { url.searchParams.delete('esp'); }
+                if(filtroSetor !== 'TODOS') { url.searchParams.set('setor', filtroSetor); } else { url.searchParams.delete('setor'); }
+                window.history.replaceState({}, '', url);
+
+                let cards = document.getElementsByClassName("card-tarefa");
+                for (let i = 0; i < cards.length; i++) {
+                    let textoCard = cards[i].innerText.toUpperCase(); let tipoCard = cards[i].getAttribute('data-tipo') || '';
+                    let passaNoTexto = (input === "") || textoCard.includes(input);
+                    let passaNoBotao = (filtroAtivoBotoes === 'TODOS' || tipoCard.toUpperCase().includes(filtroAtivoBotoes.toUpperCase()));
+                    if (passaNoTexto && passaNoBotao) { cards[i].style.setProperty('display', 'block', 'important'); }
+                    else { cards[i].style.setProperty('display', 'none', 'important'); }
+                }
+
+                document.querySelectorAll('#matrizEspecialidade .linha-macro').forEach(macroDiv => {
+                    let macro = macroDiv.getAttribute('data-macro');
+                    let macroHasVisibleCards = false;
+
+                    document.querySelectorAll(`#matrizEspecialidade .linha-micro[data-macro="${macro}"]`).forEach(microDiv => {
+                        let micro = microDiv.getAttribute('data-micro');
+                        let calLinha = document.querySelector(`#matrizEspecialidade .calendario-linha[data-macro="${macro}"][data-micro="${micro}"]`);
+
+                        let cardsLinha = Array.from(calLinha.querySelectorAll('.card-tarefa'));
+                        let passaEsp = (filtroEsp === 'TODAS' || filtroEsp === macro);
+
+                        let microHasVisibleCards = false;
+                        if(cardsLinha.length > 0) {
+                            let temVisivel = cardsLinha.some(c => c.style.display === 'block' || c.style.display === '');
+                            if (temVisivel && passaEsp) {
+                                microHasVisibleCards = true;
+                                macroHasVisibleCards = true;
+                            }
+                        }
+
+                        if(microHasVisibleCards) {
+                            microDiv.style.setProperty('display', 'block', 'important');
+                            calLinha.style.setProperty('display', 'flex', 'important');
+                        } else {
+                            microDiv.style.setProperty('display', 'none', 'important');
+                            calLinha.style.setProperty('display', 'none', 'important');
+                        }
+                    });
+
+                    if(macroHasVisibleCards) { macroDiv.style.setProperty('display', 'block', 'important'); }
+                    else { macroDiv.style.setProperty('display', 'none', 'important'); }
+                });
+
+                document.querySelectorAll('#matrizSetor .linha-setor').forEach(setorDiv => {
+                    let setor = setorDiv.getAttribute('data-setor');
+                    let setorHasVisibleCards = false;
+                    let passaSetor = (filtroSetor === 'TODOS' || filtroSetor === setor);
+
+                    document.querySelectorAll(`#matrizSetor .linha-subsetor[data-setor="${setor}"]`).forEach(subDiv => {
+                        let micro = subDiv.getAttribute('data-micro');
+                        let calLinha = document.querySelector(`#matrizSetor .setor-linha[data-setor="${setor}"][data-micro="${micro}"]`);
+                        let cardsLinha = Array.from(calLinha.querySelectorAll('.card-tarefa'));
+                        let subsetorHasVisibleCards = false;
+
+                        if(cardsLinha.length > 0) {
+                            let temVisivel = cardsLinha.some(c => c.style.display === 'block' || c.style.display === '');
+                            if (temVisivel && passaSetor) {
+                                subsetorHasVisibleCards = true;
+                                setorHasVisibleCards = true;
+                            }
+                        }
+
+                        if(subsetorHasVisibleCards) {
+                            subDiv.style.setProperty('display', 'block', 'important');
+                            calLinha.style.setProperty('display', 'flex', 'important');
+                        } else {
+                            subDiv.style.setProperty('display', 'none', 'important');
+                            calLinha.style.setProperty('display', 'none', 'important');
+                        }
+                    });
+
+                    if(setorHasVisibleCards) { setorDiv.style.setProperty('display', 'block', 'important'); }
+                    else { setorDiv.style.setProperty('display', 'none', 'important'); }
+                });
+            } catch (e) {}
+        }
+
+        let modalUI, modalPitStopUI;
+        try {
+            modalUI = new bootstrap.Modal(document.getElementById('modalGestaoTarefa'));
+            modalPitStopUI = new bootstrap.Modal(document.getElementById('modalGestaoPitStop'));
+        } catch(e) {
+            document.body.insertAdjacentHTML('afterbegin', '<div class="alert alert-danger m-2 fw-bold text-center" role="alert"><i class="bi bi-exclamation-triangle-fill me-2"></i>Erro ao carregar interface interativa. Verifique a ligação à internet e recarregue a página (Ctrl+F5).</div>');
+        }
+
+        function abrirModalPorTipo(tipoServico, dadosModal, idsStr, frota, statusAtual, localExec) {
+            if (!modalUI) return alert('Interface não carregada. Recarregue a página (Ctrl+F5).');
+            if (!PODE_LAVAGEM && !USUARIO_ADMIN) return avisarSemPermissao('Seu perfil não tem permissão para alterar Lavagem / Lubrificação.');
+            abrirModalEdicao(dadosModal, idsStr, frota, statusAtual, localExec);
+        }
+
+        function abrirModalEdicao(dadosModal, idsStr, frota, statusAtual, localExec) {
+            document.getElementById('modalIdProg').value = idsStr;
+            document.getElementById('modalLabelFrota').innerText = frota;
+            let container = document.getElementById('containerServicosModal');
+            let html = '';
+
+            let servicos = dadosModal.split('||');
+            servicos.forEach(s => {
+                let parts = s.split('::');
+                let id = parts[0];
+                let tipo = parts[1];
+                let resAnalise = parts[2] ? parts[2] : '';
+                let obs = parts[3] ? parts[3] : '';
+
+                // O SEGREDO DO STATUS INDIVIDUAL ESTÁ AQUI
+                let sStatus = parts[4] ? parts[4] : statusAtual;
+
+                html += `<div class="mb-3 p-2 border rounded bg-light shadow-sm"><label class="form-label fw-bold small text-primary mb-1"><i class="bi bi-wrench me-1"></i>${tipo}</label><input type="text" class="form-control form-control-sm border-primary mb-2 fw-bold text-dark input-observacao" data-id="${id}" value="${obs}" placeholder="Compartimento (Ex: Motor, TransmissÃ£o...)"><select class="form-select form-select-sm border-secondary fw-bold select-status-multiplo mb-2" data-id="${id}" data-tipo="${tipo}" onchange="verificarStatus()"><option value="PENDENTE" ${sStatus === 'PENDENTE' ? 'selected' : ''} class="text-secondary">âšª PENDENTE</option><option value="REALIZADA" ${sStatus === 'REALIZADA' ? 'selected' : ''} class="text-success">ðŸŸ¢ REALIZADA</option><option value="BLOQUEADA" ${sStatus === 'BLOQUEADA' ? 'selected' : ''} class="text-danger">ðŸ”´ BLOQUEADA</option><option value="QUEBRADA" ${sStatus === 'QUEBRADA' ? 'selected' : ''} class="text-warning">ðŸŸ¡ QUEBRADA</option></select>`;
+                if(tipo.includes('ANALISE DE OLEO')) {
+                    html += `<label class="form-label fw-bold small text-info mt-1 mb-1"><i class="bi bi-eyedropper me-1"></i>Resultado da Análise</label><select class="form-select form-select-sm border-info fw-bold text-dark select-resultado-analise" data-id="${id}" onchange="verificarStatus()"><option value="">-- Selecione o Resultado --</option><option value="NORMAL" ${resAnalise === 'NORMAL' ? 'selected' : ''} class="text-success">NORMAL (Bom)</option><option value="ANOMALIA" ${resAnalise === 'ANOMALIA' ? 'selected' : ''} class="text-warning text-dark">ANOMALIA (Atenção)</option><option value="CRÍTICO" ${resAnalise === 'CRÍTICO' ? 'selected' : ''} class="text-danger">CRÍTICO (Bloqueia Frota)</option></select>`;
+                }
+                html += `</div>`;
+            });
+            container.innerHTML = html;
+            document.getElementById('modalDataExecucao').value = new Date().toISOString().split('T')[0];
+            let selectLoc = document.getElementById('modalLocalExecucao');
+            if(selectLoc) { selectLoc.value = localExec && localExec !== 'None' ? localExec : 'BASE'; }
+            verificarStatus(); modalUI.show();
+        }
+
+        function abrirModalEdicaoPitStop(dadosModal, idsStr, frota, statusAtual, localExec) {
+            document.getElementById('modalPitStopIdProg').value = idsStr;
+            document.getElementById('modalPitStopLabelFrota').innerText = frota;
+            let container = document.getElementById('containerServicosModalPitStop');
+            let html = '';
+
+            let servicos = dadosModal.split('||');
+            servicos.forEach(s => {
+                let parts = s.split('::');
+                let id = parts[0];
+                let tipo = parts[1];
+                let resAnalise = parts[2] ? parts[2] : '';
+                let obs = parts[3] ? parts[3] : '';
+                let sStatus = parts[4] ? parts[4] : statusAtual;
+
+                html += `<div class="mb-3 p-2 border rounded bg-light shadow-sm"><label class="form-label fw-bold small text-primary mb-1"><i class="bi bi-wrench me-1"></i>${tipo}</label><input type="text" class="form-control form-control-sm border-primary mb-2 fw-bold text-dark input-observacao-pitstop" data-id="${id}" value="${obs}" placeholder="Compartimento (Ex: Motor, Transmissão...)"><select class="form-select form-select-sm border-secondary fw-bold select-status-multiplo-pitstop mb-2" data-id="${id}" data-tipo="${tipo}" onchange="verificarStatusPitStop()"><option value="PENDENTE" ${sStatus === 'PENDENTE' ? 'selected' : ''} class="text-secondary">⚪ PENDENTE</option><option value="REALIZADA" ${sStatus === 'REALIZADA' ? 'selected' : ''} class="text-success">🟢 REALIZADA</option><option value="BLOQUEADA" ${sStatus === 'BLOQUEADA' ? 'selected' : ''} class="text-danger">🔴 BLOQUEADA</option><option value="QUEBRADA" ${sStatus === 'QUEBRADA' ? 'selected' : ''} class="text-warning">🟡 QUEBRADA</option></select>`;
+                if(tipo.includes('ANALISE DE OLEO')) {
+                    html += `<label class="form-label fw-bold small text-info mt-1 mb-1"><i class="bi bi-eyedropper me-1"></i>Resultado da Análise</label><select class="form-select form-select-sm border-info fw-bold text-dark select-resultado-analise-pitstop" data-id="${id}" onchange="verificarStatusPitStop()"><option value="">-- Selecione o Resultado --</option><option value="NORMAL" ${resAnalise === 'NORMAL' ? 'selected' : ''} class="text-success">NORMAL (Bom)</option><option value="ANOMALIA" ${resAnalise === 'ANOMALIA' ? 'selected' : ''} class="text-warning text-dark">ANOMALIA (Atenção)</option><option value="CRÍTICO" ${resAnalise === 'CRÍTICO' ? 'selected' : ''} class="text-danger">CRÍTICO (Bloqueia Frota)</option></select>`;
+                }
+                html += `</div>`;
+            });
+            container.innerHTML = html;
+            document.getElementById('modalPitStopDataExecucao').value = new Date().toISOString().split('T')[0];
+            let selectLoc = document.getElementById('modalPitStopLocalExecucao');
+            if(selectLoc) { selectLoc.value = localExec && localExec !== 'None' ? localExec : 'BASE'; }
+            verificarStatusPitStop(); modalPitStopUI.show();
+        }
+
+        function verificarStatus() {
+            let selects = document.querySelectorAll('.select-status-multiplo');
+            let resultados = document.querySelectorAll('.select-resultado-analise');
+            let temRealizada = false; let temBloqueada = false; let temQuebrada = false; let temCritico = false;
+
+            selects.forEach(s => {
+                if(s.value === 'REALIZADA') temRealizada = true;
+                if(s.value === 'BLOQUEADA') temBloqueada = true;
+                if(s.value === 'QUEBRADA') temQuebrada = true;
+            });
+
+            resultados.forEach(r => { if(r.value === 'CRÍTICO') temCritico = true; });
+
+            let divData = document.getElementById('divDataExecucao'); let divSync = document.getElementById('divSincronizacao'); let chkBlock = document.getElementById('checkBloquearContainer'); let chkUnblock = document.getElementById('checkDesbloquearContainer'); let checkBloquearInput = document.getElementById('checkBloquear');
+
+            divData.style.display = 'none'; divSync.style.display = 'none'; chkBlock.style.display = 'none'; chkUnblock.style.display = 'none'; checkBloquearInput.disabled = false;
+
+            if (temRealizada || temBloqueada || temQuebrada || temCritico) divSync.style.display = 'block';
+            if (temRealizada) { divData.style.display = 'block'; chkUnblock.style.display = 'block'; }
+            if (temBloqueada || temQuebrada || temCritico) {
+                chkBlock.style.display = 'block';
+                if(temCritico) { checkBloquearInput.checked = true; checkBloquearInput.disabled = true; }
+            }
+        }
+
+        function salvarAlteracoes() {
+            let frota = (document.getElementById('modalLabelFrota') || {}).innerText || '';
+            let dataExec = (document.getElementById('modalDataExecucao') || {}).value || '';
+            let localExec = document.getElementById('modalLocalExecucao') ? document.getElementById('modalLocalExecucao').value : 'BASE';
+            let checkBlock = document.getElementById('checkBloquear') ? document.getElementById('checkBloquear').checked : false;
+            let checkUnblock = document.getElementById('checkDesbloquear') ? document.getElementById('checkDesbloquear').checked : false;
+
+            let atualizacoes = [];
+            document.querySelectorAll('.select-status-multiplo').forEach(s => {
+                let id = s.getAttribute('data-id'); let tipo = s.getAttribute('data-tipo'); let status = s.value; let resultado = ''; let observacao = '';
+                let selRes = document.querySelector(`.select-resultado-analise[data-id="${id}"]`); if(selRes) resultado = selRes.value;
+                let inpObs = document.querySelector(`.input-observacao[data-id="${id}"]`); if(inpObs) observacao = inpObs.value;
+                atualizacoes.push({ id: id, tipo_servico: tipo, status: status, resultado: resultado, observacao: observacao });
+            });
+
+            let btn = document.getElementById('btnSalvarModal'); btn.innerText = "A guardar..."; btn.disabled = true;
+            fetch('/api/atualizar_servico_lote', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ atualizacoes: atualizacoes, data_execucao: dataExec, local_execucao: localExec, id_frota: frota, bloquear_oficina: checkBlock, liberar_oficina: checkUnblock })
+            }).then(response => response.json()).then(data => {
+                if(data.status === 'sucesso') { window.location.reload(); }
+                else { btn.innerText = 'Salvar'; btn.disabled = false; alert('Erro ao guardar: ' + (data.msg || 'Tente novamente.')); }
+            }).catch(() => { btn.innerText = 'Salvar'; btn.disabled = false; alert('Erro de conexão. Verifique a sessão e tente novamente.'); });
+        }
+
+        function excluirServico() {
+            if(confirm("Deseja excluir esta programação?")) {
+                let idsStr = document.getElementById('modalIdProg').value;
+                fetch('/api/excluir_servico/' + idsStr, { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => { if(d.status === 'sucesso') window.location.reload(); else alert('Erro ao excluir: ' + (d.msg || 'Tente novamente.')); })
+                    .catch(() => alert('Erro de conexão ao excluir. Verifique a sessão e tente novamente.'));
+            }
+        }
+
+        function verificarStatusPitStop() {
+            let selects = document.querySelectorAll('.select-status-multiplo-pitstop');
+            let resultados = document.querySelectorAll('.select-resultado-analise-pitstop');
+            let temRealizada = false; let temBloqueada = false; let temQuebrada = false; let temCritico = false;
+
+            selects.forEach(s => {
+                if(s.value === 'REALIZADA') temRealizada = true;
+                if(s.value === 'BLOQUEADA') temBloqueada = true;
+                if(s.value === 'QUEBRADA') temQuebrada = true;
+            });
+
+            resultados.forEach(r => { if(r.value === 'CRÍTICO') temCritico = true; });
+
+            let divData = document.getElementById('divDataExecucaoPitStop');
+            let divSync = document.getElementById('divSincronizacaoPitStop');
+            let chkBlock = document.getElementById('checkBloquearContainerPitStop');
+            let chkUnblock = document.getElementById('checkDesbloquearContainerPitStop');
+            let checkBloquearInput = document.getElementById('checkBloquearPitStop');
+
+            divData.style.display = 'none'; divSync.style.display = 'none'; chkBlock.style.display = 'none'; chkUnblock.style.display = 'none'; checkBloquearInput.disabled = false;
+            if (temRealizada || temBloqueada || temQuebrada || temCritico) divSync.style.display = 'block';
+            if (temRealizada) { divData.style.display = 'block'; chkUnblock.style.display = 'block'; }
+            if (temBloqueada || temQuebrada || temCritico) {
+                chkBlock.style.display = 'block';
+                if(temCritico) { checkBloquearInput.checked = true; checkBloquearInput.disabled = true; }
+            }
+        }
+
+        function salvarAlteracoesPitStop() {
+            let frota = document.getElementById('modalPitStopLabelFrota').innerText;
+            let dataExec = document.getElementById('modalPitStopDataExecucao').value;
+            let localExec = document.getElementById('modalPitStopLocalExecucao') ? document.getElementById('modalPitStopLocalExecucao').value : 'BASE';
+            let checkBlock = document.getElementById('checkBloquearPitStop').checked;
+            let checkUnblock = document.getElementById('checkDesbloquearPitStop').checked;
+
+            let atualizacoes = [];
+            document.querySelectorAll('.select-status-multiplo-pitstop').forEach(s => {
+                let id = s.getAttribute('data-id'); let tipo = s.getAttribute('data-tipo'); let status = s.value; let resultado = ''; let observacao = '';
+                let selRes = document.querySelector(`.select-resultado-analise-pitstop[data-id="${id}"]`); if(selRes) resultado = selRes.value;
+                let inpObs = document.querySelector(`.input-observacao-pitstop[data-id="${id}"]`); if(inpObs) observacao = inpObs.value;
+                atualizacoes.push({ id: id, tipo_servico: tipo, status: status, resultado: resultado, observacao: observacao });
+            });
+
+            let btn = document.getElementById('btnSalvarModalPitStop'); btn.innerText = "A guardar..."; btn.disabled = true;
+            fetch('/api/atualizar_servico_lote', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ atualizacoes: atualizacoes, data_execucao: dataExec, local_execucao: localExec, id_frota: frota, bloquear_oficina: checkBlock, liberar_oficina: checkUnblock })
+            }).then(response => response.json()).then(data => {
+                if(data.status === 'sucesso') { window.location.reload(); }
+                else { btn.innerText = 'Salvar'; btn.disabled = false; alert('Erro ao guardar: ' + (data.msg || 'Tente novamente.')); }
+            }).catch(() => { btn.innerText = 'Salvar'; btn.disabled = false; alert('Erro de conexão. Verifique a sessão e tente novamente.'); });
+        }
+
+        function excluirServicoPitStop() {
+            if(confirm("Deseja excluir esta programação de Pit Stop?")) {
+                let idsStr = document.getElementById('modalPitStopIdProg').value;
+                fetch('/api/excluir_servico/' + idsStr, { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => { if(d.status === 'sucesso') window.location.reload(); else alert('Erro ao excluir: ' + (d.msg || 'Tente novamente.')); })
+                    .catch(() => alert('Erro de conexão ao excluir. Verifique a sessão e tente novamente.'));
+            }
+        }
+
+        // =================================================================
+        // ATIVAÃ‡ÃƒO DOS TOOLTIPS E DASHBOARD PARCIAL
+        // =================================================================
+        // Anima as barras de "Aderência da Semana": comecam em 0% (definido no HTML) e
+        // enchem ate o valor real logo apos o primeiro paint, disparando a transicao CSS.
+        document.addEventListener('DOMContentLoaded', () => {
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                document.querySelectorAll('[data-aderencia-fill]').forEach(el => {
+                    el.style.width = el.dataset.aderenciaFill + '%';
+                });
+            }));
+        });
+
+        Chart.register(ChartDataLabels);
+        Chart.defaults.set('plugins.datalabels', { color: '#ffffff', font: { weight: 'bold', size: 12 } });
+
+        let dadosStatsGlobais = {{ stats | tojson | safe }};
+        let chartStatusObj = null; let chartEspObj = null;
+        let currentDashTipo = '';
+        const modalDashUI = new bootstrap.Modal(document.getElementById('modalMiniDash'));
+
+        function abrirRelatorioOficial() { let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let base = '/dash_oleo'; if (i && f) base += `?inicio=${i}&fim=${f}`; window.open(base, '_blank'); }
+        function abrirRelatorioAnalise() { let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let base = '/dash_analise'; if (i && f) base += `?inicio=${i}&fim=${f}`; window.open(base, '_blank'); }
+        function abrirRelatorioPreventiva() { let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let base = '/dash_preventiva'; if (i && f) base += `?inicio=${i}&fim=${f}`; window.open(base, '_blank'); }
+        function abrirRelatorioPitStop() { let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let base = '/dash_pitstop'; if (i && f) base += `?inicio=${i}&fim=${f}`; window.open(base, '_blank'); }
+
+        function abrirMiniDash(tipo) {
+            currentDashTipo = tipo;
+            let btnOleo = document.getElementById('btnRelatorioOficial');
+            let btnAnalise = document.getElementById('btnRelatorioAnalise');
+            let btnPrev = document.getElementById('btnRelatorioPreventiva');
+            let btnPit = document.getElementById('btnRelatorioPitStop');
+
+            btnOleo.style.display = 'none'; btnAnalise.style.display = 'none';
+            btnPrev.style.display = 'none'; btnPit.style.display = 'none';
+
+            if(tipo.includes('TROCA DE OLEO')) btnOleo.style.display = 'inline-block';
+            if(tipo.includes('ANALISE DE OLEO')) btnAnalise.style.display = 'inline-block';
+            if(tipo.includes('PREVENTIVA')) btnPrev.style.display = 'inline-block';
+            if(tipo.includes('PIT STOP') || tipo.includes('PIT_STOP')) btnPit.style.display = 'inline-block';
+
+            renderizarDashboard(dadosStatsGlobais[tipo]);
+            modalDashUI.show();
+        }
+
+        function renderizarDashboard(d) {
+            if(!d) { d = {total: 0, realizadas: 0, pendentes: 0, bloqueadas: 0, quebradas: 0, percentual: 0, especialidades: {}}; }
+
+            document.getElementById('dashTitulo').innerText = currentDashTipo;
+            document.getElementById('dashTotal').innerText = d.total;
+            document.getElementById('dashRealizadas').innerText = d.realizadas;
+            document.getElementById('dashPendentes').innerText = d.pendentes;
+            document.getElementById('dashBloqueadas').innerText = d.bloqueadas;
+            document.getElementById('dashQuebradas').innerText = d.quebradas || 0;
+
+            let totalValido = d.total - (d.quebradas || 0);
+            document.getElementById('chartCenterTotal').innerText = totalValido;
+
+            let pb = document.getElementById('dashProgressBar');
+            let txt = document.getElementById('dashPercText');
+            pb.style.width = d.percentual + '%';
+            pb.innerText = d.percentual + '%';
+            pb.className = 'progress-bar progress-bar-striped progress-bar-animated fw-bold';
+            txt.className = 'small fw-bold';
+
+            if(d.percentual >= 80) { pb.classList.add('bg-success'); txt.classList.add('text-success'); }
+            else if(d.percentual >= 50) { pb.classList.add('bg-warning', 'text-dark'); txt.classList.add('text-warning'); }
+            else { pb.classList.add('bg-danger'); txt.classList.add('text-danger'); }
+            txt.innerText = d.percentual + '%';
+
+            let statusLabels = []; let statusData = []; let statusColors = [];
+            if(d.realizadas > 0) { statusLabels.push('Realizadas'); statusData.push(d.realizadas); statusColors.push('#198754'); }
+            if(d.pendentes > 0) { statusLabels.push('Pendentes'); statusData.push(d.pendentes); statusColors.push('#6c757d'); }
+            if(d.bloqueadas > 0) { statusLabels.push('Bloqueadas'); statusData.push(d.bloqueadas); statusColors.push('#dc3545'); }
+            if(statusData.length === 0) { statusLabels = ['Sem Dados']; statusData = [1]; statusColors = ['#ccc']; }
+
+            if(chartStatusObj) chartStatusObj.destroy();
+            const ctxStatus = document.getElementById('chartStatus').getContext('2d');
+            chartStatusObj = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{ data: statusData, backgroundColor: statusColors, borderWidth: statusData.length > 1 ? 2 : 0, borderColor: '#fff' }]
+                },
+                options: {
+                    cutout: '65%', responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        datalabels: {
+                            backgroundColor: function(context) { return context.dataset.backgroundColor[context.dataIndex]; },
+                            borderRadius: 4, padding: 4, color: '#fff', font: { weight: 'bold', size: 11 },
+                            formatter: function(value, context) {
+                                if (statusLabels[0] === 'Sem Dados') return '';
+                                let sum = context.dataset.data.reduce((a, b) => a + b, 0);
+                                let perc = sum > 0 ? Math.round((value / sum) * 100) : 0;
+                                return value + ' (' + perc + '%)';
+                            }
+                        }
+                    }
+                }
+            });
+
+            let labelsEsp = [];
+            let dataRealizadas = []; let frotasRealizadas = [];
+            let dataPendentes = [];  let frotasPendentes = [];
+            let dataBloqueadas = []; let frotasBloqueadas = [];
+            let dataQuebradas = [];  let frotasQuebradas = [];
+
+            for (let esp in d.especialidades) {
+                labelsEsp.push(esp);
+                dataRealizadas.push(d.especialidades[esp].realizadas || 0);
+                frotasRealizadas.push(d.especialidades[esp].frotas_realizadas || []);
+
+                dataPendentes.push(d.especialidades[esp].pendentes || 0);
+                frotasPendentes.push(d.especialidades[esp].frotas_pendentes || []);
+
+                dataBloqueadas.push(d.especialidades[esp].bloqueadas || 0);
+                frotasBloqueadas.push(d.especialidades[esp].frotas_bloqueadas || []);
+
+                dataQuebradas.push(d.especialidades[esp].quebradas || 0);
+                frotasQuebradas.push(d.especialidades[esp].frotas_quebradas || []);
+            }
+
+            let datasetsEsp = [];
+            if (dataRealizadas.some(v => v > 0)) datasetsEsp.push({ label: 'Realizadas', data: dataRealizadas, frotasTooltip: frotasRealizadas, backgroundColor: '#198754' });
+            if (dataPendentes.some(v => v > 0)) datasetsEsp.push({ label: 'Pendentes', data: dataPendentes, frotasTooltip: frotasPendentes, backgroundColor: '#6c757d' });
+            if (dataBloqueadas.some(v => v > 0)) datasetsEsp.push({ label: 'Bloqueadas', data: dataBloqueadas, frotasTooltip: frotasBloqueadas, backgroundColor: '#dc3545' });
+            if (dataQuebradas.some(v => v > 0)) datasetsEsp.push({ label: 'Quebradas', data: dataQuebradas, frotasTooltip: frotasQuebradas, backgroundColor: '#ffc107' });
+
+            if(chartEspObj) chartEspObj.destroy();
+            const ctxEsp = document.getElementById('chartEspecialidades').getContext('2d');
+            chartEspObj = new Chart(ctxEsp, {
+                type: 'bar',
+                data: { labels: labelsEsp, datasets: datasetsEsp },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, display: false } },
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        datalabels: { color: function(ctx) { return ctx.dataset.label === 'Quebradas' ? '#000' : '#fff'; }, formatter: function(value) { return value > 0 ? value : ''; } },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    // AQUI ESTÁ A "MAGIA" DE LER AS FROTAS AO PASSAR O RATO!
+                                    let listaFrotas = context.dataset.frotasTooltip[context.dataIndex];
+                                    if (listaFrotas && listaFrotas.length > 0) {
+                                        let linhas = [' '];
+                                        listaFrotas.forEach(f => linhas.push('â€¢ ' + f));
+                                        return linhas;
+                                    }
+                                    return '';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function filtrarDashModal() {
+            let i = document.getElementById('dashDataInicio').value; let f = document.getElementById('dashDataFim').value; let btn = document.getElementById('btnAtualizarDash');
+            if(i && f && currentDashTipo) {
+                btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>...'; btn.disabled = true;
+                fetch(`/api/dashboard_stats?inicio=${i}&fim=${f}&modulo=lavagem`).then(response => response.json()).then(data => {
+                    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica'; btn.disabled = false;
+                    dadosStatsGlobais = data; renderizarDashboard(dadosStatsGlobais[currentDashTipo]);
+                }).catch(error => { btn.innerHTML = 'Erro!'; setTimeout(() => { btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Atualizar Métrica'; btn.disabled = false; }, 2000); });
+            }
+        }
+        // =================================================================
+        // GERIR SETORES â€” FUNÃ‡Ã•ES
+        // =================================================================
+        function parseFrotas(texto) {
+            let frotas = [];
+            String(texto || '').replace(/;/g, '\n').split(/[\n,]+/).forEach(parte => {
+                let valor = parte.trim().toUpperCase();
+                if (!valor) return;
+
+                let duplas = [...valor.matchAll(/([A-Z]*\d+[A-Z0-9]*)\s*-\s*([A-Z]*\d+[A-Z0-9]*)/g)];
+                if (duplas.length > 0) {
+                    duplas.forEach(d => frotas.push(`${d[1]} - ${d[2]}`));
+                    return;
+                }
+
+                (valor.match(/[A-Z]*\d+[A-Z0-9]*/g) || []).forEach(f => frotas.push(f));
+            });
+            return [...new Set(frotas)];
+        }
+
+        function previewFrotas() {
+            let frotas = parseFrotas(document.getElementById('inputFrotas').value);
+            let div = document.getElementById('previewFrotasDiv');
+            let contador = document.getElementById('contadorFrotas');
+            if (frotas.length === 0) {
+                div.innerHTML = '<span class="text-muted small w-100 text-center mt-4">Nenhuma frota digitada ainda.</span>';
+                contador.innerText = '0 frotas';
+                return;
+            }
+            div.innerHTML = frotas.map(f =>
+                `<span class="badge bg-danger text-white fw-bold shadow-sm" style="font-size: 0.75rem; padding: 5px 8px;">${f}</span>`
+            ).join('');
+            contador.innerText = frotas.length + (frotas.length === 1 ? ' frota' : ' frotas');
+        }
+
+        function marcarSetorSelecionado(nomeSetor) {
+            document.querySelectorAll('.setor-existente-btn').forEach(btn => {
+                let ativo = btn.getAttribute('data-setor') === nomeSetor;
+                btn.classList.toggle('active', ativo);
+                btn.classList.toggle('btn-success', ativo);
+                btn.classList.toggle('btn-outline-success', !ativo);
+            });
+        }
+
+        function carregarSetorExistente(nomeSetor) {
+            let setor = setoresCadastrados.find(s => s.nome === nomeSetor);
+            document.getElementById('inputSetor').value = nomeSetor;
+            document.getElementById('inputFrotas').value = setor ? setor.frotas.join('\n') : '';
+            marcarSetorSelecionado(nomeSetor);
+            previewFrotas();
+        }
+
+        function sincronizarSetorDigitado() {
+            let nomeSetor = document.getElementById('inputSetor').value.trim().toUpperCase();
+            let setor = setoresCadastrados.find(s => s.nome === nomeSetor);
+            marcarSetorSelecionado(setor ? nomeSetor : '');
+        }
+
+        function aplicarSetorSeExistir() {
+            let nomeSetor = document.getElementById('inputSetor').value.trim().toUpperCase();
+            let setor = setoresCadastrados.find(s => s.nome === nomeSetor);
+            if (setor) carregarSetorExistente(nomeSetor);
+        }
+
+        function atualizarListaSetores() {
+            let lista = document.getElementById('listaSetoresCadastrados');
+            let datalist = document.getElementById('listaSetoresExistentes');
+
+            if (setoresCadastrados.length === 0) {
+                lista.innerHTML = '<span class="text-muted small d-block text-center mt-4">Nenhum setor cadastrado ainda.</span>';
+                datalist.innerHTML = '';
+                return;
+            }
+
+            lista.innerHTML = setoresCadastrados.map(setor => `
+                <button type="button"
+                        class="btn btn-outline-success btn-sm fw-bold text-start w-100 mb-2 setor-existente-btn"
+                        data-setor="${setor.nome}"
+                        onclick="carregarSetorExistente('${setor.nome.replace(/'/g, "\\'")}')">
+                    <span>${setor.nome}</span>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle float-end">${setor.frotas.length} frota(s)</span>
+                </button>
+            `).join('');
+
+            datalist.innerHTML = setoresCadastrados.map(setor => `<option value="${setor.nome}">${setor.nome}</option>`).join('');
+        }
+
+        function excluirSetorFrotas() {
+            let inputSetor = document.getElementById('inputSetor');
+            let inputFrotas = document.getElementById('inputFrotas');
+            let divResultado = document.getElementById('resultadoSetor');
+            let btn = document.getElementById('btnExcluirSetor');
+            let setor = inputSetor.value.trim().toUpperCase();
+            let setorExistente = setoresCadastrados.find(s => s.nome === setor);
+
+            if (!setor) {
+                alert('Selecione ou digite um setor para excluir.');
+                inputSetor.focus();
+                return;
+            }
+
+            if (!setorExistente) {
+                alert('Esse setor n?o existe na lista atual.');
+                return;
+            }
+
+            if (!confirm(`Deseja excluir o setor ${setor} e remover esse v?nculo de ${setorExistente.frotas.length} frota(s)?`)) {
+                return;
+            }
+
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>A excluir...';
+            btn.disabled = true;
+            divResultado.style.display = 'none';
+            divResultado.innerHTML = '';
+
+            fetch('/api/excluir_setor_frotas', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ setor: setor })
+            })
+            .then(async response => {
+                let raw = await response.text();
+                let data = {};
+
+                try {
+                    data = raw ? JSON.parse(raw) : {};
+                } catch (e) {
+                    throw new Error(raw || `Resposta inv?lida do servidor (${response.status}).`);
+                }
+
+                if (!response.ok || data.status !== 'sucesso') {
+                    throw new Error(data.mensagem || `Erro ao excluir setor (${response.status}).`);
+                }
+
+                return data;
+            })
+            .then(data => {
+                setoresCadastrados = setoresCadastrados.filter(s => s.nome !== setor);
+                atualizarListaSetores();
+                inputSetor.value = '';
+                inputFrotas.value = '';
+                marcarSetorSelecionado('');
+                previewFrotas();
+
+                divResultado.style.display = 'block';
+                divResultado.innerHTML = `
+                    <div class="alert alert-warning shadow-sm border-warning">
+                        <i class="bi bi-trash3-fill me-2"></i>
+                        <strong>Setor exclu?do com sucesso.</strong><br>
+                        <span class="small"><b>${data.removidas || 0}</b> frota(s) ficaram sem setor.</span>
+                    </div>`;
+            })
+            .catch(error => {
+                divResultado.style.display = 'block';
+                divResultado.innerHTML = `<div class="alert alert-danger shadow-sm"><i class="bi bi-x-circle-fill me-2"></i><strong>Erro ao excluir:</strong> ${error.message || 'Tente novamente.'}</div>`;
+                console.error('Erro ao excluir setor:', error);
+            })
+            .finally(() => {
+                btn.innerHTML = '<i class="bi bi-trash3-fill me-1"></i>Excluir Setor';
+                btn.disabled = false;
+            });
+        }
+
+        function salvarSetorFrotas() {
+            let setor = document.getElementById('inputSetor').value.trim().toUpperCase();
+            let frotas = parseFrotas(document.getElementById('inputFrotas').value);
+
+            if (!setor) {
+                alert('Por favor, informe o nome do Setor/Agrupamento.');
+                document.getElementById('inputSetor').focus();
+                return;
+            }
+            if (frotas.length === 0) {
+                alert('Por favor, informe ao menos uma frota.');
+                document.getElementById('inputFrotas').focus();
+                return;
+            }
+
+            let btn = document.getElementById('btnSalvarSetor');
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>A salvar...';
+            btn.disabled = true;
+
+            fetch('/api/cadastrar_setor_frotas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ setor: setor, frotas: frotas })
+            })
+            .then(r => r.json())
+            .then(data => {
+                btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>Salvar Setor';
+                btn.disabled = false;
+                let div = document.getElementById('resultadoSetor');
+                div.style.display = 'block';
+                if (data.status === 'sucesso') {
+                    let indiceExistente = setoresCadastrados.findIndex(s => s.nome === setor);
+                    let setorAtualizado = { nome: setor, frotas: frotas };
+                    if (indiceExistente >= 0) setoresCadastrados[indiceExistente] = setorAtualizado;
+                    else setoresCadastrados.push(setorAtualizado);
+                    setoresCadastrados.sort((a, b) => a.nome.localeCompare(b.nome));
+                    atualizarListaSetores();
+                    marcarSetorSelecionado(setor);
+                    div.innerHTML = `
+                        <div class="alert alert-success shadow-sm border-success">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            <strong>Salvo com sucesso!</strong><br>
+                            <span class="small">
+                                âœ… <b>${data.atualizadas}</b> frota(s) atualizada(s) &nbsp;|&nbsp;
+                                âž• <b>${data.cadastradas}</b> frota(s) nova(s) cadastrada(s)
+                            </span>
+                            <div class="mt-2 small text-muted">Setor: <b class="text-success">${setor}</b> â€” Frotas: <b>${frotas.join(', ')}</b></div>
+                        </div>`;
+                    // Limpa os campos para próximo uso
+                } else {
+                    div.innerHTML = `<div class="alert alert-danger shadow-sm"><i class="bi bi-x-circle-fill me-2"></i><strong>Erro ao salvar:</strong> ${data.mensagem || 'Tente novamente.'}</div>`;
+                }
+            })
+            .catch(() => {
+                btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>Salvar Setor';
+                btn.disabled = false;
+                document.getElementById('resultadoSetor').style.display = 'block';
+                document.getElementById('resultadoSetor').innerHTML = '<div class="alert alert-danger shadow-sm"><i class="bi bi-x-circle-fill me-2"></i>Erro de conexão. Verifique o servidor.</div>';
+            });
+        }
+
+        // Limpa resultado e preview ao fechar o modal
+        document.getElementById('modalGerirSetores').addEventListener('hidden.bs.modal', function() {
+            document.getElementById('inputSetor').value = '';
+            document.getElementById('inputFrotas').value = '';
+            document.getElementById('resultadoSetor').style.display = 'none';
+            marcarSetorSelecionado('');
+            previewFrotas();
+        });
+    </script>
+</body>
+</html>
+
+
+
+

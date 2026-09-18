@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Operacional - Gestão PCM</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pcm-ui.css') }}">
+    <script src="{{ url_for('static', filename='js/pcm-ui.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <style>
+        .op-grade { display: grid; gap: clamp(12px, 1.2vw, 20px); }
+        .op-grade--2 { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+        /* O gráfico mora dentro de uma altura fixa: assim ele nunca empurra o card. */
+        .op-grafico { position: relative; height: 260px; width: 100%; }
+        .op-grafico canvas { max-width: 100%; }
+        @media (max-width: 575.98px) { .op-grafico { height: 230px; } }
+    </style>
+</head>
+<body class="pcm-app">
+    {% include '_pcm_shell.html' %}
+
+    <div class="pcm-shell">
+    <header class="pcm-topbar">
+        <button class="pcm-btn-icon pcm-sb-toggle" onclick="PCM.alternarSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+        <div>
+            <div class="pcm-tb-crumb">Gestão</div>
+            <h1 class="pcm-tb-title">Dashboard Operacional</h1>
+        </div>
+        <div class="pcm-tb-spacer"></div>
+        <div class="pcm-tb-actions">
+            <span class="pcm-status pcm-status--{{ 'realizada' if visao_geral.disponibilidade_pct >= 90 else ('quebrada' if visao_geral.disponibilidade_pct >= 75 else 'bloqueada') }}">
+                Disponibilidade {{ visao_geral.disponibilidade_pct }}%
+            </span>
+            <button class="pcm-btn-icon" onclick="PCM.alternarTema()" title="Alternar tema"><i class="bi bi-moon-fill" data-icone-tema></i></button>
+        </div>
+    </header>
+
+    <div class="pcm-main">
+
+        <div class="pcm-card mb-3">
+            <div class="pcm-card-h">
+                <h6><i class="bi bi-grid-1x2 me-1"></i>Visão Geral</h6>
+                <span class="text-muted small">Semana {{ visao_geral.periodo }}</span>
+            </div>
+            <div class="pcm-card-b">
+                <div class="pcm-kpi-grid pcm-stagger">
+                    <div class="pcm-kpi pcm-kpi--brand" data-bs-toggle="tooltip" title="Total de frotas cadastradas na base.">
+                        <div class="pcm-kpi-label"><i class="bi bi-truck"></i>Frotas</div>
+                        <div class="pcm-kpi-value" data-contador="{{ visao_geral.total_frotas }}">0</div>
+                    </div>
+                    <div class="pcm-kpi pcm-kpi--realizada is-clickable" onclick="PCM.drilldown('/api/drilldown?tipo=frotas_disponiveis', 'Frotas disponíveis')"
+                         data-bs-toggle="tooltip" title="Frotas que não estão bloqueadas na oficina. Clique para ver a lista.">
+                        <div class="pcm-kpi-label"><i class="bi bi-check2-circle"></i>Disponíveis</div>
+                        <div class="pcm-kpi-value" data-contador="{{ visao_geral.disponiveis }}">0</div>
+                        <div class="pcm-kpi-foot">{{ visao_geral.disponibilidade_pct }}% da frota</div>
+                    </div>
+                    <div class="pcm-kpi pcm-kpi--bloqueada is-clickable" onclick="PCM.drilldown('/api/drilldown?tipo=frotas_bloqueadas', 'Frotas bloqueadas')"
+                         data-bs-toggle="tooltip" title="Frotas atualmente bloqueadas na oficina. Clique para ver a lista.">
+                        <div class="pcm-kpi-label"><i class="bi bi-tools"></i>Bloqueadas</div>
+                        <div class="pcm-kpi-value" data-contador="{{ visao_geral.bloqueadas }}">0</div>
+                    </div>
+                    <div class="pcm-kpi pcm-kpi--info"
+                         data-bs-toggle="tooltip"
+                         title="Realizadas ÷ (programadas − quebradas) na semana atual.">
+                        <div class="pcm-kpi-label"><i class="bi bi-speedometer2"></i>Aderência</div>
+                        <div class="pcm-kpi-value" data-contador="{{ visao_geral.semana_aderencia }}" data-casas="1" data-sufixo="%">0%</div>
+                        <div class="pcm-kpi-foot">{{ visao_geral.semana_realizadas }} de {{ visao_geral.semana_total }}</div>
+                    </div>
+                    <div class="pcm-kpi pcm-kpi--pendente is-clickable" onclick="PCM.drilldown('/api/drilldown?tipo=semana_pendentes', 'A executar nesta semana')"
+                         data-bs-toggle="tooltip" title="Pendentes + bloqueadas na semana. Clique para ver a lista.">
+                        <div class="pcm-kpi-label"><i class="bi bi-hourglass-split"></i>A executar</div>
+                        <div class="pcm-kpi-value" data-contador="{{ visao_geral.semana_pendentes }}">0</div>
+                        <div class="pcm-kpi-foot">nesta semana</div>
+                    </div>
+                    <div class="pcm-kpi pcm-kpi--quebrada is-clickable" onclick="PCM.drilldown('/api/drilldown?tipo=ferramentas_em_posse', 'Ferramentas em posse')"
+                         data-bs-toggle="tooltip" title="Retiradas da ferramentaria sem devolução. Clique para ver a lista.">
+                        <div class="pcm-kpi-label"><i class="bi bi-hammer"></i>Ferramentas</div>
+                        <div class="pcm-kpi-value" data-contador="{{ visao_geral.ferramentas_em_posse }}">0</div>
+                        <div class="pcm-kpi-foot">retiradas em aberto</div>
+                    </div>
+                    <div class="pcm-kpi pcm-kpi--atrasada is-clickable" onclick="PCM.drilldown('/api/drilldown?tipo=compras_abertas', 'Compras em andamento')"
+                         data-bs-toggle="tooltip" title="Solicitações nem compradas nem canceladas. Clique para ver a lista.">
+                        <div class="pcm-kpi-label"><i class="bi bi-cart"></i>Compras</div>
+                        <div class="pcm-kpi-value" data-contador="{{ visao_geral.compras_abertas }}">0</div>
+                        <div class="pcm-kpi-foot">em andamento</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if alertas %}
+        <div class="pcm-card mb-3">
+            <div class="pcm-card-h">
+                <h6><i class="bi bi-bell me-1"></i>Pontos de Atenção</h6>
+                <span class="pcm-filter-count">{{ alertas|length }}</span>
+            </div>
+            <div class="pcm-card-b">
+                <div class="pcm-alertas">
+                    {% for a in alertas %}
+                    <a href="{{ a.link }}" class="pcm-alerta pcm-alerta--{{ a.nivel }}">
+                        <div class="pcm-alerta-icone"><i class="bi {{ a.icone }}"></i></div>
+                        <div class="pcm-alerta-qtd">{{ a.qtd }}</div>
+                        <div class="pcm-alerta-txt">
+                            <strong>{{ a.titulo }}</strong>
+                            <span>{{ a.texto }}</span>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="op-grade op-grade--2 mb-3">
+            <div class="pcm-card">
+                <div class="pcm-card-h">
+                    <h6><i class="bi bi-bar-chart-steps me-1"></i>Oficina por Especialidade</h6>
+                    <span class="text-muted small">onde a frota está parada</span>
+                </div>
+                <div class="pcm-card-b">
+                    <div class="op-grafico"><canvas id="chartEsp"></canvas></div>
+                </div>
+            </div>
+
+            <div class="pcm-card">
+                <div class="pcm-card-h">
+                    <h6><i class="bi bi-list-check me-1"></i>Motivos de Bloqueio</h6>
+                    <span class="text-muted small">o que está segurando</span>
+                </div>
+                <div class="pcm-card-b">
+                    <div class="op-grafico"><canvas id="chartMotivo"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="pcm-card mb-3">
+            <div class="pcm-card-h">
+                <h6><i class="bi bi-speedometer2 me-1"></i>Aderência por Tipo de Serviço</h6>
+                <span class="text-muted small">semana {{ visao_geral.periodo }} · do pior para o melhor</span>
+            </div>
+            <div class="pcm-card-b">
+                {% if por_tipo %}
+                <div class="pcm-table-wrap">
+                    <table class="pcm-table" data-pcm-sort>
+                        <thead>
+                            <tr>
+                                <th data-sort>Serviço</th>
+                                <th class="text-center" data-sort>Programadas</th>
+                                <th class="text-center" data-sort>Realizadas</th>
+                                <th class="text-center" data-sort>A executar</th>
+                                <th class="text-center" data-sort>Quebradas</th>
+                                <th style="min-width:170px;" data-sort>Aderência</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in por_tipo %}
+                            <tr>
+                                <td class="fw-semibold">{{ t.nome }}</td>
+                                <td class="text-center">{{ t.total }}</td>
+                                <td class="text-center">{{ t.realizadas }}</td>
+                                <td class="text-center">{{ t.pendentes + t.bloqueadas }}</td>
+                                <td class="text-center">{{ t.quebradas }}</td>
+                                <td data-valor="{{ t.aderencia }}">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="pcm-progress flex-grow-1"
+                                             style="--pcm-bar-color: var({{ '--pcm-realizada' if t.aderencia >= 80 else ('--pcm-quebrada' if t.aderencia >= 50 else '--pcm-bloqueada') }});">
+                                            <span data-valor="{{ t.aderencia }}"></span>
+                                        </div>
+                                        <strong style="min-width:48px; font-size:.85rem;">{{ t.aderencia }}%</strong>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="pcm-table-empty">Nenhum serviço programado nesta semana.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="pcm-card">
+            <div class="pcm-card-h">
+                <h6><i class="bi bi-arrow-repeat me-1"></i>Frotas Reincidentes</h6>
+                <span class="text-muted small">mais de uma passagem pela oficina — candidatas a análise de causa</span>
+            </div>
+            <div class="pcm-card-b">
+                {% if reincidentes %}
+                <div class="pcm-table-wrap" style="--pcm-table-h: 340px;">
+                    <table class="pcm-table" data-pcm-sort>
+                        <thead>
+                            <tr>
+                                <th data-sort>Frota</th>
+                                <th data-sort>Equipamento</th>
+                                <th class="text-center" data-sort>Passagens</th>
+                                <th class="text-center" data-sort>Situação</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in reincidentes %}
+                            <tr>
+                                <td class="fw-bold" style="color: var(--pcm-brand);">{{ r.id_frota }}</td>
+                                <td>{{ r.descricao }}</td>
+                                <td class="text-center fw-bold" data-valor="{{ r.passagens }}">{{ r.passagens }}</td>
+                                <td class="text-center" data-valor="{{ r.em_aberto }}">
+                                    {% if r.em_aberto %}
+                                    <span class="pcm-status pcm-status--bloqueada">Aguardando equipamento</span>
+                                    {% else %}
+                                    <span class="pcm-status pcm-status--realizada">Liberada</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="pcm-table-empty">Nenhuma frota com passagem repetida registrada.</div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        Chart.register(ChartDataLabels);
+
+        const porEsp = {{ por_especialidade | tojson | safe }};
+        const porMotivo = {{ por_motivo | tojson | safe }};
+
+        // Barras horizontais ordenadas: é ranking, então a comparação fica no
+        // comprimento e o rótulo tem espaço pra ser lido por inteiro.
+        function barrasRanking(id, dados, cor) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (!dados.length) {
+                el.closest('.pcm-card-b').innerHTML =
+                    '<div class="pcm-table-empty">Nenhum registro no período.</div>';
+                return;
+            }
+            new Chart(el, {
+                type: 'bar',
+                data: {
+                    labels: dados.map(d => d.nome),
+                    datasets: [{
+                        data: dados.map(d => d.qtd),
+                        backgroundColor: cor,
+                        borderRadius: 4,
+                        barPercentage: .72, categoryPercentage: .8
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true, maintainAspectRatio: false,
+                    animation: { duration: 750, easing: 'easeOutQuart', delay: ctx => ctx.type === 'data' ? ctx.dataIndex * 45 : 0 },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: c => `${c.parsed.x} frota(s)` } },
+                        datalabels: {
+                            anchor: 'end', align: 'right', offset: 3,
+                            color: PCM.cores.textoFraco, font: { weight: 'bold', size: 11 }
+                        }
+                    },
+                    scales: {
+                        x: { display: false, grace: '12%' },
+                        y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+                    }
+                }
+            });
+        }
+
+        barrasRanking('chartEsp', porEsp, PCM.cores.bloqueada);
+        barrasRanking('chartMotivo', porMotivo, PCM.cores.marca);
+    </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Bancos de dados (dados reais de produção / arquivos grandes demais para o GitHub)
+*.db
+*.db-journal
+
+# Cache Python
+__pycache__/
+*.pyc
+
+# Ambiente virtual local
+.venv/
+venv/
+
+# Editor / ferramentas locais
+.vscode/
+.claude/
+
+# Uploads gerados em tempo de execução (termos PDF, fotos de peças, etc.)
+uploads/
+
+# Dotfiles pessoais avulsos, sem relação com a aplicação
+vimrc.txt
+bashrc.txt
+profile.txt
+pythonstartup.py
+gitconfig.txt
